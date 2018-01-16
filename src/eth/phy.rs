@@ -1,5 +1,6 @@
-use cortex_m::interrupt::CriticalSection;
 use core::option::Option;
+use cortex_m::interrupt::CriticalSection;
+use stm32f429x::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 use eth::smi::SMI;
 
@@ -38,26 +39,18 @@ const PHY_REG_SSR_100BASE_FD: u16 = 0b110 << 2;
 
 /// http://ww1.microchip.com/downloads/en/DeviceDoc/DS_LAN8742_00001989A.pdf
 /// https://github.com/libopencm3/libopencm3/blob/master/lib/ethernet/mac_stm32fxx7.c
-pub struct Phy<'cs> {
+pub struct Phy<'a> {
+    smi: SMI<'a>,
     phy: u8,
-    smi: SMI<'cs>
 }
 
-impl Phy<'static> {
-    pub unsafe fn new(phy: u8) -> Self {
-        Phy {
-            phy,
-            smi: SMI::new(),
-        }
-    }
-}
-    
+impl<'a> Phy<'a> {
+    pub fn new(macmiiar: &'a MACMIIAR, macmiidr: &'a MACMIIDR, phy: u8) -> Self {
+        let smi = SMI::new(macmiiar, macmiidr);
 
-impl<'cs> Phy<'cs> {
-    pub fn with(cs: &'cs CriticalSection, phy: u8) -> Self {
         Phy {
+            smi,
             phy,
-            smi: SMI::with(cs),
         }
     }
 
@@ -68,7 +61,7 @@ impl<'cs> Phy<'cs> {
         }
     }
 
-    pub fn reset(&self) -> &Self {
+    pub fn reset<'cs>(&self, _: &'cs CriticalSection) -> &Self {
         self.smi.set_bits(
             self.phy,
             PHY_REG_BCR,
@@ -80,9 +73,10 @@ impl<'cs> Phy<'cs> {
             self.phy,
             PHY_REG_BCR
         ) & PHY_REG_BCR_RESET) == PHY_REG_BCR_RESET {}
+
         self
     }
-    
+
     pub fn set_autoneg(&self) -> &Self {
         self.smi.set_bits(
             self.phy,

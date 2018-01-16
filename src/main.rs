@@ -10,6 +10,7 @@ extern crate stm32f429x;
 
 use cortex_m::asm;
 use stm32f429x::interrupt::Interrupt;
+use stm32f429x::Peripherals;
 
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
@@ -18,11 +19,17 @@ mod eth;
 use eth::Eth;
 
 fn main() {
+    let p = Peripherals::take()
+        .expect("Peripherals");
+
     let mut stdout = hio::hstdout().unwrap();
     writeln!(stdout, "Enabling ethernet...").unwrap();
-    let eth = Eth::new();
-    cortex_m::interrupt::free(|cs| {
-        eth.init(cs);
+
+    let eth = cortex_m::interrupt::free(|cs| {
+        let eth = Eth::new(p.ETHERNET_MAC, p.ETHERNET_DMA);
+        eth.init_pins(cs, &p.RCC, &p.GPIOA, &p.GPIOB, &p.GPIOC, &p.GPIOG);
+        eth.init(cs, &p.RCC, &p.SYSCFG);
+        eth
     });
 
     while ! eth.status().link_detected() {
@@ -42,16 +49,16 @@ fn main() {
 
 }
 
-// // As we are not using interrupts, we just register a dummy catch all handler
-// #[link_section = ".vector_table.interrupts"]
-// #[used]
-// static INTERRUPTS: [extern "C" fn(); 240] = [default_handler; 240];
+// As we are not using interrupts, we just register a dummy catch all handler
+#[link_section = ".vector_table.interrupts"]
+#[used]
+static INTERRUPTS: [extern "C" fn(); 240] = [default_handler; 240];
 
-// extern "C" fn default_handler() {
-//     cortex_m::interrupt::free(|cs| {
-//         let mut stdout = hio::hstdout().unwrap();
-//         writeln!(stdout, "I").unwrap();
-//     });
-// }
+extern "C" fn default_handler() {
+    cortex_m::interrupt::free(|cs| {
+        let mut stdout = hio::hstdout().unwrap();
+        writeln!(stdout, "I").unwrap();
+    });
+}
 
 // interrupt!(Interrupt::Eth, 
