@@ -1,12 +1,15 @@
+#![no_std]
 #![feature(used)]
 //#![feature(core_intrinsics)]
 //#![feature(lang_items)]
-#![no_std]
+#![feature(alloc, global_allocator)]
 
 extern crate cortex_m;
 extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
 extern crate stm32f429x;
+extern crate alloc_cortex_m;
+extern crate alloc;
 
 use cortex_m::asm;
 use stm32f429x::interrupt::Interrupt;
@@ -15,10 +18,14 @@ use stm32f429x::Peripherals;
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
+mod init_alloc;
+pub use init_alloc::ALLOCATOR;
 mod eth;
 use eth::Eth;
 
 fn main() {
+    init_alloc::init();
+
     let p = Peripherals::take()
         .expect("Peripherals");
 

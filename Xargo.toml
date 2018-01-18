@@ -1,3 +1,6 @@
+[dependencies]
+alloc = {}
+
 [dependencies.core]
 stage = 0
 
