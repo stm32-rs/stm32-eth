@@ -18,15 +18,18 @@ const RXDESC_0_OWN: u32 = 1 << 31;
 const RXDESC_0_FS: u32 = 1 << 9;
 // Last descriptor
 const RXDESC_0_LS: u32 = 1 << 8;
+// Error summary
+const RXDESC_0_ES: u32 = 1 << 15;
+// Frame length
+const RXDESC_0_FL_MASK: u32 = 0x3FFF;
+const RXDESC_0_FL_SHIFT: usize = 16;
+
 const RXDESC_1_RBS_SHIFT: usize = 0;
 const RXDESC_1_RBS_MASK: u32 = 0x0fff << RXDESC_1_RBS_SHIFT;
 // Second address chained
 const RXDESC_1_RCH: u32 = 1 << 14;
 // End Of Ring
 const RXDESC_1_RER: u32 = 1 << 15;
-// Frame length
-const RXDESC_0_FL_MASK: u32 = 0x3F;
-const RXDESC_0_FL_SHIFT: usize = 16;
 
 impl Default for RxDescriptor {
     fn default() -> Self {
@@ -100,6 +103,10 @@ impl RxDescriptor {
         self.modify(0, |w| w | RXDESC_0_OWN);
     }
 
+    pub fn has_error(&self) -> bool {
+        (self.read(0) & RXDESC_0_ES) == RXDESC_0_ES
+    }
+
     /// Descriptor contains first buffer of frame
     pub fn is_first(&self) -> bool {
         (self.read(0) & RXDESC_0_FS) == RXDESC_0_FS
@@ -161,8 +168,17 @@ impl RxBuffer {
     }
 
     fn take_received(&mut self) -> Option<Vec<u8>> {
+        use core::fmt::Write;
+        use cortex_m_semihosting::hio;
+        let mut stdout = hio::hstdout().unwrap();
+
         match self.desc.is_owned() {
             true => None,
+            false if self.desc.has_error() => {
+                writeln!(stdout, "Skipping error frame").unwrap();
+                self.desc.set_owned();
+                None
+            },
             false if self.desc.is_first() && self.desc.is_last() => {
                 // Switch old with new
                 let new_buffer = Vec::with_capacity(self.buffer.capacity());
@@ -181,11 +197,9 @@ impl RxBuffer {
                 Some(pkt_buffer)
             },
             false => {
-                use core::fmt::Write;
-                use cortex_m_semihosting::hio;
-                let mut stdout = hio::hstdout().unwrap();
                 writeln!(stdout, "Skipping truncated frame bufs (FS={:?} LS={:?})",
                          self.desc.is_first(), self.desc.is_last()).unwrap();
+                self.desc.set_owned();
                 None
             },
         }
