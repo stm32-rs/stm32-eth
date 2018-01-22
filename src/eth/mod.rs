@@ -1,3 +1,4 @@
+use cortex_m::interrupt;
 use cortex_m::interrupt::CriticalSection;
 use stm32f429x::*;
 
@@ -9,12 +10,16 @@ use cortex_m_semihosting::hio;
 mod phy;
 use self::phy::{Phy, PhyStatus};
 mod smi;
+mod rx;
+use self::rx::RxRing;
 
 const PHY_ADDR: u8 = 0;
+const MTU: usize = 1532;
 
 pub struct Eth {
     eth_mac: ETHERNET_MAC,
     eth_dma: ETHERNET_DMA,
+    rx: RxRing,
 }
 
 impl Eth {
@@ -22,6 +27,7 @@ impl Eth {
         Eth {
             eth_mac,
             eth_dma,
+            rx: RxRing::new(MTU),
         }
     }
 
@@ -29,12 +35,12 @@ impl Eth {
         Phy::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, PHY_ADDR)
     }
     
-    pub fn init<'cs>(&self, cs: &'cs CriticalSection, rcc: &RCC, syscfg: &SYSCFG) -> &Self {
+    pub fn init<'cs>(&mut self, cs: &'cs CriticalSection, rcc: &RCC, syscfg: &SYSCFG, nvic: &mut NVIC) -> &Self {
         let mut stdout = hio::hstdout().unwrap();
 
         writeln!(stdout, "Enabling clocks").unwrap();
         // enable syscfg clock
-        rcc.apb2enr.write(|w| w.syscfgen().set_bit());
+        rcc.apb2enr.modify(|_, w| w.syscfgen().set_bit());
 
         // select MII or RMII mode
         // 0 = MII, 1 = RMII
@@ -48,13 +54,20 @@ impl Eth {
         });
         writeln!(stdout, "Clocks enabled").unwrap();
 
+        self.eth_dma.dmaier.modify(|_, w|
+            // Normal interrupt summary enable
+            w.nise().set_bit()
+        );
+        // Enable ethernet interrupts
+        nvic.enable(Interrupt::ETH);
+        
         writeln!(stdout, "Resetting Ethernet").unwrap();
         Self::reset_pulse(cs, rcc);
-        // self.reset_dma_and_wait(cs);
         writeln!(stdout, "Ethernet reset").unwrap();
+        self.reset_dma_and_wait(cs);
 
         // set clock range in MAC MII address register
-        let clock_range = ETH_MACMIIAR_CR_HCLK_DIV_16;
+        let clock_range = consts::ETH_MACMIIAR_CR_HCLK_DIV_16;
         self.eth_mac.macmiiar.modify(|_, w| unsafe { w.cr().bits(clock_range) });
 
         writeln!(stdout, "Ethernet configured").unwrap();
@@ -63,6 +76,63 @@ impl Eth {
             .reset(cs)
             .set_autoneg();
         writeln!(stdout, "Phy reset").unwrap();
+
+        // Configuration Register
+        self.eth_mac.maccr.modify(|_, w| {
+            // CRC stripping for Type frames
+            w.cstf().set_bit()
+                // Fast Ethernet speed
+                .fes().set_bit()
+                // Duplex mode
+                .dm().set_bit()
+                // Automatic pad/CRC stripping
+                .apcs().set_bit()
+                // Retry disable in half-duplex mode
+                .rd().set_bit()
+                .re().set_bit()
+        });
+        // frame filter register
+        self.eth_mac.macffr.modify(|_, w| {
+            // Receive All
+            w.ra().set_bit()
+                // Promiscuous mode
+                .pm().set_bit()
+        });
+        // Flow Control Register
+        self.eth_mac.macfcr.modify(|_, w| unsafe {
+            // Pause time
+            w.pt().bits(0x100)
+        });
+        // operation mode register
+        self.eth_dma.dmaomr.modify(|_, w| {
+            // Dropping of TCP/IP checksum error frames disable
+            w.dtcefd().set_bit()
+                // Receive store and forward
+                .rsf().set_bit()
+                // Disable flushing of received frames
+                .dfrf().set_bit()
+                // Transmit store and forward
+                .tsf().set_bit()
+                // Forward error frames
+                .fef().set_bit()
+                // Operate on second frame
+                .osf().set_bit()
+        });
+        // bus mode register
+        self.eth_dma.dmabmr.modify(|_, w| unsafe {
+            // Address-aligned beats
+            w.aab().set_bit()
+            // Fixed burst
+                .fb().set_bit()
+            // Rx DMA PBL
+                .rdp().bits(32)
+            // Programmable burst length
+                .pbl().bits(32)
+            // Rx Tx priority ratio 2:1
+                .rtpr().bits(0b01)
+            // Use separate PBL
+                .usp().set_bit()
+        });
 
         self
     }
@@ -79,100 +149,138 @@ impl Eth {
         // Wait until done
         while self.eth_dma.dmabmr.read().sr().bit_is_set() {}
     }
-    
+
     /// Set RMII pins to
     /// * Alternate function mode
     /// * Push-pull mode
     /// * No pull-up resistor
     /// * High-speed
     /// * Alternate function 11
-    pub fn init_pins<'cs>(&self, cs: &'cs CriticalSection, rcc: &RCC, gpioa: &GPIOA, gpiob: &GPIOB, gpioc: &GPIOC, gpiog: &GPIOG) {
+    pub fn init_pins<'cs>(&self, cs: &'cs CriticalSection, rcc: &RCC, gpioa: &GPIOA, gpiob: &GPIOB, gpioc: &GPIOC, gpiog: &GPIOG) -> &Self {
         rcc.ahb1enr.modify(|_, w| {
             w.gpioaen().set_bit()
                 .gpioben().set_bit()
                 .gpiocen().set_bit()
                 .gpiogen().set_bit()
         });
-        
+
         // PA1 RMII Reference Clock - SB13 ON
-        gpioa.moder.modify(|_, w| unsafe { w.moder1().bits(GPIO_MODER_AFM) });
-        gpioa.otyper.modify(|_, w| w.ot1().bit(GPIO_OTYPER_PUSHPULL));
-        gpioa.pupdr.modify(|_, w| unsafe { w.pupdr1().bits(GPIO_PUPDR_NONE) });
-        gpioa.ospeedr.modify(|_, w| unsafe { w.ospeedr1().bits(GPIO_OSPEEDR_HIGH) });
+        gpioa.moder.modify(|_, w| unsafe { w.moder1().bits(consts::GPIO_MODER_AFM) });
+        gpioa.otyper.modify(|_, w| w.ot1().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpioa.pupdr.modify(|_, w| unsafe { w.pupdr1().bits(consts::GPIO_PUPDR_NONE) });
+        gpioa.ospeedr.modify(|_, w| unsafe { w.ospeedr1().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpioa.afrl.modify(|_, w| unsafe { w.afrl1().bits(11) });
         // PA2 RMII MDIO - SB160 ON
-        gpioa.moder.modify(|_, w| unsafe { w.moder2().bits(GPIO_MODER_AFM) });
-        gpioa.otyper.modify(|_, w| w.ot2().bit(GPIO_OTYPER_PUSHPULL));
-        gpioa.pupdr.modify(|_, w| unsafe { w.pupdr2().bits(GPIO_PUPDR_NONE) });
-        gpioa.ospeedr.modify(|_, w| unsafe { w.ospeedr2().bits(GPIO_OSPEEDR_HIGH) });
+        gpioa.moder.modify(|_, w| unsafe { w.moder2().bits(consts::GPIO_MODER_AFM) });
+        gpioa.otyper.modify(|_, w| w.ot2().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpioa.pupdr.modify(|_, w| unsafe { w.pupdr2().bits(consts::GPIO_PUPDR_NONE) });
+        gpioa.ospeedr.modify(|_, w| unsafe { w.ospeedr2().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpioa.afrl.modify(|_, w| unsafe { w.afrl2().bits(11) });
         // PC1 RMII MDC - SB164 ON
-        gpioc.moder.modify(|_, w| unsafe { w.moder1().bits(GPIO_MODER_AFM) });
-        gpioc.otyper.modify(|_, w| w.ot1().bit(GPIO_OTYPER_PUSHPULL));
-        gpioc.pupdr.modify(|_, w| unsafe { w.pupdr1().bits(GPIO_PUPDR_NONE) });
-        gpioc.ospeedr.modify(|_, w| unsafe { w.ospeedr1().bits(GPIO_OSPEEDR_HIGH) });
+        gpioc.moder.modify(|_, w| unsafe { w.moder1().bits(consts::GPIO_MODER_AFM) });
+        gpioc.otyper.modify(|_, w| w.ot1().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpioc.pupdr.modify(|_, w| unsafe { w.pupdr1().bits(consts::GPIO_PUPDR_NONE) });
+        gpioc.ospeedr.modify(|_, w| unsafe { w.ospeedr1().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpioc.afrl.modify(|_, w| unsafe { w.afrl1().bits(11) });
         // PA7 RMII RX Data Valid D11 JP6 ON
-        gpioa.moder.modify(|_, w| unsafe { w.moder7().bits(GPIO_MODER_AFM) });
-        gpioa.otyper.modify(|_, w| w.ot7().bit(GPIO_OTYPER_PUSHPULL));
-        gpioa.pupdr.modify(|_, w| unsafe { w.pupdr7().bits(GPIO_PUPDR_NONE) });
-        gpioa.ospeedr.modify(|_, w| unsafe { w.ospeedr7().bits(GPIO_OSPEEDR_HIGH) });
+        gpioa.moder.modify(|_, w| unsafe { w.moder7().bits(consts::GPIO_MODER_AFM) });
+        gpioa.otyper.modify(|_, w| w.ot7().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpioa.pupdr.modify(|_, w| unsafe { w.pupdr7().bits(consts::GPIO_PUPDR_NONE) });
+        gpioa.ospeedr.modify(|_, w| unsafe { w.ospeedr7().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpioa.afrl.modify(|_, w| unsafe { w.afrl7().bits(11) });
         // PC4 RMII RXD0 - SB178 ON
-        gpioc.moder.modify(|_, w| unsafe { w.moder4().bits(GPIO_MODER_AFM) });
-        gpioc.otyper.modify(|_, w| w.ot4().bit(GPIO_OTYPER_PUSHPULL));
-        gpioc.pupdr.modify(|_, w| unsafe { w.pupdr4().bits(GPIO_PUPDR_NONE) });
-        gpioc.ospeedr.modify(|_, w| unsafe { w.ospeedr4().bits(GPIO_OSPEEDR_HIGH) });
+        gpioc.moder.modify(|_, w| unsafe { w.moder4().bits(consts::GPIO_MODER_AFM) });
+        gpioc.otyper.modify(|_, w| w.ot4().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpioc.pupdr.modify(|_, w| unsafe { w.pupdr4().bits(consts::GPIO_PUPDR_NONE) });
+        gpioc.ospeedr.modify(|_, w| unsafe { w.ospeedr4().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpioc.afrl.modify(|_, w| unsafe { w.afrl4().bits(11) });
         // PC5 RMII RXD1 - SB181 ON
-        gpioc.moder.modify(|_, w| unsafe { w.moder5().bits(GPIO_MODER_AFM) });
-        gpioc.otyper.modify(|_, w| w.ot5().bit(GPIO_OTYPER_PUSHPULL));
-        gpioc.pupdr.modify(|_, w| unsafe { w.pupdr5().bits(GPIO_PUPDR_NONE) });
-        gpioc.ospeedr.modify(|_, w| unsafe { w.ospeedr5().bits(GPIO_OSPEEDR_HIGH) });
+        gpioc.moder.modify(|_, w| unsafe { w.moder5().bits(consts::GPIO_MODER_AFM) });
+        gpioc.otyper.modify(|_, w| w.ot5().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpioc.pupdr.modify(|_, w| unsafe { w.pupdr5().bits(consts::GPIO_PUPDR_NONE) });
+        gpioc.ospeedr.modify(|_, w| unsafe { w.ospeedr5().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpioc.afrl.modify(|_, w| unsafe { w.afrl5().bits(11) });
         // PG11 RMII TX Enable - SB183 ON
-        gpiog.moder.modify(|_, w| unsafe { w.moder11().bits(GPIO_MODER_AFM) });
-        gpiog.otyper.modify(|_, w| w.ot11().bit(GPIO_OTYPER_PUSHPULL));
-        gpiog.pupdr.modify(|_, w| unsafe { w.pupdr11().bits(GPIO_PUPDR_NONE) });
-        gpiog.ospeedr.modify(|_, w| unsafe { w.ospeedr11().bits(GPIO_OSPEEDR_HIGH) });
+        gpiog.moder.modify(|_, w| unsafe { w.moder11().bits(consts::GPIO_MODER_AFM) });
+        gpiog.otyper.modify(|_, w| w.ot11().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpiog.pupdr.modify(|_, w| unsafe { w.pupdr11().bits(consts::GPIO_PUPDR_NONE) });
+        gpiog.ospeedr.modify(|_, w| unsafe { w.ospeedr11().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpiog.afrh.modify(|_, w| unsafe { w.afrh11().bits(11) });
         // PG13 RXII TXD0 - SB182 ON
-        gpiog.moder.modify(|_, w| unsafe { w.moder13().bits(GPIO_MODER_AFM) });
-        gpiog.otyper.modify(|_, w| w.ot13().bit(GPIO_OTYPER_PUSHPULL));
-        gpiog.pupdr.modify(|_, w| unsafe { w.pupdr13().bits(GPIO_PUPDR_NONE) });
-        gpiog.ospeedr.modify(|_, w| unsafe { w.ospeedr13().bits(GPIO_OSPEEDR_HIGH) });
+        gpiog.moder.modify(|_, w| unsafe { w.moder13().bits(consts::GPIO_MODER_AFM) });
+        gpiog.otyper.modify(|_, w| w.ot13().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpiog.pupdr.modify(|_, w| unsafe { w.pupdr13().bits(consts::GPIO_PUPDR_NONE) });
+        gpiog.ospeedr.modify(|_, w| unsafe { w.ospeedr13().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpiog.afrh.modify(|_, w| unsafe { w.afrh13().bits(11) });
         // PB13 RMII TXD1 I2S_A_CK JP7 ON
-        gpiob.moder.modify(|_, w| unsafe { w.moder13().bits(GPIO_MODER_AFM) });
-        gpiob.otyper.modify(|_, w| w.ot13().bit(GPIO_OTYPER_PUSHPULL));
-        gpiob.pupdr.modify(|_, w| unsafe { w.pupdr13().bits(GPIO_PUPDR_NONE) });
-        gpiob.ospeedr.modify(|_, w| unsafe { w.ospeedr13().bits(GPIO_OSPEEDR_HIGH) });
+        gpiob.moder.modify(|_, w| unsafe { w.moder13().bits(consts::GPIO_MODER_AFM) });
+        gpiob.otyper.modify(|_, w| w.ot13().bit(consts::GPIO_OTYPER_PUSHPULL));
+        gpiob.pupdr.modify(|_, w| unsafe { w.pupdr13().bits(consts::GPIO_PUPDR_NONE) });
+        gpiob.ospeedr.modify(|_, w| unsafe { w.ospeedr13().bits(consts::GPIO_OSPEEDR_HIGH) });
         gpiob.afrh.modify(|_, w| unsafe { w.afrh13().bits(11) });
         // …or this one?
-        // gpiog.moder.modify(|_, w| unsafe { w.moder14().bits(GPIO_MODER_AFM) });
-        // gpiog.otyper.modify(|_, w| w.ot14().bit(GPIO_OTYPER_PUSHPULL));
-        // gpiog.pupdr.modify(|_, w| unsafe { w.pupdr14().bits(GPIO_PUPDR_NONE) });
-        // gpiog.ospeedr.modify(|_, w| unsafe { w.ospeedr14().bits(GPIO_OSPEEDR_HIGH) });
+        // gpiog.moder.modify(|_, w| unsafe { w.moder14().bits(consts::GPIO_MODER_AFM) });
+        // gpiog.otyper.modify(|_, w| w.ot14().bit(consts::GPIO_OTYPER_PUSHPULL));
+        // gpiog.pupdr.modify(|_, w| unsafe { w.pupdr14().bits(consts::GPIO_PUPDR_NONE) });
+        // gpiog.ospeedr.modify(|_, w| unsafe { w.ospeedr14().bits(consts::GPIO_OSPEEDR_HIGH) });
         // gpiog.afrh.modify(|_, w| unsafe { w.afrh14().bits(11) });
+
+        self
     }
 
     pub fn status(&self) -> PhyStatus {
         self.get_phy().status()
     }
+
+    fn eth_interrupt_handler() {
+        interrupt::free(|_| {
+            let mut stdout = hio::hstdout().unwrap();
+            writeln!(stdout, "Ethernet interrupt").unwrap();
+        });
+    }
+    
+    pub fn start_rx(&mut self, ring_length: usize) -> &mut Self {
+        // Enable interrupt
+        self.eth_dma.dmaier.modify(|_, w| w.nise().set_bit());
+
+        self.rx.start(ring_length, &self.eth_dma);
+
+        self
+    }
+
+    pub fn rx_is_running(&self) -> bool {
+        self.rx.running_state(&self.eth_dma).is_running()
+    }
+
+    pub fn recv_next(&mut self) -> Option<usize> {
+        // self.eth_mac.maccr.modify(|_, w| w.re().set_bit());
+// use core::fmt::Write;
+// use cortex_m_semihosting::hio;
+//         let mut stdout = hio::hstdout().unwrap();
+//         writeln!(stdout, "MACDBGR = {:08X}", self.eth_mac.macdbgr.read().bits());
+
+        self.rx.recv_next(&self.eth_dma)
+    }
 }
 
-const GPIO_MODER_AFM: u8 = 0b10;
-const GPIO_OTYPER_PUSHPULL: bool = false;
-const GPIO_PUPDR_NONE: u8 = 0b00;
-const GPIO_OSPEEDR_HIGH: u8 = 0b10;
+#[used]
+interrupt!(ETH, Eth::eth_interrupt_handler);
 
-/* For HCLK 60-100 MHz */
-const ETH_MACMIIAR_CR_HCLK_DIV_42: u8 = 0;
-/* For HCLK 100-150 MHz */
-const ETH_MACMIIAR_CR_HCLK_DIV_62: u8 = 1;
-/* For HCLK 20-35 MHz */
-const ETH_MACMIIAR_CR_HCLK_DIV_16: u8 = 2;
-/* For HCLK 35-60 MHz */
-const ETH_MACMIIAR_CR_HCLK_DIV_26: u8 = 3;
-/* For HCLK 150-168 MHz */
-const ETH_MACMIIAR_CR_HCLK_DIV_102: u8 = 4;
+#[allow(dead_code)]
+mod consts {
+    pub const GPIO_MODER_AFM: u8 = 0b10;
+    pub const GPIO_OTYPER_PUSHPULL: bool = false;
+    pub const GPIO_PUPDR_NONE: u8 = 0b00;
+    pub const GPIO_OSPEEDR_HIGH: u8 = 0b10;
+
+    /* For HCLK 60-100 MHz */
+    pub const ETH_MACMIIAR_CR_HCLK_DIV_42: u8 = 0;
+    /* For HCLK 100-150 MHz */
+    pub const ETH_MACMIIAR_CR_HCLK_DIV_62: u8 = 1;
+    /* For HCLK 20-35 MHz */
+    pub const ETH_MACMIIAR_CR_HCLK_DIV_16: u8 = 2;
+    /* For HCLK 35-60 MHz */
+    pub const ETH_MACMIIAR_CR_HCLK_DIV_26: u8 = 3;
+    /* For HCLK 150-168 MHz */
+    pub const ETH_MACMIIAR_CR_HCLK_DIV_102: u8 = 4;
+}
