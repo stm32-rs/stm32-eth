@@ -63,7 +63,6 @@ fn main() {
     loop {
         // asm::wfi();
         // writeln!(stdout, "I").unwrap();
-        writeln!(stdout, "Rx running: {}", eth.rx_is_running());
         match eth.recv_next() {
             None => (),
             Some(pkt_len) => {

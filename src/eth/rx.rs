@@ -60,10 +60,6 @@ impl RxDescriptor {
         let mem = unsafe {
             Heap.alloc(Self::memory_layout())
         }.expect("alloc with memory_layout") as *mut [u32; 4];
-                use core::fmt::Write;
-                use cortex_m_semihosting::hio;
-                let mut stdout = hio::hstdout().unwrap();
-                writeln!(stdout, "Allocated at {:08X}", mem as u32);
 
         RxDescriptor {
             mem,
@@ -189,8 +185,8 @@ impl RxBuffer {
                 unsafe { pkt_buffer.set_len(frame_length); }
                 // TODO: obtain ethernet frame type (RDESC_1_FT)
 
-                self.desc.write(0, 0);
-                self.desc.write(1, RXDESC_1_RCH);
+                // self.desc.write(0, 0);
+                // self.desc.write(1, RXDESC_1_RCH);
                 self.desc.set_buffer1(self.buffer.as_ptr(), self.buffer.capacity());
                 self.desc.set_owned();
 
@@ -245,20 +241,6 @@ impl RxRing {
             self.buffers.push(previous);
         });
 
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
-        let mut stdout = hio::hstdout().unwrap();
-        for (i, b) in self.buffers.iter_mut().enumerate() {
-            writeln!(stdout, "Ring {} {:08X}: {:08X} {:08X} {:08X} {:08X}", i,
-                     b.desc.mem as u32,
-                     b.desc.read(0),
-                     b.desc.read(1),
-                     b.desc.read(2),
-                     b.desc.read(3)
-            );
-        }
-
-        
         let ring_ptr = self.buffers[0].desc.mem as *const u8;
         // Register RxDescriptor (TODO: only write?)
         eth_dma.dmardlar.modify(|_, w| unsafe { w.srl().bits(ring_ptr as u32) });
@@ -270,10 +252,6 @@ use cortex_m_semihosting::hio;
     }
 
     pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
-        let mut stdout = hio::hstdout().unwrap();
-writeln!(stdout, "rps = {:X}", eth_dma.dmasr.read().rps().bits());
         match eth_dma.dmasr.read().rps().bits() {
             //  Reset or Stop Receive Command issued
             0b000 => RunningState::Stopped,
@@ -299,15 +277,15 @@ use cortex_m_semihosting::hio;
         // writeln!(stdout, "DMARPDR RPD = {:08X}", eth_dma.dmarpdr.read().rpd().bits());
         writeln!(stdout, "DMACHRDR HRDAP = {:08X}", eth_dma.dmachrdr.read().hrdap().bits());
         for (i, b) in self.buffers.iter_mut().enumerate() {
-            if ! b.desc.is_owned() {
-                writeln!(stdout, "B {} {:08X} is not owned: {:08X} {:08X} {:08X} {:08X}", i,
-                         b.desc.mem as u32,
-                         b.desc.read(0),
-                         b.desc.read(1),
-                         b.desc.read(2),
-                         b.desc.read(3)
-                );
-            }
+            // if ! b.desc.is_owned() {
+            //     writeln!(stdout, "B {} {:08X} is not owned: {:08X} {:08X} {:08X} {:08X}", i,
+            //              b.desc.mem as u32,
+            //              b.desc.read(0),
+            //              b.desc.read(1),
+            //              b.desc.read(2),
+            //              b.desc.read(3)
+            //     );
+            // }
             // TODO: handle
             
             match b.take_received() {
@@ -321,13 +299,8 @@ use cortex_m_semihosting::hio;
         // Start DMA engine
         if ! self.running_state(eth_dma).is_running() {
             writeln!(stdout, "Rx demand!").unwrap();
-        // Register RxDescriptor (TODO: only write?)
-        let ring_ptr = self.buffers[0].desc.mem as *const u8;
-        eth_dma.dmardlar.modify(|_, w| unsafe { w.srl().bits(ring_ptr as u32) });
             // Start DMA engine (TODO: only write?)
             eth_dma.dmarpdr.modify(|_, w| unsafe { w.rpd().bits(1) });
-            // Start receive
-            eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
         }
         
         None
