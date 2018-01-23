@@ -12,9 +12,12 @@ use self::phy::{Phy, PhyStatus};
 mod smi;
 mod rx;
 use self::rx::RxRing;
+mod buffer;
+pub use self::buffer::Buffer;
 
+pub const ALIGNMENT: usize = 0b1000;
 const PHY_ADDR: u8 = 0;
-const MTU: usize = 1532;
+const MTU: usize = 1560;
 
 pub struct Eth {
     eth_mac: ETHERNET_MAC,

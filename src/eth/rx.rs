@@ -5,6 +5,8 @@ use alloc::allocator::{Alloc, Layout};
 use alloc::heap::Heap;
 use stm32f429x::*;
 
+use super::buffer::Buffer;
+
 /// heavily inspired by
 /// https://github.com/embed-rs/stm32f7-discovery/blob/master/src/ethernet/mod.rs
 #[repr(C, packed)]
@@ -52,7 +54,7 @@ impl Drop for RxDescriptor {
 
 impl RxDescriptor {
     fn memory_layout() -> Layout {
-        Layout::from_size_align(4 * 4, 0b1000)
+        Layout::from_size_align(4 * 4, super::ALIGNMENT)
             .unwrap()
     }
     
@@ -131,25 +133,25 @@ impl RxDescriptor {
     }
 }
 
-struct RxBuffer {
+struct RxRingEntry {
     desc: RxDescriptor,
-    buffer: Vec<u8>,
+    buffer: Buffer,
 }
 
-impl RxBuffer {
+impl RxRingEntry {
     fn new(capacity: usize) -> Self {
         let mut desc = RxDescriptor::default();
-        let buffer = Vec::with_capacity(capacity);
+        let buffer = Buffer::new(capacity);
         desc.set_buffer1(buffer.as_ptr(), buffer.capacity());
         desc.set_owned();
-        RxBuffer {
+        RxRingEntry {
             desc: desc,
             buffer,
         }
     }
 
     // Used to chain all buffers in the ring on start
-    pub fn set_next_buffer(&mut self, next: Option<&RxBuffer>) {
+    pub fn set_next_buffer(&mut self, next: Option<&RxRingEntry>) {
         match next {
             Some(next_buffer) => {
                 let ptr = next_buffer.desc.mem as *const u8;
@@ -163,7 +165,7 @@ impl RxBuffer {
         }
     }
 
-    fn take_received(&mut self) -> Option<Vec<u8>> {
+    fn take_received(&mut self) -> Option<Buffer> {
         use core::fmt::Write;
         use cortex_m_semihosting::hio;
         let mut stdout = hio::hstdout().unwrap();
@@ -177,12 +179,11 @@ impl RxBuffer {
             },
             false if self.desc.is_first() && self.desc.is_last() => {
                 // Switch old with new
-                let new_buffer = Vec::with_capacity(self.buffer.capacity());
+                let new_buffer = Buffer::new(self.buffer.capacity());
                 let mut pkt_buffer = mem::replace(&mut self.buffer, new_buffer);
                 // Truncate received pkt to reported length
                 let frame_length = ((self.desc.read(0) >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize;
-                assert!(frame_length <= self.buffer.capacity());
-                unsafe { pkt_buffer.set_len(frame_length); }
+                pkt_buffer.set_len(frame_length);
                 // TODO: obtain ethernet frame type (RDESC_1_FT)
 
                 // self.desc.write(0, 0);
@@ -204,7 +205,7 @@ impl RxBuffer {
 
 pub struct RxRing {
     buffer_size: usize,
-    buffers: Vec<RxBuffer>,
+    buffers: Vec<RxRingEntry>,
 }
 
 impl RxRing {
@@ -222,13 +223,13 @@ impl RxRing {
         if additional > 0 {
             self.buffers.reserve(additional);
             while buffers.len() < ring_length {
-                let buffer = RxBuffer::new(self.buffer_size);
+                let buffer = RxRingEntry::new(self.buffer_size);
                 buffers.push(buffer);
             }
         }
 
         // Setup ring from `buffers` back into `self.buffers`
-        let mut previous: Option<RxBuffer> = None;
+        let mut previous: Option<RxRingEntry> = None;
         for buffer in buffers.into_iter() {
             previous.take().map(|mut previous| {
                 previous.set_next_buffer(Some(&buffer));
