@@ -68,6 +68,9 @@ impl RxDescriptor {
         }
     }
 
+    fn as_raw_ptr(&self) -> *const u8 {
+        self.rdesc.as_ptr() as *const u8
+    }
     
     fn read(&self, i: usize) -> u32 {
         self.rdesc[i].read()
@@ -145,8 +148,8 @@ impl RxRingEntry {
     pub fn set_next_buffer(&mut self, next: Option<&RxRingEntry>) {
         match next {
             Some(next_buffer) => {
-                let ptr = &next_buffer.desc as *const RxDescriptor;
-                self.desc.set_buffer2(ptr as *const u8);
+                let ptr = next_buffer.desc.as_raw_ptr();
+                self.desc.set_buffer2(ptr);
             },
             // For the last in the ring
             None => {
@@ -233,7 +236,7 @@ impl RxRing {
             self.buffers.push(previous);
         });
 
-        let ring_ptr = &self.buffers[0].desc as *const RxDescriptor;
+        let ring_ptr = self.buffers[0].desc.as_raw_ptr();
         // Register RxDescriptor (TODO: only write?)
         eth_dma.dmardlar.modify(|_, w| unsafe { w.srl().bits(ring_ptr as u32) });
         
