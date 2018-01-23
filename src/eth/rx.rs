@@ -4,15 +4,10 @@ use alloc::Vec;
 use alloc::allocator::{Alloc, Layout};
 use alloc::heap::Heap;
 use stm32f429x::*;
+use volatile_register::RW;
 
 use super::buffer::Buffer;
 
-/// heavily inspired by
-/// https://github.com/embed-rs/stm32f7-discovery/blob/master/src/ethernet/mod.rs
-#[repr(C, packed)]
-struct RxDescriptor {
-    mem: *mut [u32; 4],
-}
 
 // Owned by DMA engine
 const RXDESC_0_OWN: u32 = 1 << 31;
@@ -33,6 +28,11 @@ const RXDESC_1_RCH: u32 = 1 << 14;
 // End Of Ring
 const RXDESC_1_RER: u32 = 1 << 15;
 
+#[repr(C)]
+struct RxDescriptor {
+    rdesc: &'static mut [RW<u32>; 4],
+}
+
 impl Default for RxDescriptor {
     fn default() -> Self {
         let mut this = Self::new();
@@ -47,7 +47,7 @@ impl Default for RxDescriptor {
 impl Drop for RxDescriptor {
     fn drop(&mut self) {
         unsafe {
-            Heap.dealloc(self.mem as *mut u8, Self::memory_layout())
+            Heap.dealloc(self.rdesc.as_mut_ptr() as *mut u8, Self::memory_layout())
         }
     }
 }
@@ -64,32 +64,23 @@ impl RxDescriptor {
         }.expect("alloc with memory_layout") as *mut [u32; 4];
 
         RxDescriptor {
-            mem,
+            rdesc: unsafe { &mut *(mem as *mut [RW<u32>; 4]) },
         }
     }
 
-    fn as_ref<'a>(&'a self) -> &'a [u32; 4] {
-        unsafe { &*self.mem }
-    }
-    
-    fn as_mut_ref<'a>(&'a mut self) -> &'a mut [u32; 4] {
-        unsafe { &mut *self.mem }
-    }
     
     fn read(&self, i: usize) -> u32 {
-        self.as_ref()[i]
+        self.rdesc[i].read()
     }
 
     fn write(&mut self, i: usize, data: u32) {
-        self.as_mut_ref()[i] = data;
+        unsafe { self.rdesc[i].write(data) }
     }
 
     fn modify<F>(&mut self, i: usize, f: F)
         where F: (FnOnce(u32) -> u32) {
 
-        let data = self.read(i);
-        let data = f(data);
-        self.write(i, data);
+        unsafe { self.rdesc[i].modify(f) }
     }
     
     /// Is owned by the DMA engine?
@@ -154,8 +145,8 @@ impl RxRingEntry {
     pub fn set_next_buffer(&mut self, next: Option<&RxRingEntry>) {
         match next {
             Some(next_buffer) => {
-                let ptr = next_buffer.desc.mem as *const u8;
-                self.desc.set_buffer2(ptr);
+                let ptr = &next_buffer.desc as *const RxDescriptor;
+                self.desc.set_buffer2(ptr as *const u8);
             },
             // For the last in the ring
             None => {
@@ -242,7 +233,7 @@ impl RxRing {
             self.buffers.push(previous);
         });
 
-        let ring_ptr = self.buffers[0].desc.mem as *const u8;
+        let ring_ptr = &self.buffers[0].desc as *const RxDescriptor;
         // Register RxDescriptor (TODO: only write?)
         eth_dma.dmardlar.modify(|_, w| unsafe { w.srl().bits(ring_ptr as u32) });
         

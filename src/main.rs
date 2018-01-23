@@ -11,6 +11,7 @@ extern crate cortex_m_semihosting;
 extern crate stm32f429x;
 extern crate alloc_cortex_m;
 extern crate alloc;
+extern crate volatile_register;
 
 use cortex_m::asm;
 use stm32f429x::interrupt::Interrupt;

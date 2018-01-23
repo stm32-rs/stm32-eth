@@ -8,6 +8,7 @@ cortex-m = "0.4.0"
 cortex-m-semihosting = "0.2.0"
 stm32f429x = { path = "../stm32f429x", features = ["rt"] }
 alloc-cortex-m = "0.3.1"
+volatile-register = "0.2.0"
 
 [dependencies.cortex-m-rt]
 features = ["abort-on-panic"]
