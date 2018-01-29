@@ -162,14 +162,11 @@ impl RxRingEntry {
     }
 
     fn take_received(&mut self) -> Option<Buffer> {
-        use core::fmt::Write;
-        use cortex_m_semihosting::hio;
-        let mut stdout = hio::hstdout().unwrap();
-
         match self.desc.is_owned() {
             true => None,
             false if self.desc.has_error() => {
-                writeln!(stdout, "Ethernet error: skipping error frame").unwrap();
+                let mut stderr = hio::hstderr().unwrap();
+                writeln!(stderr, "Ethernet error: skipping error frame").unwrap();
                 self.desc.set_owned();
                 None
             },
@@ -188,7 +185,8 @@ impl RxRingEntry {
                 Some(pkt_buffer)
             },
             false => {
-                writeln!(stdout, "Ethernet error: skipping truncated frame bufs (FS={:?} LS={:?})",
+                let mut stderr = hio::hstderr().unwrap();
+                writeln!(stderr, "Ethernet error: skipping truncated frame bufs (FS={:?} LS={:?})",
                          self.desc.is_first(), self.desc.is_last()).unwrap();
                 self.desc.set_owned();
                 None
@@ -273,25 +271,22 @@ impl RxRing {
     }
     
     pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Option<Buffer> {
-        match self.buffers[self.next_entry].take_received() {
-            Some(pkt) => {
+        let result = self.buffers[self.next_entry]
+            .take_received()
+            .map(|pkt| {
                 self.next_entry += 1;
                 if self.next_entry >= self.buffers.len() {
                     self.next_entry = 0;
                 }
 
-                return Some(pkt);
-            },
-            None => (),
-        }
+                pkt
+            });
 
-        // No buffers ready so far
         if ! self.running_state(eth_dma).is_running() {
-            let mut stdout = hio::hstdout().unwrap();
-            writeln!(stdout, "Ethernet: RX restart").unwrap();
             self.start_dma(eth_dma);
         }
-        None
+
+        result
     }
 }
 

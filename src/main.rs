@@ -61,17 +61,24 @@ fn main() {
         }
     ).unwrap();
 
+    let mut rx_bytes = 0usize;
+    let mut rx_pkts = 0usize;
     loop {
         // asm::wfi();
         // writeln!(stdout, "I").unwrap();
         match eth.recv_next() {
             None => (),
             Some(pkt) => {
-                write!(stdout, "[Rx] {} bytes:", pkt.len());
-                for i in 0..pkt.len() {
-                    write!(stdout, " {:02X}", pkt[i]);
+                // write!(stdout, "[Rx] {} bytes:", pkt.len());
+                // for i in 0..pkt.len() {
+                //     write!(stdout, " {:02X}", pkt[i]);
+                // }
+                // writeln!(stdout, "");
+                rx_bytes += pkt.len();
+                rx_pkts += 1;
+                if rx_pkts % 10000 == 0 {
+                    writeln!(stdout, "Received {} ({} KB)", rx_pkts, rx_bytes / 1024).unwrap();
                 }
-                writeln!(stdout, "");
             },
         }
     }
