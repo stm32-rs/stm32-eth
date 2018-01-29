@@ -123,7 +123,7 @@ impl RxDescriptor {
     }
 
     pub fn set_end_of_ring(&mut self) {
-        self.modify(1, |w| RXDESC_1_RER);
+        self.modify(1, |w| w | RXDESC_1_RER);
     }
 }
 
@@ -167,7 +167,7 @@ impl RxRingEntry {
         match self.desc.is_owned() {
             true => None,
             false if self.desc.has_error() => {
-                writeln!(stdout, "Skipping error frame").unwrap();
+                writeln!(stdout, "Ethernet error: skipping error frame").unwrap();
                 self.desc.set_owned();
                 None
             },
@@ -188,7 +188,7 @@ impl RxRingEntry {
                 Some(pkt_buffer)
             },
             false => {
-                writeln!(stdout, "Skipping truncated frame bufs (FS={:?} LS={:?})",
+                writeln!(stdout, "Ethernet error: skipping truncated frame bufs (FS={:?} LS={:?})",
                          self.desc.is_first(), self.desc.is_last()).unwrap();
                 self.desc.set_owned();
                 None
@@ -294,8 +294,8 @@ use cortex_m_semihosting::hio;
         // Start DMA engine
         if ! self.running_state(eth_dma).is_running() {
             writeln!(stdout, "Rx demand!").unwrap();
-            // Start DMA engine (TODO: only write?)
-            eth_dma.dmarpdr.modify(|_, w| unsafe { w.rpd().bits(1) });
+            // Start DMA engine
+            eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
         }
         
         None
