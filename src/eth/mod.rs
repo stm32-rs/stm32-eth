@@ -17,7 +17,7 @@ pub use self::buffer::Buffer;
 
 pub const ALIGNMENT: usize = 0b1000;
 const PHY_ADDR: u8 = 0;
-const MTU: usize = 1560;
+const MTU: usize = 1518;
 
 pub struct Eth {
     eth_mac: ETHERNET_MAC,
