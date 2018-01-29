@@ -1,5 +1,7 @@
 use core::mem;
 use core::default::Default;
+use core::fmt::Write;
+use cortex_m_semihosting::hio;
 use alloc::Vec;
 use alloc::allocator::{Alloc, Layout};
 use alloc::heap::Heap;
@@ -180,8 +182,6 @@ impl RxRingEntry {
                 pkt_buffer.set_len(frame_length);
                 // TODO: obtain ethernet frame type (RDESC_1_FT)
 
-                // self.desc.write(0, 0);
-                // self.desc.write(1, RXDESC_1_RCH);
                 self.desc.set_buffer1(self.buffer.as_ptr(), self.buffer.capacity());
                 self.desc.set_owned();
 
@@ -200,6 +200,7 @@ impl RxRingEntry {
 pub struct RxRing {
     buffer_size: usize,
     buffers: Vec<RxRingEntry>,
+    next_entry: usize,
 }
 
 impl RxRing {
@@ -207,6 +208,7 @@ impl RxRing {
         RxRing {
             buffer_size,
             buffers: Vec::new(),
+            next_entry: 0,
         }
     }
 
@@ -236,14 +238,20 @@ impl RxRing {
             self.buffers.push(previous);
         });
 
+        self.next_entry = 0;
         let ring_ptr = self.buffers[0].desc.as_raw_ptr();
-        // Register RxDescriptor (TODO: only write?)
-        eth_dma.dmardlar.modify(|_, w| unsafe { w.srl().bits(ring_ptr as u32) });
-        
-        // Start DMA engine (TODO: only write?)
-        eth_dma.dmarpdr.modify(|_, w| unsafe { w.rpd().bits(1) });
+        // Register RxDescriptor
+        eth_dma.dmardlar.write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
+
         // Start receive
         eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
+
+        self.start_dma(eth_dma);
+    }
+
+    /// Start DMA engine
+    pub fn start_dma(&self, eth_dma: &ETHERNET_DMA) {
+        eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
     }
 
     pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
@@ -264,40 +272,25 @@ impl RxRing {
         }
     }
     
-    pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Option<usize> {
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
-        let mut stdout = hio::hstdout().unwrap();
-        // writeln!(stdout, "DMARDLAR SRL = {:08X}", eth_dma.dmardlar.read().srl().bits());
-        // writeln!(stdout, "DMARPDR RPD = {:08X}", eth_dma.dmarpdr.read().rpd().bits());
-        writeln!(stdout, "DMACHRDR HRDAP = {:08X}", eth_dma.dmachrdr.read().hrdap().bits());
-        for (i, b) in self.buffers.iter_mut().enumerate() {
-            // if ! b.desc.is_owned() {
-            //     writeln!(stdout, "B {} {:08X} is not owned: {:08X} {:08X} {:08X} {:08X}", i,
-            //              b.desc.mem as u32,
-            //              b.desc.read(0),
-            //              b.desc.read(1),
-            //              b.desc.read(2),
-            //              b.desc.read(3)
-            //     );
-            // }
-            // TODO: handle
-            
-            match b.take_received() {
-                Some(pkt) => writeln!(stdout, "Pkt: {} bytes", pkt.len()).unwrap(),
-                None => (),
-            }
+    pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Option<Buffer> {
+        match self.buffers[self.next_entry].take_received() {
+            Some(pkt) => {
+                self.next_entry += 1;
+                if self.next_entry >= self.buffers.len() {
+                    self.next_entry = 0;
+                }
+
+                return Some(pkt);
+            },
+            None => (),
         }
 
         // No buffers ready so far
-
-        // Start DMA engine
         if ! self.running_state(eth_dma).is_running() {
-            writeln!(stdout, "Rx demand!").unwrap();
-            // Start DMA engine
-            eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
+            let mut stdout = hio::hstdout().unwrap();
+            writeln!(stdout, "Ethernet: RX restart").unwrap();
+            self.start_dma(eth_dma);
         }
-        
         None
     }
 }

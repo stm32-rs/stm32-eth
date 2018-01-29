@@ -66,8 +66,12 @@ fn main() {
         // writeln!(stdout, "I").unwrap();
         match eth.recv_next() {
             None => (),
-            Some(pkt_len) => {
-                writeln!(stdout, "Rx: {} bytes", pkt_len);
+            Some(pkt) => {
+                write!(stdout, "[Rx] {} bytes:", pkt.len());
+                for i in 0..pkt.len() {
+                    write!(stdout, " {:02X}", pkt[i]);
+                }
+                writeln!(stdout, "");
             },
         }
     }

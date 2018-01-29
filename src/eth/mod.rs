@@ -255,13 +255,7 @@ impl Eth {
         self.rx.running_state(&self.eth_dma).is_running()
     }
 
-    pub fn recv_next(&mut self) -> Option<usize> {
-        // self.eth_mac.maccr.modify(|_, w| w.re().set_bit());
-// use core::fmt::Write;
-// use cortex_m_semihosting::hio;
-//         let mut stdout = hio::hstdout().unwrap();
-//         writeln!(stdout, "MACDBGR = {:08X}", self.eth_mac.macdbgr.read().bits());
-
+    pub fn recv_next(&mut self) -> Option<Buffer> {
         self.rx.recv_next(&self.eth_dma)
     }
 }
