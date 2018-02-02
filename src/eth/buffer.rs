@@ -4,6 +4,8 @@ use core::slice;
 use core::ops::Deref;
 
 /// An aligned buffer
+///
+/// TODO: rather use the `aligned` crate?
 pub struct Buffer {
     buffer: &'static mut [u8],
     length: usize,
