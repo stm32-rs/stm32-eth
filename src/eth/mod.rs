@@ -57,17 +57,21 @@ impl Eth {
         });
         writeln!(stdout, "Clocks enabled").unwrap();
 
-        self.eth_dma.dmaier.modify(|_, w|
-            // Normal interrupt summary enable
-            w.nise().set_bit()
-        );
-        // Enable ethernet interrupts
-        nvic.enable(Interrupt::ETH);
-        
         writeln!(stdout, "Resetting Ethernet").unwrap();
         Self::reset_pulse(cs, rcc);
         writeln!(stdout, "Ethernet reset").unwrap();
         self.reset_dma_and_wait(cs);
+
+        self.eth_dma.dmaier.modify(|_, w|
+            // Normal interrupt summary enable
+            w.nise().set_bit()
+                // Receive Interrupt Enable
+                .rie().set_bit()
+                // Transmit Interrupt Enable
+                .tie().set_bit()
+        );
+        // Enable ethernet interrupts
+        nvic.enable(Interrupt::ETH);
 
         // set clock range in MAC MII address register
         let clock_range = consts::ETH_MACMIIAR_CR_HCLK_DIV_16;
@@ -235,17 +239,8 @@ impl Eth {
         self.get_phy().status()
     }
 
-    fn eth_interrupt_handler() {
-        interrupt::free(|_| {
-            let mut stdout = hio::hstdout().unwrap();
-            writeln!(stdout, "Ethernet interrupt").unwrap();
-        });
-    }
-    
-    pub fn start_rx(&mut self, ring_length: usize) -> &mut Self {
-        // Enable interrupt
-        self.eth_dma.dmaier.modify(|_, w| w.nise().set_bit());
 
+    pub fn start_rx(&mut self, ring_length: usize) -> &mut Self {
         self.rx.start(ring_length, &self.eth_dma);
 
         self
@@ -259,9 +254,6 @@ impl Eth {
         self.rx.recv_next(&self.eth_dma)
     }
 }
-
-#[used]
-interrupt!(ETH, Eth::eth_interrupt_handler);
 
 #[allow(dead_code)]
 mod consts {

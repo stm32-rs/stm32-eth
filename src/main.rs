@@ -14,8 +14,7 @@ extern crate alloc;
 extern crate volatile_register;
 
 use cortex_m::asm;
-use stm32f429x::interrupt::Interrupt;
-use stm32f429x::{Peripherals, CorePeripherals};
+use stm32f429x::{Interrupt, Peripherals, CorePeripherals, NVIC};
 
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
@@ -83,3 +82,19 @@ fn main() {
         }
     }
 }
+
+fn eth_interrupt_handler() {
+    cortex_m::interrupt::free(|_| {
+        let mut cp = unsafe { CorePeripherals::steal() };
+        cp.NVIC.clear_pending(Interrupt::ETH);
+
+        let p = unsafe { Peripherals::steal() };
+        let dmasr = p.ETHERNET_DMA.dmasr.read().bits();
+        let mut stdout = hio::hstdout().unwrap();
+        writeln!(stdout, "Ethernet interrupt, MACSR: {:08X}", dmasr).unwrap();
+        unsafe { p.ETHERNET_DMA.dmasr.write(|w| w.bits(0)); }
+    });
+}
+
+#[used]
+interrupt!(ETH, eth_interrupt_handler);
