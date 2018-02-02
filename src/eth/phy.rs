@@ -4,38 +4,42 @@ use stm32f429x::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 use eth::smi::SMI;
 
-const PHY_REG_BCR: u8 = 0x00;
-const PHY_REG_BSR: u8 = 0x01;
-const PHY_REG_ID1: u8 = 0x02;
-const PHY_REG_ID2: u8 = 0x03;
-const PHY_REG_ANTX: u8 = 0x04;
-const PHY_REG_ANRX: u8 = 0x05;
-const PHY_REG_ANEXP: u8 = 0x06;
-const PHY_REG_ANNPTX: u8 = 0x07;
-const PHY_REG_ANNPRX: u8 = 0x08;
-const PHY_REG_SSR: u8 = 0x1F;  // Special Status Register
+#[allow(dead_code)]
+mod consts {
+    pub const PHY_REG_BCR: u8 = 0x00;
+    pub const PHY_REG_BSR: u8 = 0x01;
+    pub const PHY_REG_ID1: u8 = 0x02;
+    pub const PHY_REG_ID2: u8 = 0x03;
+    pub const PHY_REG_ANTX: u8 = 0x04;
+    pub const PHY_REG_ANRX: u8 = 0x05;
+    pub const PHY_REG_ANEXP: u8 = 0x06;
+    pub const PHY_REG_ANNPTX: u8 = 0x07;
+    pub const PHY_REG_ANNPRX: u8 = 0x08;
+    pub const PHY_REG_SSR: u8 = 0x1F;  // Special Status Register
 
-const PHY_REG_BCR_COLTEST: u16 = 1 << 7;
-const PHY_REG_BCR_FD: u16 = 1 << 8;
-const PHY_REG_BCR_ANRST: u16 = 1 << 9;
-const PHY_REG_BCR_ISOLATE: u16 = 1 << 10;
-const PHY_REG_BCR_POWERDN: u16 = 1 << 11;
-const PHY_REG_BCR_AN: u16 = 1 << 12;
-const PHY_REG_BCR_100M: u16 = 1 << 13;
-const PHY_REG_BCR_LOOPBACK: u16 = 1 << 14;
-const PHY_REG_BCR_RESET: u16 = 1 << 15;
+    pub const PHY_REG_BCR_COLTEST: u16 = 1 << 7;
+    pub const PHY_REG_BCR_FD: u16 = 1 << 8;
+    pub const PHY_REG_BCR_ANRST: u16 = 1 << 9;
+    pub const PHY_REG_BCR_ISOLATE: u16 = 1 << 10;
+    pub const PHY_REG_BCR_POWERDN: u16 = 1 << 11;
+    pub const PHY_REG_BCR_AN: u16 = 1 << 12;
+    pub const PHY_REG_BCR_100M: u16 = 1 << 13;
+    pub const PHY_REG_BCR_LOOPBACK: u16 = 1 << 14;
+    pub const PHY_REG_BCR_RESET: u16 = 1 << 15;
 
-const PHY_REG_BSR_JABBER: u16 = 1 << 1;
-const PHY_REG_BSR_UP: u16 = 1 << 2;
-const PHY_REG_BSR_FAULT: u16 = 1 << 4;
-const PHY_REG_BSR_ANDONE: u16 = 1 << 5;
+    pub const PHY_REG_BSR_JABBER: u16 = 1 << 1;
+    pub const PHY_REG_BSR_UP: u16 = 1 << 2;
+    pub const PHY_REG_BSR_FAULT: u16 = 1 << 4;
+    pub const PHY_REG_BSR_ANDONE: u16 = 1 << 5;
 
-const PHY_REG_SSR_ANDONE: u16 = 1 << 12;
-const PHY_REG_SSR_SPEED: u16 = 0b111 << 2;
-const PHY_REG_SSR_10BASE_HD: u16 = 0b001 << 2;
-const PHY_REG_SSR_10BASE_FD: u16 = 0b101 << 2;
-const PHY_REG_SSR_100BASE_HD: u16 = 0b010 << 2;
-const PHY_REG_SSR_100BASE_FD: u16 = 0b110 << 2;
+    pub const PHY_REG_SSR_ANDONE: u16 = 1 << 12;
+    pub const PHY_REG_SSR_SPEED: u16 = 0b111 << 2;
+    pub const PHY_REG_SSR_10BASE_HD: u16 = 0b001 << 2;
+    pub const PHY_REG_SSR_10BASE_FD: u16 = 0b101 << 2;
+    pub const PHY_REG_SSR_100BASE_HD: u16 = 0b010 << 2;
+    pub const PHY_REG_SSR_100BASE_FD: u16 = 0b110 << 2;
+}
+use self::consts::*;
 
 /// http://ww1.microchip.com/downloads/en/DeviceDoc/DS_LAN8742_00001989A.pdf
 /// https://github.com/libopencm3/libopencm3/blob/master/lib/ethernet/mac_stm32fxx7.c
