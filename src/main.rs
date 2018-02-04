@@ -59,9 +59,8 @@ fn main() {
         eth
     });
 
-    while ! eth.status().link_detected() {
-        writeln!(stdout, "Ethernet: waiting for link").unwrap();
-    }
+    writeln!(stdout, "Ethernet: waiting for link").unwrap();
+    while ! eth.status().link_detected() {}
     let status = eth.status();
     writeln!(
         stdout,
