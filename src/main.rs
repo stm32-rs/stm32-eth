@@ -66,7 +66,7 @@ fn main() {
         // asm::wfi();
         // writeln!(stdout, "I").unwrap();
         match eth.recv_next() {
-            None => (),
+            None => asm::wfi(),
             Some(pkt) => {
                 // write!(stdout, "[Rx] {} bytes:", pkt.len());
                 // for i in 0..pkt.len() {
@@ -84,16 +84,14 @@ fn main() {
 }
 
 fn eth_interrupt_handler() {
-    cortex_m::interrupt::free(|_| {
-        let mut cp = unsafe { CorePeripherals::steal() };
-        cp.NVIC.clear_pending(Interrupt::ETH);
+    let p = unsafe { Peripherals::steal() };
 
-        let p = unsafe { Peripherals::steal() };
-        let dmasr = p.ETHERNET_DMA.dmasr.read().bits();
-        let mut stdout = hio::hstdout().unwrap();
-        writeln!(stdout, "Ethernet interrupt, MACSR: {:08X}", dmasr).unwrap();
-        unsafe { p.ETHERNET_DMA.dmasr.write(|w| w.bits(0)); }
-    });
+    // Clear interrupt flags
+    p.ETHERNET_DMA.dmasr.write(|w|
+        w
+        .nis().set_bit()
+        .rs().set_bit()
+    );
 }
 
 #[used]

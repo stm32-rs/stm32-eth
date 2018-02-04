@@ -83,12 +83,13 @@ impl Eth {
         self.reset_dma_and_wait(cs);
 
         self.eth_dma.dmaier.modify(|_, w|
-            // Normal interrupt summary enable
-            w.nise().set_bit()
+            w
+                // Normal interrupt summary enable
+                .nise().set_bit()
                 // Receive Interrupt Enable
                 .rie().set_bit()
                 // Transmit Interrupt Enable
-                .tie().set_bit()
+                // .tie().set_bit()
         );
         // unsafe { nvic.set_priority(Interrupt::ETH, 0x10); }
         // Enable ethernet interrupts
