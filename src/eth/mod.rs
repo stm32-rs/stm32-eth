@@ -118,7 +118,10 @@ impl Eth {
                 .apcs().set_bit()
                 // Retry disable in half-duplex mode
                 .rd().set_bit()
+                // Receiver enable
                 .re().set_bit()
+                // Transmitter enable
+                .te().set_bit()
         });
         // frame filter register
         self.eth_mac.macffr.modify(|_, w| {
