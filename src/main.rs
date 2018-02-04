@@ -14,7 +14,10 @@ extern crate alloc;
 extern crate volatile_register;
 
 use cortex_m::asm;
-use stm32f429x::{Interrupt, Peripherals, CorePeripherals, NVIC};
+use stm32f429x::{Interrupt, Peripherals, CorePeripherals};
+
+use core::cell::RefCell;
+use cortex_m::interrupt::Mutex;
 
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
@@ -23,6 +26,8 @@ mod init_alloc;
 pub use init_alloc::ALLOCATOR;
 mod eth;
 use eth::Eth;
+
+static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 
 fn main() {
     let heap_size = init_alloc::init();
@@ -33,6 +38,15 @@ fn main() {
         .expect("Peripherals");
     let mut cp = CorePeripherals::take()
         .expect("CorePeripherals");
+
+    writeln!(
+        stdout, "SYST interval: 100 * {} = {}",
+        stm32f429x::SYST::get_ticks_per_10ms(),
+        100 * stm32f429x::SYST::get_ticks_per_10ms()
+    ).unwrap();
+    cp.SYST.set_reload(100 * stm32f429x::SYST::get_ticks_per_10ms());
+    cp.SYST.enable_counter();
+    cp.SYST.enable_interrupt();
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
 
@@ -60,6 +74,8 @@ fn main() {
         }
     ).unwrap();
 
+
+    let mut last_stats_time = 0usize;
     let mut rx_bytes = 0usize;
     let mut rx_pkts = 0usize;
     loop {
@@ -75,13 +91,39 @@ fn main() {
                 // writeln!(stdout, "");
                 rx_bytes += pkt.len();
                 rx_pkts += 1;
-                if rx_pkts % 10000 == 0 {
-                    writeln!(stdout, "Received {} ({} KB)", rx_pkts, rx_bytes / 1024).unwrap();
-                }
             },
+        }
+
+        let time: usize = cortex_m::interrupt::free(|cs| {
+            *TIME.borrow(cs)
+                .borrow()
+        });
+        // Print stats every second
+        if time != last_stats_time {
+            writeln!(
+                stdout, "Rx:\t{} KB/s\t{} pps",
+                rx_bytes / 1024, rx_pkts
+            ).unwrap();
+            // Reset
+            rx_bytes = 0;
+            rx_pkts = 0;
+            last_stats_time = time;
         }
     }
 }
+
+fn systick_interrupt_handler() {
+    cortex_m::interrupt::free(|cs| {
+        let mut time =
+            TIME.borrow(cs)
+            .borrow_mut();
+        *time += 1;
+    })
+}
+
+#[used]
+exception!(SYS_TICK, systick_interrupt_handler);
+
 
 fn eth_interrupt_handler() {
     let p = unsafe { Peripherals::steal() };
