@@ -171,15 +171,9 @@ impl TxRing {
     }
 
     pub fn send(&mut self, buffer: Buffer) {
-        // let mut stdout = hio::hstdout().unwrap();
-
-        let flushed = self.flush();
-        if flushed > 0 {
-            // writeln!(stdout, "TX flushed {}, queue length now at {}", flushed, self.entries.len()).unwrap();
-        }
+        self.flush();
         
         let i = self.entries.len() - 1;
-        // writeln!(stdout, "TX i={}", i).unwrap();
         let next_entry = {
             let mut entry = &mut self.entries[i];
             let next_entry = TxRingEntry::new();
@@ -189,9 +183,12 @@ impl TxRing {
         self.entries.push_back(next_entry);
     }
 
+    /// Flushes entries that have been processed by the DMA engine.
     pub fn flush(&mut self) -> usize {
         fn is_done(entry: &TxRingEntry) -> bool {
+            // returned by DMA engine?
             (! entry.desc.is_owned()) &&
+            // had a buffer associated (was used)
             entry.buffer.is_some()
         }
 
