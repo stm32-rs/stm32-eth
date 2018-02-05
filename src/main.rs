@@ -14,7 +14,7 @@ extern crate alloc;
 extern crate volatile_register;
 
 use cortex_m::asm;
-use stm32f429x::{Interrupt, Peripherals, CorePeripherals};
+use stm32f429x::{Peripherals, CorePeripherals};
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
@@ -55,7 +55,6 @@ fn main() {
         eth.init_pins(cs, &p.RCC, &p.GPIOA, &p.GPIOB, &p.GPIOC, &p.GPIOG);
         eth.init(cs, &p.RCC, &p.SYSCFG, &mut cp.NVIC);
         eth.start_rx(8);
-        // eth.start_rx(1);
         eth
     });
 

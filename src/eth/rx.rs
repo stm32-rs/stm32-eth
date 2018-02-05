@@ -5,7 +5,7 @@ use cortex_m_semihosting::hio;
 use alloc::Vec;
 use alloc::allocator::{Alloc, Layout};
 use alloc::heap::Heap;
-use stm32f429x::*;
+use stm32f429x::ETHERNET_DMA;
 use volatile_register::RW;
 
 use super::buffer::Buffer;

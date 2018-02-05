@@ -1,4 +1,3 @@
-use cortex_m::interrupt;
 use cortex_m::interrupt::CriticalSection;
 use stm32f429x::*;
 
@@ -175,7 +174,7 @@ impl Eth {
         self
     }
 
-    fn reset_pulse<'cs>(cs: &'cs CriticalSection, rcc: &RCC) {
+    fn reset_pulse<'cs>(_: &'cs CriticalSection, rcc: &RCC) {
         rcc.ahb1rstr.modify(|_, w| w.ethmacrst().set_bit());
         rcc.ahb1rstr.modify(|_, w| w.ethmacrst().clear_bit());
     }
@@ -194,7 +193,7 @@ impl Eth {
     /// * No pull-up resistor
     /// * High-speed
     /// * Alternate function 11
-    pub fn init_pins<'cs>(&self, cs: &'cs CriticalSection, rcc: &RCC, gpioa: &GPIOA, gpiob: &GPIOB, gpioc: &GPIOC, gpiog: &GPIOG) -> &Self {
+    pub fn init_pins<'cs>(&self, _: &'cs CriticalSection, rcc: &RCC, gpioa: &GPIOA, gpiob: &GPIOB, gpioc: &GPIOC, gpiog: &GPIOG) -> &Self {
         rcc.ahb1enr.modify(|_, w| {
             w.gpioaen().set_bit()
                 .gpioben().set_bit()
