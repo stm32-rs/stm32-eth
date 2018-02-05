@@ -1,5 +1,4 @@
 use core::option::Option;
-use cortex_m::interrupt::CriticalSection;
 use stm32f429x::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 use eth::smi::SMI;
@@ -65,7 +64,7 @@ impl<'a> Phy<'a> {
         }
     }
 
-    pub fn reset<'cs>(&self, _: &'cs CriticalSection) -> &Self {
+    pub fn reset(&self) -> &Self {
         self.smi.set_bits(
             self.phy,
             PHY_REG_BCR,

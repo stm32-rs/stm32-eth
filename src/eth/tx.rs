@@ -4,9 +4,6 @@ use volatile_register::RW;
 use alloc::heap::Heap;
 use stm32f429x::ETHERNET_DMA;
 
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
-
 use super::buffer::Buffer;
 
 // Owned by DMA engine
@@ -204,6 +201,10 @@ impl TxRing {
             flushed += 1;
         }
         flushed
+    }
+
+    pub fn queue_len(&self) -> usize {
+        self.entries.len()
     }
 
     pub fn start(&self, eth_dma: &ETHERNET_DMA) {

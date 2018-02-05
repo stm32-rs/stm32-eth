@@ -14,7 +14,7 @@ extern crate alloc;
 extern crate volatile_register;
 
 use cortex_m::asm;
-use stm32f429x::{Peripherals, CorePeripherals};
+use stm32f429x::{Peripherals, CorePeripherals, SYST};
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
@@ -27,6 +27,10 @@ pub use init_alloc::ALLOCATOR;
 mod eth;
 use eth::Eth;
 
+const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
+const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
+const ETH_TYPE: [u8; 2] = [0x80, 0x00];
+
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 
 fn main() {
@@ -34,29 +38,15 @@ fn main() {
     let mut stdout = hio::hstdout().unwrap();
     writeln!(stdout, "Heap: {} bytes", heap_size).unwrap();
 
-    let p = Peripherals::take()
-        .expect("Peripherals");
-    let mut cp = CorePeripherals::take()
-        .expect("CorePeripherals");
+    let p = Peripherals::take().unwrap();
+    let mut cp = CorePeripherals::take().unwrap();
 
-    writeln!(
-        stdout, "SYST interval: 100 * {} = {}",
-        stm32f429x::SYST::get_ticks_per_10ms(),
-        100 * stm32f429x::SYST::get_ticks_per_10ms()
-    ).unwrap();
-    cp.SYST.set_reload(100 * stm32f429x::SYST::get_ticks_per_10ms());
-    cp.SYST.enable_counter();
-    cp.SYST.enable_interrupt();
+    setup_systick(&mut cp.SYST);
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
-
-    let mut eth = cortex_m::interrupt::free(|cs| {
-        let mut eth = Eth::new(p.ETHERNET_MAC, p.ETHERNET_DMA);
-        eth.init_pins(cs, &p.RCC, &p.GPIOA, &p.GPIOB, &p.GPIOC, &p.GPIOG);
-        eth.init(cs, &p.RCC, &p.SYSCFG, &mut cp.NVIC);
-        eth.start_rx(8);
-        eth
-    });
+    eth::setup(&p);
+    let mut eth = Eth::new(p.ETHERNET_MAC, p.ETHERNET_DMA, 8);
+    eth.enable_interrupt(&mut cp.NVIC);
 
     writeln!(stdout, "Ethernet: waiting for link").unwrap();
     while ! eth.status().link_detected() {}
@@ -72,24 +62,32 @@ fn main() {
         }
     ).unwrap();
 
-
+    // Main loop
     let mut last_stats_time = 0usize;
     let mut rx_bytes = 0usize;
     let mut rx_pkts = 0usize;
     loop {
-        // asm::wfi();
-        // writeln!(stdout, "I").unwrap();
         match eth.recv_next() {
-            None => asm::wfi(),
+            None => {
+                // wait for next interrupt
+                asm::wfi();
+            },
             Some(pkt) => {
-                // write!(stdout, "[Rx] {} bytes:", pkt.len());
-                // for i in 0..pkt.len() {
-                //     write!(stdout, " {:02X}", pkt[i]);
-                // }
-                // writeln!(stdout, "");
+                // handle packet
                 rx_bytes += pkt.len();
                 rx_pkts += 1;
             },
+        }
+
+        // fill send queue
+        while eth.queue_len() < 512 {
+            const SIZE: usize = 1500;
+            let mut buf = eth::Buffer::new(SIZE);
+            buf.set_len(SIZE);
+            buf.as_mut_slice()[0..6].copy_from_slice(&DST_MAC);
+            buf.as_mut_slice()[6..12].copy_from_slice(&SRC_MAC);
+            buf.as_mut_slice()[12..14].copy_from_slice(&ETH_TYPE);
+            eth.send(buf);
         }
 
         let time: usize = cortex_m::interrupt::free(|cs| {
@@ -106,24 +104,22 @@ fn main() {
             rx_bytes = 0;
             rx_pkts = 0;
             last_stats_time = time;
-
-            const PKT: [u8; 85] = [
-                0x60, 0x02, 0xa4, 0xe6, 0x00, 0x2d, 0x11, 0xff, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x2a, 0xd2, 0x44, 0xff, 0xfe, 0x75, 0x95, 0x74, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfb, 0x14, 0xe9, 0x14, 0xe9, 0x00, 0x2d, 0x02, 0x79,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x5f, 0x73, 0x63,
-                0x61, 0x6e, 0x6e, 0x65, 0x72, 0x04, 0x5f, 0x74, 0x63, 0x70, 0x05, 0x6c, 0x6f, 0x63, 0x61, 0x6c,
-                0x00, 0x00, 0x0c, 0x00, 0x01,
-            ];
-            for y in 0..4 {
-                let mut buf = eth::Buffer::new(PKT.len());
-                buf.set_len(PKT.len());
-                for (i, b) in PKT.iter().enumerate() {
-                    buf[i] = *b + if i > 60 { y } else { 0 };
-                }
-                eth.send(buf);
-            }
         }
+    }
+}
+
+fn setup_systick(syst: &mut SYST) {
+    syst.set_reload(100 * stm32f429x::SYST::get_ticks_per_10ms());
+    syst.enable_counter();
+    syst.enable_interrupt();
+
+    if ! SYST::is_precise() {
+        let mut stderr = hio::hstderr().unwrap();
+        writeln!(
+            stderr,
+            "Warning: SYSTICK with source {:?} is not precise",
+            syst.get_clock_source()
+        ).unwrap();
     }
 }
 
@@ -144,11 +140,7 @@ fn eth_interrupt_handler() {
     let p = unsafe { Peripherals::steal() };
 
     // Clear interrupt flags
-    p.ETHERNET_DMA.dmasr.write(|w|
-        w
-        .nis().set_bit()
-        .rs().set_bit()
-    );
+    eth::eth_interrupt_handler(&p.ETHERNET_DMA);
 }
 
 #[used]
