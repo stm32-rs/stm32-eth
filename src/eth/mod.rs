@@ -1,7 +1,7 @@
 use stm32f429x::*;
 
 
-mod phy;
+pub mod phy;
 use self::phy::{Phy, PhyStatus};
 mod smi;
 mod rx;

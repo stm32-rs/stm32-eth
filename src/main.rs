@@ -33,6 +33,15 @@ const ETH_TYPE: [u8; 2] = [0x80, 0x00];
 
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 
+fn status_eq(s1: &eth::phy::PhyStatus, s2: &eth::phy::PhyStatus) -> bool {
+    (s1.link_detected() == false &&
+     s1.link_detected() == s2.link_detected())
+    ||
+    (s1.link_detected() == s2.link_detected() &&
+     s1.is_full_duplex() == s2.is_full_duplex() &&
+     s1.speed() == s2.speed())
+}
+
 fn main() {
     let heap_size = init_alloc::init();
     let mut stdout = hio::hstdout().unwrap();
@@ -45,66 +54,99 @@ fn main() {
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
     eth::setup(&p);
-    let mut eth = Eth::new(p.ETHERNET_MAC, p.ETHERNET_DMA, 8);
+    let mut eth = Eth::new(p.ETHERNET_MAC, p.ETHERNET_DMA, 32);
     eth.enable_interrupt(&mut cp.NVIC);
-
-    writeln!(stdout, "Ethernet: waiting for link").unwrap();
-    while ! eth.status().link_detected() {}
-    let status = eth.status();
-    writeln!(
-        stdout,
-        "Ethernet: link detected with {} Mbps/{}",
-        status.speed(),
-        match status.is_full_duplex() {
-            Some(true) => "FD",
-            Some(false) => "HD",
-            None => "?",
-        }
-    ).unwrap();
 
     // Main loop
     let mut last_stats_time = 0usize;
     let mut rx_bytes = 0usize;
     let mut rx_pkts = 0usize;
+    let mut tx_bytes = 0usize;
+    let mut tx_pkts = 0usize;
+    let mut last_status = None;
+
     loop {
-        match eth.recv_next() {
-            None => {
-                // wait for next interrupt
-                asm::wfi();
-            },
-            Some(pkt) => {
-                // handle packet
-                rx_bytes += pkt.len();
-                rx_pkts += 1;
-            },
-        }
-
-        // fill send queue
-        while eth.queue_len() < 512 {
-            const SIZE: usize = 1500;
-            let mut buf = eth::Buffer::new(SIZE);
-            buf.set_len(SIZE);
-            buf.as_mut_slice()[0..6].copy_from_slice(&DST_MAC);
-            buf.as_mut_slice()[6..12].copy_from_slice(&SRC_MAC);
-            buf.as_mut_slice()[12..14].copy_from_slice(&ETH_TYPE);
-            eth.send(buf);
-        }
-
         let time: usize = cortex_m::interrupt::free(|cs| {
             *TIME.borrow(cs)
                 .borrow()
         });
-        // Print stats every second
-        if time != last_stats_time {
+
+        // print stats every 30 seconds
+        if time >= last_stats_time + 30 {
+            let t = time - last_stats_time;
             writeln!(
-                stdout, "Rx:\t{} KB/s\t{} pps",
-                rx_bytes / 1024, rx_pkts
+                stdout, "T={}\tRx:\t{} KB/s\t{} pps\tTx:\t{} KB/s\t{} pps",
+                time,
+                rx_bytes / 1024 / t, rx_pkts / t,
+                tx_bytes / 1024 / t, tx_pkts / t
             ).unwrap();
             // Reset
             rx_bytes = 0;
             rx_pkts = 0;
+            tx_bytes = 0;
+            tx_pkts = 0;
             last_stats_time = time;
         }
+
+        // Link change detection
+        let status = eth.status();
+        if ! last_status
+            .map(|last_status| status_eq(&last_status, &status))
+            .unwrap_or(false)
+        {
+            if ! status.link_detected() {
+                writeln!(
+                    stdout,
+                    "Ethernet: no link detected"
+                ).unwrap();
+            } else {
+                writeln!(
+                    stdout,
+                    "Ethernet: link detected with {} Mbps/{}",
+                    status.speed(),
+                    match status.is_full_duplex() {
+                        Some(true) => "FD",
+                        Some(false) => "HD",
+                        None => "?",
+                    }
+                ).unwrap();
+            }
+
+            last_status = Some(status);
+        }
+
+        // handle rx packet
+        let mut recvd = 0usize;
+        while let Some(pkt) = eth.recv_next() {
+            rx_bytes += pkt.len();
+            rx_pkts += 1;
+
+            recvd += 1;
+            if recvd > 8 {
+                break;
+            }
+        }
+
+        // fill tx queue
+        if status.link_detected() {
+            let mut sent = 0usize;
+            const SIZE: usize = 1500;
+            while eth.queue_len() < 128 && sent < 8 {
+                let mut buf = eth::Buffer::new(SIZE);
+                buf.set_len(SIZE);
+                buf.as_mut_slice()[0..6].copy_from_slice(&DST_MAC);
+                buf.as_mut_slice()[6..12].copy_from_slice(&SRC_MAC);
+                buf.as_mut_slice()[12..14].copy_from_slice(&ETH_TYPE);
+                eth.send(buf);
+
+                tx_bytes += SIZE;
+                tx_pkts += 1;
+                sent += 1;
+            }
+        }
+
+        // wait for next interrupt
+        // asm::wfi();
     }
 }
 
