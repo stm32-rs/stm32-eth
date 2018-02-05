@@ -1,7 +1,4 @@
 use stm32f429x::*;
-// For debug output
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
 
 #[allow(dead_code)]
 mod consts {
@@ -13,12 +10,8 @@ mod consts {
 use self::consts::*;
 
 pub fn setup(p: &Peripherals) {
-    let mut stdout = hio::hstdout().unwrap();
-
-    writeln!(stdout, "Configuring GPIO pins").unwrap();
     init_pins(&p.RCC, &p.GPIOA, &p.GPIOB, &p.GPIOC, &p.GPIOG);
     
-    writeln!(stdout, "Enabling clocks").unwrap();
     // enable syscfg clock
     p.RCC.apb2enr.modify(|_, w| w.syscfgen().set_bit());
 
@@ -32,9 +25,7 @@ pub fn setup(p: &Peripherals) {
             .ethmactxen().set_bit()
             .ethmacrxen().set_bit()
     });
-    writeln!(stdout, "Clocks enabled").unwrap();
 
-    writeln!(stdout, "Resetting Ethernet").unwrap();
     reset_pulse(&p.RCC);
 }
 

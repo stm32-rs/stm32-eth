@@ -1,9 +1,5 @@
 use stm32f429x::*;
 
-// For debug output
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
-
 
 mod phy;
 use self::phy::{Phy, PhyStatus};
@@ -60,21 +56,15 @@ impl Eth {
     }
 
     fn init(&mut self) -> &Self {
-        let mut stdout = hio::hstdout().unwrap();
-
-        writeln!(stdout, "Ethernet reset").unwrap();
         self.reset_dma_and_wait();
 
         // set clock range in MAC MII address register
         let clock_range = ETH_MACMIIAR_CR_HCLK_DIV_16;
         self.eth_mac.macmiiar.modify(|_, w| unsafe { w.cr().bits(clock_range) });
 
-        writeln!(stdout, "Ethernet configured").unwrap();
-
         self.get_phy()
             .reset()
             .set_autoneg();
-        writeln!(stdout, "Phy reset").unwrap();
 
         // Configuration Register
         self.eth_mac.maccr.modify(|_, w| {
@@ -194,8 +184,6 @@ impl Eth {
 
         if ! self.tx.is_running(&self.eth_dma) {
             self.tx.start_dma(&self.eth_dma);
-            // let mut stdout = hio::hstdout().unwrap();
-            // writeln!(stdout, "TxDMA restart");
         }
     }
 
