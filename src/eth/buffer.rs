@@ -1,7 +1,7 @@
 use alloc::allocator::{Alloc, Layout};
 use alloc::heap::Heap;
 use core::slice;
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 
 /// An aligned buffer
 ///
@@ -29,6 +29,10 @@ impl Buffer {
         &self.buffer[0..self.length]
     }
 
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        &mut self.buffer[0..self.length]
+    }
+
     pub fn as_ptr(&self) -> *const u8 {
         self.buffer.as_ptr()
     }
@@ -53,5 +57,11 @@ impl Deref for Buffer {
 
     fn deref(&self) -> &Self::Target {
         self.as_slice()
+    }
+}
+
+impl DerefMut for Buffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut_slice()
     }
 }

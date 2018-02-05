@@ -12,6 +12,8 @@ use self::phy::{Phy, PhyStatus};
 mod smi;
 mod rx;
 use self::rx::RxRing;
+mod tx;
+use self::tx::TxRing;
 mod buffer;
 pub use self::buffer::Buffer;
 
@@ -43,6 +45,7 @@ pub struct Eth {
     eth_mac: ETHERNET_MAC,
     eth_dma: ETHERNET_DMA,
     rx: RxRing,
+    tx: TxRing,
 }
 
 impl Eth {
@@ -51,13 +54,14 @@ impl Eth {
             eth_mac,
             eth_dma,
             rx: RxRing::new(MTU),
+            tx: TxRing::new(),
         }
     }
 
     pub fn get_phy<'a>(&'a self) -> Phy<'a> {
         Phy::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, PHY_ADDR)
     }
-    
+
     pub fn init<'cs>(&mut self, cs: &'cs CriticalSection, rcc: &RCC, syscfg: &SYSCFG, nvic: &mut NVIC) -> &Self {
         let mut stdout = hio::hstdout().unwrap();
 
@@ -165,6 +169,8 @@ impl Eth {
             // Use separate PBL
                 .usp().set_bit()
         });
+
+        self.tx.start(&self.eth_dma);
 
         self
     }
@@ -277,5 +283,15 @@ impl Eth {
 
     pub fn recv_next(&mut self) -> Option<Buffer> {
         self.rx.recv_next(&self.eth_dma)
+    }
+
+    pub fn send(&mut self, buffer: Buffer) {
+        self.tx.send(buffer);
+
+        if ! self.tx.is_running(&self.eth_dma) {
+            self.tx.start_dma(&self.eth_dma);
+            // let mut stdout = hio::hstdout().unwrap();
+            // writeln!(stdout, "TxDMA restart");
+        }
     }
 }
