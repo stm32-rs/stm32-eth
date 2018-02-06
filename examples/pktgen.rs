@@ -1,7 +1,5 @@
 #![no_std]
 #![feature(used)]
-//#![feature(core_intrinsics)]
-//#![feature(lang_items)]
 #![feature(alloc, global_allocator, allocator_api, box_heap)]
 
 extern crate cortex_m;
@@ -10,22 +8,20 @@ extern crate cortex_m_semihosting;
 #[macro_use(exception, interrupt)]
 extern crate stm32f429x;
 extern crate alloc_cortex_m;
-extern crate alloc;
-extern crate volatile_register;
+extern crate stm32f4x9_eth as eth;
 
 use cortex_m::asm;
 use stm32f429x::{Peripherals, CorePeripherals, SYST};
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
+use alloc_cortex_m::CortexMHeap;
 
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
-mod init_alloc;
-pub use init_alloc::ALLOCATOR;
-mod eth;
 use eth::Eth;
+
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
@@ -33,8 +29,25 @@ const ETH_TYPE: [u8; 2] = [0x80, 0x00];
 
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 
+#[global_allocator]
+pub static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
+
+// These symbols come from a linker script
+extern "C" {
+    static mut _sheap: u32;
+    static mut _eheap: u32;
+}
+
+/// Initialize the heap allocator `ALLOCATOR`
+pub fn init_alloc() -> usize {
+    let start = unsafe { &mut _sheap as *mut u32 as usize };
+    let end = unsafe { &mut _eheap as *mut u32 as usize };
+    unsafe { ALLOCATOR.init(start, end - start) }
+    end - start
+}
+
 fn main() {
-    let heap_size = init_alloc::init();
+    let heap_size = init_alloc();
     let mut stdout = hio::hstdout().unwrap();
     writeln!(stdout, "Heap: {} bytes", heap_size).unwrap();
 

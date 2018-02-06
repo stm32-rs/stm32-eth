@@ -2,7 +2,7 @@ use alloc::vec_deque::VecDeque;
 use alloc::allocator::{Alloc, Layout};
 use volatile_register::RW;
 use alloc::heap::Heap;
-use stm32f429x::ETHERNET_DMA;
+use board::ETHERNET_DMA;
 
 use super::buffer::Buffer;
 

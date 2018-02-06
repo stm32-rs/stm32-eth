@@ -1,4 +1,4 @@
-use stm32f429x::ethernet_mac::{MACMIIAR, MACMIIDR};
+use board::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 pub struct SMI<'a> {
     macmiiar: &'a MACMIIAR,

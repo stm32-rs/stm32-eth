@@ -1,4 +1,4 @@
-use stm32f429x::*;
+use board::*;
 
 #[allow(dead_code)]
 mod consts {

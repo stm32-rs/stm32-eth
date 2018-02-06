@@ -1,4 +1,14 @@
-use stm32f429x::*;
+#![feature(alloc, allocator_api)]
+#![no_std]
+
+extern crate cortex_m_semihosting;
+extern crate alloc;
+extern crate volatile_register;
+
+#[cfg(feature = "board_stm32f429x")]
+extern crate stm32f429x as board;
+
+use board::*;
 
 
 pub mod phy;
