@@ -113,16 +113,16 @@ fn main() {
             rx_pkts += 1;
 
             recvd += 1;
-            if recvd > 8 {
+            if recvd > 16 {
                 break;
             }
         }
 
         // fill tx queue
+        let mut sent = 0usize;
+        const SIZE: usize = 1500;
         if status.link_detected() {
-            let mut sent = 0usize;
-            const SIZE: usize = 1500;
-            while eth.queue_len() < 128 && sent < 8 {
+            while eth.queue_len() < 64 && sent < 16 {
                 let mut buf = eth::Buffer::new(SIZE);
                 buf.set_len(SIZE);
                 buf.as_mut_slice()[0..6].copy_from_slice(&DST_MAC);
@@ -136,8 +136,10 @@ fn main() {
             }
         }
 
-        // wait for next interrupt
-        // asm::wfi();
+        if recvd == 0 && sent == 0 {
+            // wait for next interrupt
+            asm::wfi();
+        }
     }
 }
 
