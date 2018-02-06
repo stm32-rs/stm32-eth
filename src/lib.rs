@@ -23,6 +23,11 @@ pub use self::buffer::Buffer;
 mod setup;
 pub use self::setup::setup;
 
+#[cfg(feature = "smoltcp_phy")]
+extern crate smoltcp;
+#[cfg(feature = "smoltcp_phy")]
+pub mod smoltcp_phy;
+
 pub const ALIGNMENT: usize = 0b1000;
 const PHY_ADDR: u8 = 0;
 const MTU: usize = 1518;

@@ -2,15 +2,24 @@
 
 export PATH=~/.cargo/bin:$PATH
 
+EXAMPLE=$1
+if [[ "$EXAMPLE" = "" ]]; then
+    echo "Run with one of the examples:"
+    for f in `basename examples/*.rs | sed -e 's/.rs//'`; do
+        echo "- $f"
+    done
+    exit 1
+fi
+
 xargo build --target=thumbv7em-none-eabihf --release \
-      --features="board_stm32f429x" \
-      --example=pktgen \
+      --features="board_stm32f429x smoltcp_phy" \
+      --example=$EXAMPLE \
     || exit 1
 
 killall openocd
 sleep 0.1
 
-BIN=target/thumbv7em-none-eabihf/release/examples/pktgen
+BIN=target/thumbv7em-none-eabihf/release/examples/$EXAMPLE
 openocd \
     -f /usr/share/openocd/scripts/interface/stlink-v2-1.cfg \
     -f /usr/share/openocd/scripts/target/stm32f4x.cfg \
