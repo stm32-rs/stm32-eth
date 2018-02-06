@@ -138,3 +138,14 @@ impl PhyStatus {
         (self.bsr & PHY_REG_BSR_FAULT) == PHY_REG_BSR_FAULT
     }
 }
+
+impl PartialEq for PhyStatus {
+    fn eq(&self, other: &PhyStatus) -> bool {
+        (self.link_detected() == false &&
+         other.link_detected() == false)
+        ||
+        (self.link_detected() == other.link_detected() &&
+         self.is_full_duplex() == other.is_full_duplex() &&
+         self.speed() == other.speed())
+    }
+}

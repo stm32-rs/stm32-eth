@@ -33,15 +33,6 @@ const ETH_TYPE: [u8; 2] = [0x80, 0x00];
 
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 
-fn status_eq(s1: &eth::phy::PhyStatus, s2: &eth::phy::PhyStatus) -> bool {
-    (s1.link_detected() == false &&
-     s1.link_detected() == s2.link_detected())
-    ||
-    (s1.link_detected() == s2.link_detected() &&
-     s1.is_full_duplex() == s2.is_full_duplex() &&
-     s1.speed() == s2.speed())
-}
-
 fn main() {
     let heap_size = init_alloc::init();
     let mut stdout = hio::hstdout().unwrap();
@@ -90,9 +81,9 @@ fn main() {
 
         // Link change detection
         let status = eth.status();
-        if ! last_status
-            .map(|last_status| status_eq(&last_status, &status))
-            .unwrap_or(false)
+        if last_status
+            .map(|last_status| last_status != status)
+            .unwrap_or(true)
         {
             if ! status.link_detected() {
                 writeln!(
