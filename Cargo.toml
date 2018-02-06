@@ -5,14 +5,11 @@ version = "0.0.0"
 
 [dependencies]
 cortex-m = "0.4.3"
+cortex-m-rt = { version = "0.3.12", features = ["abort-on-panic"] }
 cortex-m-semihosting = "0.2.0"
 stm32f429x = { path = "../stm32f429x", features = ["rt"] }
-alloc-cortex-m = "0.3.1"
+alloc-cortex-m = { git = "https://github.com/japaric/alloc-cortex-m.git" }
 volatile-register = "0.2.0"
-
-[dependencies.cortex-m-rt]
-features = ["abort-on-panic"]
-version = "0.3.9"
 
 [profile.release]
 debug = true
