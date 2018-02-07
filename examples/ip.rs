@@ -1,9 +1,8 @@
 #![no_std]
 #![feature(used)]
-//#![feature(core_intrinsics)]
-//#![feature(lang_items)]
+#![feature(core_intrinsics)]
+#![feature(lang_items)]
 #![feature(alloc, global_allocator, allocator_api, box_heap)]
-#![feature(const_fn)]
 
 extern crate cortex_m;
 extern crate cortex_m_rt;
@@ -15,6 +14,7 @@ extern crate alloc_cortex_m;
 extern crate alloc;
 extern crate stm32f4x9_eth as eth;
 extern crate smoltcp;
+#[macro_use(error, log)]
 extern crate log;
 
 use cortex_m::asm;
@@ -34,6 +34,7 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr,
                     Ipv4Address, Icmpv4Repr, Icmpv4Packet};
 use smoltcp::iface::{NeighborCache, EthernetInterfaceBuilder};
 use smoltcp::socket::{SocketSet, IcmpSocket, IcmpSocketBuffer, IcmpPacketBuffer, IcmpEndpoint};
+use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
 use alloc::btree_map::BTreeMap;
 use log::{Record, Level, Metadata, LevelFilter};
 
@@ -59,12 +60,18 @@ impl log::Log for HioLogger {
     fn flush(&self) {}
 }
 
+#[lang = "panic_fmt"]
+#[no_mangle]
+unsafe extern "C" fn panic_fmt(msg: ::core::fmt::Arguments, file: &'static str, line: u32, col: u32) -> ! {
+    error!("{}:{}:{}: {}", file, line, col, msg);
+    ::core::intrinsics::abort()
+}
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
 const ETH_TYPE: [u8; 2] = [0x80, 0x00];
 
-static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
+static TIME: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
 
 #[global_allocator]
 pub static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
@@ -84,8 +91,8 @@ pub fn init_alloc() -> usize {
 }
 
 fn main() {
-    unsafe { log::set_logger(&LOGGER); }
-    log::set_max_level(LevelFilter::Trace);
+    unsafe { log::set_logger(&LOGGER).unwrap(); }
+    log::set_max_level(LevelFilter::Info);
     
     let heap_size = init_alloc();
     let mut stdout = hio::hstdout().unwrap();
@@ -110,27 +117,52 @@ fn main() {
         .ip_addrs([ip_addr])
         .neighbor_cache(neighbor_cache)
         .finalize();
+
     let mut sockets = SocketSet::new(vec![]);
+    let server_socket = TcpSocket::new(
+        TcpSocketBuffer::new(vec![0; 2048]),
+        TcpSocketBuffer::new(vec![0; 2048])
+    );
+    let server_handle = sockets.add(server_socket);
 
     loop {
-        iface.poll(&mut sockets, 0).expect("poll error");
-        asm::wfi();
+        let time: u64 = cortex_m::interrupt::free(|cs| {
+            *TIME.borrow(cs)
+                .borrow()
+        });
+        match iface.poll(&mut sockets, time) {
+            Ok(true) => {
+                let mut socket = sockets.get::<TcpSocket>(server_handle);
+                if !socket.is_open() {
+                    socket.listen(80)
+                        .or_else(|e| {
+                            writeln!(stdout, "TCP listen error: {:?}", e)
+                        });
+                }
+
+                if socket.can_send() {
+                    write!(socket, "hello\n")
+                        .map(|_| {
+                            socket.close();
+                        })
+                        .or_else(|e| {
+                            writeln!(stdout, "TCP send error: {:?}", e)
+                        });
+                }
+            },
+            Ok(false) =>
+                asm::wfi(),
+            Err(_) =>
+                // Ignore malformed packets
+                (),
+        }
     }
 }
 
 fn setup_systick(syst: &mut SYST) {
-    syst.set_reload(100 * stm32f429x::SYST::get_ticks_per_10ms());
+    syst.set_reload(stm32f429x::SYST::get_ticks_per_10ms());
     syst.enable_counter();
     syst.enable_interrupt();
-
-    if ! SYST::is_precise() {
-        let mut stderr = hio::hstderr().unwrap();
-        writeln!(
-            stderr,
-            "Warning: SYSTICK with source {:?} is not precise",
-            syst.get_clock_source()
-        ).unwrap();
-    }
 }
 
 fn systick_interrupt_handler() {
@@ -138,7 +170,7 @@ fn systick_interrupt_handler() {
         let mut time =
             TIME.borrow(cs)
             .borrow_mut();
-        *time += 1;
+        *time += 10;
     })
 }
 
