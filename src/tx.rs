@@ -8,6 +8,8 @@ use super::buffer::Buffer;
 
 // Owned by DMA engine
 const TXDESC_0_OWN: u32 = 1 << 31;
+// Interrupt on completion
+const TXDESC_0_IC: u32 = 1 << 30;
 // First segment of frame
 const TXDESC_0_FS: u32 = 1 << 28;
 // Last segment of frame
@@ -31,7 +33,10 @@ struct TxDescriptor {
 impl Default for TxDescriptor {
     fn default() -> Self {
         let mut this = Self::new();
-        this.write(0, TXDESC_0_TCH | TXDESC_0_FS | TXDESC_0_LS);
+        // TODO
+        this.write(0,
+                   TXDESC_0_TCH | TXDESC_0_IC |
+                   TXDESC_0_FS | TXDESC_0_LS);
         this.write(1, 0);
         this.write(2, 0);
         this.write(3, 0);
