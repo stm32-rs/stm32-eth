@@ -40,14 +40,18 @@ mod consts {
 }
 use self::consts::*;
 
-/// http://ww1.microchip.com/downloads/en/DeviceDoc/DS_LAN8742_00001989A.pdf
-/// https://github.com/libopencm3/libopencm3/blob/master/lib/ethernet/mac_stm32fxx7.c
+/// Driver for the *LAN8742* PHY using `SMI`
+///
+/// # References
+/// * [Datasheet](http://ww1.microchip.com/downloads/en/DeviceDoc/DS_LAN8742_00001989A.pdf)
+/// * [libopencm3 driver](https://github.com/libopencm3/libopencm3/blob/master/lib/ethernet/mac_stm32fxx7.c)
 pub struct Phy<'a> {
     smi: SMI<'a>,
     phy: u8,
 }
 
 impl<'a> Phy<'a> {
+    /// Allocate
     pub fn new(macmiiar: &'a MACMIIAR, macmiidr: &'a MACMIIDR, phy: u8) -> Self {
         let smi = SMI::new(macmiiar, macmiidr);
 
@@ -57,6 +61,10 @@ impl<'a> Phy<'a> {
         }
     }
 
+    /// Read current status registers
+    ///
+    /// You may keep the returned [`PhyStatus`](struct.PhyStatus.html)
+    /// to compare it with to a future [`status()`](#method.status).
     pub fn status(&self) -> PhyStatus {
         PhyStatus {
             bsr: self.smi.read(self.phy, PHY_REG_BSR),
@@ -64,6 +72,7 @@ impl<'a> Phy<'a> {
         }
     }
 
+    /// Reset the PHY
     pub fn reset(&self) -> &Self {
         self.smi.set_bits(
             self.phy,
@@ -80,6 +89,7 @@ impl<'a> Phy<'a> {
         self
     }
 
+    /// Enable 10/100 Mbps half/full-duplex auto-negotiation
     pub fn set_autoneg(&self) -> &Self {
         self.smi.set_bits(
             self.phy,
@@ -91,23 +101,26 @@ impl<'a> Phy<'a> {
     }
 }
 
+/// PHY status register
 #[derive(Copy, Clone)]
 pub struct PhyStatus {
-    /// TOOD: pub for debugging
-    pub bsr: u16,
-    pub ssr: u16,
+    bsr: u16,
+    ssr: u16,
 }
 
 impl PhyStatus {
+    /// Has link?
     pub fn link_detected(&self) -> bool {
         (self.bsr & PHY_REG_BSR_UP) == PHY_REG_BSR_UP
     }
 
+    /// Has auto-negotiated?
     pub fn autoneg_done(&self) -> bool {
         (self.bsr & PHY_REG_BSR_ANDONE) == PHY_REG_BSR_ANDONE ||
         (self.ssr & PHY_REG_SSR_ANDONE) == PHY_REG_SSR_ANDONE
     }
 
+    /// FD, not HD?
     pub fn is_full_duplex(&self) -> Option<bool> {
         match self.ssr & PHY_REG_SSR_SPEED {
             PHY_REG_SSR_10BASE_HD |
@@ -120,7 +133,8 @@ impl PhyStatus {
                 None,
         }
     }
-    
+
+    /// 10, 100, or 0 Mbps
     pub fn speed(&self) -> u32 {
         match self.ssr & PHY_REG_SSR_SPEED {
             PHY_REG_SSR_10BASE_HD |
@@ -134,11 +148,14 @@ impl PhyStatus {
         }
     }
 
+    /// Error?
     pub fn remote_fault(&self) -> bool {
         (self.bsr & PHY_REG_BSR_FAULT) == PHY_REG_BSR_FAULT
     }
 }
 
+/// Compare on base of link detected, full-duplex, and speed
+/// attributes.
 impl PartialEq for PhyStatus {
     fn eq(&self, other: &PhyStatus) -> bool {
         (self.link_detected() == false &&

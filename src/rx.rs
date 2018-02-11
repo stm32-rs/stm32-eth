@@ -11,23 +11,23 @@ use volatile_register::RW;
 use super::buffer::Buffer;
 
 
-// Owned by DMA engine
+/// Owned by DMA engine
 const RXDESC_0_OWN: u32 = 1 << 31;
-// First descriptor
+/// First descriptor
 const RXDESC_0_FS: u32 = 1 << 9;
-// Last descriptor
+/// Last descriptor
 const RXDESC_0_LS: u32 = 1 << 8;
-// Error summary
+/// Error summary
 const RXDESC_0_ES: u32 = 1 << 15;
-// Frame length
+/// Frame length
 const RXDESC_0_FL_MASK: u32 = 0x3FFF;
 const RXDESC_0_FL_SHIFT: usize = 16;
 
 const RXDESC_1_RBS_SHIFT: usize = 0;
 const RXDESC_1_RBS_MASK: u32 = 0x0fff << RXDESC_1_RBS_SHIFT;
-// Second address chained
+/// Second address chained
 const RXDESC_1_RCH: u32 = 1 << 14;
-// End Of Ring
+/// End Of Ring
 const RXDESC_1_RER: u32 = 1 << 15;
 
 #[repr(C)]
@@ -59,7 +59,7 @@ impl RxDescriptor {
         Layout::from_size_align(4 * 4, super::ALIGNMENT)
             .unwrap()
     }
-    
+
     fn new() -> Self {
         let mem = unsafe {
             Heap.alloc(Self::memory_layout())
@@ -73,7 +73,7 @@ impl RxDescriptor {
     fn as_raw_ptr(&self) -> *const u8 {
         self.rdesc.as_ptr() as *const u8
     }
-    
+
     fn read(&self, i: usize) -> u32 {
         self.rdesc[i].read()
     }
@@ -87,7 +87,7 @@ impl RxDescriptor {
 
         unsafe { self.rdesc[i].modify(f) }
     }
-    
+
     /// Is owned by the DMA engine?
     pub fn is_owned(&self) -> bool {
         (self.read(0) & RXDESC_0_OWN) == RXDESC_0_OWN
@@ -195,6 +195,7 @@ impl RxRingEntry {
     }
 }
 
+/// Rx DMA state
 pub struct RxRing {
     buffer_size: usize,
     buffers: Vec<RxRingEntry>,
@@ -202,6 +203,7 @@ pub struct RxRing {
 }
 
 impl RxRing {
+    /// Allocate
     pub fn new(buffer_size: usize) -> Self {
         RxRing {
             buffer_size,
@@ -210,6 +212,7 @@ impl RxRing {
         }
     }
 
+    /// Setup the DMA engine (**required**)
     pub fn start(&mut self, ring_length: usize, eth_dma: &ETHERNET_DMA) {
         let mut buffers = mem::replace(&mut self.buffers, Vec::with_capacity(ring_length));
         // Grow ring if necessary
@@ -244,14 +247,16 @@ impl RxRing {
         // Start receive
         eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
 
-        self.start_dma(eth_dma);
+        self.demand_poll(eth_dma);
     }
 
-    /// Start DMA engine
-    pub fn start_dma(&self, eth_dma: &ETHERNET_DMA) {
+    /// Demand that the DMA engine polls the current `RxDescriptor`
+    /// (when in `RunningState::Stopped`.)
+    pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
         eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
     }
 
+    /// Get current `RunningState`
     pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
         match eth_dma.dmasr.read().rps().bits() {
             //  Reset or Stop Receive Command issued
@@ -269,7 +274,9 @@ impl RxRing {
             _ => RunningState::Unknown,
         }
     }
-    
+
+    /// Receive the next packet (if any is ready), or return `None`
+    /// immediately.
     pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Option<Buffer> {
         let result = self.buffers[self.next_entry]
             .take_received()
@@ -283,13 +290,14 @@ impl RxRing {
             });
 
         if ! self.running_state(eth_dma).is_running() {
-            self.start_dma(eth_dma);
+            self.demand_poll(eth_dma);
         }
 
         result
     }
 }
 
+/// Running state of the `RxRing`
 #[derive(PartialEq, Eq, Debug)]
 pub enum RunningState {
     Unknown,
@@ -298,6 +306,7 @@ pub enum RunningState {
 }
 
 impl RunningState {
+    /// whether self equals to `RunningState::Running`
     pub fn is_running(&self) -> bool {
         *self == RunningState::Running
     }

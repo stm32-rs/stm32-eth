@@ -9,6 +9,8 @@ mod consts {
 }
 use self::consts::*;
 
+/// Initialize GPIO pins. Enable syscfg and ethernet clocks. Reset the
+/// Ethernet MAC.
 pub fn setup(p: &Peripherals) {
     init_pins(&p.RCC, &p.GPIOA, &p.GPIOB, &p.GPIOC, &p.GPIOG);
     

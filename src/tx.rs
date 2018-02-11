@@ -6,19 +6,19 @@ use board::ETHERNET_DMA;
 
 use super::buffer::Buffer;
 
-// Owned by DMA engine
+/// Owned by DMA engine
 const TXDESC_0_OWN: u32 = 1 << 31;
-// Interrupt on completion
+/// Interrupt on completion
 const TXDESC_0_IC: u32 = 1 << 30;
-// First segment of frame
+/// First segment of frame
 const TXDESC_0_FS: u32 = 1 << 28;
-// Last segment of frame
+/// Last segment of frame
 const TXDESC_0_LS: u32 = 1 << 29;
-// Transmit end of ring
+/// Transmit end of ring
 const TXDESC_0_TER: u32 = 1 << 21;
-// Second address chained
+/// Second address chained
 const TXDESC_0_TCH: u32 = 1 << 20;
-// Second address chained
+/// Second address chained
 const TXDESC_0_ES: u32 = 1 << 15;
 
 const TXDESC_1_TBS_SHIFT: usize = 0;
@@ -57,7 +57,7 @@ impl TxDescriptor {
         Layout::from_size_align(4 * 4, super::ALIGNMENT)
             .unwrap()
     }
-    
+
     fn new() -> Self {
         let mem = unsafe {
             Heap.alloc(Self::memory_layout())
@@ -71,7 +71,7 @@ impl TxDescriptor {
     fn as_raw_ptr(&self) -> *const u8 {
         self.tdesc.as_ptr() as *const u8
     }
-    
+
     fn read(&self, i: usize) -> u32 {
         self.tdesc[i].read()
     }
@@ -85,7 +85,7 @@ impl TxDescriptor {
 
         unsafe { self.tdesc[i].modify(f) }
     }
-    
+
     /// Is owned by the DMA engine?
     pub fn is_owned(&self) -> bool {
         (self.read(0) & TXDESC_0_OWN) == TXDESC_0_OWN
@@ -133,6 +133,7 @@ struct TxRingEntry {
 }
 
 impl TxRingEntry {
+    /// Allocate a new, unused (without a `buffer`) entry.
     pub fn new() -> Self {
         let desc = TxDescriptor::default();
         TxRingEntry {
@@ -141,6 +142,12 @@ impl TxRingEntry {
         }
     }
 
+    /// Mark to be available for sending
+    ///
+    /// * Set this entry's `buffer` by taking ownership because DMA is
+    ///   asynchronous.
+    /// * Then set pointer to the next entry in the chain.
+    /// * Then mark as owned by the hardware.
     pub fn send(&mut self, buffer: Buffer, next: Option<&TxRingEntry>) {
         self.desc.set_buffer1(buffer.as_ptr(), buffer.len());
         self.buffer = Some(buffer);
@@ -161,11 +168,15 @@ impl TxRingEntry {
     }
 }
 
+/// Tx DMA state
 pub struct TxRing {
     entries: VecDeque<TxRingEntry>,
 }
 
 impl TxRing {
+    /// Allocate
+    ///
+    /// `start()` will be needed before `send()`
     pub fn new() -> Self {
         let mut entries = VecDeque::with_capacity(2);
         entries.push_back(TxRingEntry::new());
@@ -175,9 +186,26 @@ impl TxRing {
         }
     }
 
+    /// Start the Tx DMA engine
+    pub fn start(&self, eth_dma: &ETHERNET_DMA) {
+        let ring_ptr = self.entries[0].desc.as_raw_ptr();
+        // Register TxDescriptor
+        eth_dma.dmatdlar.write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
+
+        // Start transmission
+        eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
+
+        self.demand_poll(eth_dma);
+    }
+
+    /// Send data
+    ///
+    /// Because DMA is async, ownership of `buffer` is taken so that
+    /// it can be freed by `flush()` once the Ethernet HW has sent out
+    /// the packet.
     pub fn send(&mut self, buffer: Buffer) {
         self.flush();
-        
+
         let i = self.entries.len() - 1;
         let next_entry = {
             let mut entry = &mut self.entries[i];
@@ -188,7 +216,8 @@ impl TxRing {
         self.entries.push_back(next_entry);
     }
 
-    /// Flushes entries that have been processed by the DMA engine.
+    /// Flushes entries that have been processed by the Ethernet DMA
+    /// engine.
     pub fn flush(&mut self) -> usize {
         fn is_done(entry: &TxRingEntry) -> bool {
             // returned by DMA engine?
@@ -205,26 +234,19 @@ impl TxRing {
         flushed
     }
 
+    /// Get the amount of entries that are not yet sent by the
+    /// hardware.
     pub fn queue_len(&self) -> usize {
         self.entries.len()
     }
 
-    pub fn start(&self, eth_dma: &ETHERNET_DMA) {
-        let ring_ptr = self.entries[0].desc.as_raw_ptr();
-        // Register TxDescriptor
-        eth_dma.dmatdlar.write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
-
-        // Start transmission
-        eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
-
-        self.start_dma(eth_dma);
-    }
-
-    /// Start DMA engine
-    pub fn start_dma(&self, eth_dma: &ETHERNET_DMA) {
+    /// Demand that the DMA engine polls the current `TxDescriptor`
+    /// (when we just transferred ownership to the hardware).
+    pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
         eth_dma.dmatpdr.write(|w| unsafe { w.tpd().bits(1) });
     }
 
+    /// Is the Tx DMA engine running?
     pub fn is_running(&self, eth_dma: &ETHERNET_DMA) -> bool {
         eth_dma.dmasr.read().ts().bit()
     }

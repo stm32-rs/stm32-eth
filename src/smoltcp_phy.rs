@@ -6,6 +6,7 @@ use super::Eth;
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
+/// Use this Ethernet driver with [smoltcp](https://github.com/m-labs/smoltcp)
 impl<'a> Device<'a> for Eth {
     type RxToken = EthRxToken;
     type TxToken = EthTxToken<'a>;
@@ -32,6 +33,7 @@ impl<'a> Device<'a> for Eth {
     }
 }
 
+/// Contains the [`Buffer`](../struct.Buffer.html) of a received packet
 pub struct EthRxToken {
     buffer: Buffer,
 }
@@ -44,11 +46,15 @@ impl RxToken for EthRxToken {
     }
 }
 
+/// Just a reference to [`Eth`](../struct.Eth.html) for sending a
+/// packet later with [`consume()`](#method.consume)
 pub struct EthTxToken<'a> {
     eth: &'a mut Eth,
 }
 
 impl<'a> TxToken for EthTxToken<'a> {
+    /// Allocate a [`Buffer`](../struct.Buffer.html), yield with
+    /// `f(buffer)`, and send it as an Ethernet packet.
     fn consume<R, F>(self, _timestamp: u64, len: usize, f: F) -> Result<R, Error>
         where F: FnOnce(&mut [u8]) -> Result<R, Error>
     {

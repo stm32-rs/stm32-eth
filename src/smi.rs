@@ -1,11 +1,13 @@
 use board::ethernet_mac::{MACMIIAR, MACMIIDR};
 
+/// Station Management Interface
 pub struct SMI<'a> {
     macmiiar: &'a MACMIIAR,
     macmiidr: &'a MACMIIDR,
 }
 
 impl<'a> SMI<'a> {
+    /// Allocate
     pub fn new(macmiiar: &'a MACMIIAR, macmiidr: &'a MACMIIDR) -> Self {
         SMI {
             macmiiar,
@@ -17,7 +19,8 @@ impl<'a> SMI<'a> {
     fn wait_ready(&self) {
         while self.macmiiar.read().mb().bit_is_set() {}
     }
-    
+
+    /// Read an SMI register
     pub fn read(&self, phy: u8, reg: u8) -> u16 {
         self.macmiiar.modify(|_, w| {
             unsafe {
@@ -34,6 +37,7 @@ impl<'a> SMI<'a> {
         self.macmiidr.read().td().bits()
     }
 
+    /// Write an SMI register
     pub fn write(&self, phy: u8, reg: u8, data: u16) {
         self.macmiidr.modify(|_, w| {
             unsafe { w.td().bits(data) }
@@ -50,6 +54,8 @@ impl<'a> SMI<'a> {
         self.wait_ready();
     }
 
+    /// Helper: `read()` and `write()` by OR-ing the current value of
+    /// the register `reg` with `mask`.
     pub fn set_bits(&self, phy: u8, reg: u8, mask: u16) {
         let value = self.read(phy, reg);
         self.write(phy, reg, value | mask);

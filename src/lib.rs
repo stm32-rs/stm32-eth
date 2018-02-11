@@ -10,7 +10,6 @@ extern crate stm32f429x as board;
 
 use board::*;
 
-
 pub mod phy;
 use self::phy::{Phy, PhyStatus};
 mod smi;
@@ -28,7 +27,10 @@ extern crate smoltcp;
 #[cfg(feature = "smoltcp_phy")]
 pub mod smoltcp_phy;
 
+/// The ethernet hardware drops the last bits of Rx/Tx DMA descriptors
+/// and buffers.
 pub const ALIGNMENT: usize = 0b1000;
+
 const PHY_ADDR: u8 = 0;
 const MTU: usize = 1518;
 
@@ -47,6 +49,9 @@ mod consts {
 }
 use self::consts::*;
 
+/// Ethernet driver for *STM32f429x* chips with a *LAN8742*
+/// [`Phy`](phy/struct.Phy.html) like they're found on STM Nucleo-144
+/// boards.
 pub struct Eth {
     eth_mac: ETHERNET_MAC,
     eth_dma: ETHERNET_DMA,
@@ -55,6 +60,14 @@ pub struct Eth {
 }
 
 impl Eth {
+    /// Initialize and start tx and rx DMA engines.
+    ///
+    /// You must call [`setup()`](fn.setup.html) before to initialize
+    /// the hardware!
+    ///
+    /// Other than that, initializes and starts the Ethernet hardware
+    /// so that you can [`send()`](#method.send) and
+    /// [`recv_next()`](#method.recv_next).
     pub fn new(eth_mac: ETHERNET_MAC, eth_dma: ETHERNET_DMA, rx_ring_len: usize) -> Self {
         let mut eth = Eth {
             eth_mac,
@@ -152,6 +165,12 @@ impl Eth {
         while self.eth_dma.dmabmr.read().sr().bit_is_set() {}
     }
 
+    /// Enable RX and TX interrupts
+    ///
+    /// In your handler you must call
+    /// [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html) to
+    /// clear interrupt pending bits. Otherwise the interrupt will
+    /// reoccur immediately.
     pub fn enable_interrupt(&self, nvic: &mut NVIC) {
         self.eth_dma.dmaier.modify(|_, w|
             w
@@ -167,50 +186,68 @@ impl Eth {
         nvic.enable(Interrupt::ETH);
     }
 
+    /// Calls [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html)
     pub fn interrupt_handler(&self) {
         eth_interrupt_handler(&self.eth_dma);
     }
 
+    /// Construct a PHY driver
     pub fn get_phy<'a>(&'a self) -> Phy<'a> {
         Phy::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, PHY_ADDR)
     }
 
+    /// Obtain PHY status
     pub fn status(&self) -> PhyStatus {
         self.get_phy().status()
     }
 
-
+    /// Start Rx DMA engine with a certain `ring_length`
     pub fn start_rx(&mut self, ring_length: usize) -> &mut Self {
         self.rx.start(ring_length, &self.eth_dma);
 
         self
     }
 
+    /// Is Rx DMA currently running?
+    ///
+    /// It stops if the ring is full. Call `recv_next()` to free an
+    /// entry and to demand poll from the hardware.
     pub fn rx_is_running(&self) -> bool {
         self.rx.running_state(&self.eth_dma).is_running()
     }
 
+    /// Receive the next packet (if any is ready), or return `None`
+    /// immediately.
     pub fn recv_next(&mut self) -> Option<Buffer> {
         self.rx.recv_next(&self.eth_dma)
     }
 
+    /// Send a packet
+    ///
+    /// Because DMA is async, ownership of `buffer` is taken.
     pub fn send(&mut self, buffer: Buffer) {
         self.tx.send(buffer);
 
         if ! self.tx.is_running(&self.eth_dma) {
-            self.tx.start_dma(&self.eth_dma);
+            self.tx.demand_poll(&self.eth_dma);
         }
     }
 
+    /// Get Tx DMA queue length (amount of unsent packets)
     pub fn queue_len(&self) -> usize {
         self.tx.queue_len()
     }
 }
 
 /// Call in interrupt handler to clear interrupt reason, when
-/// `enable_interrupt()`.
+/// [`enable_interrupt()`](struct.Eth.html#method.enable_interrupt).
 ///
-/// TODO: should return interrupt reason
+/// There are two ways to call this:
+///
+/// * Via the [`Eth`](struct.Eth.html) driver instance that your interrupt handler has access to.
+/// * By unsafely getting `Peripherals`.
+///
+/// TODO: could return interrupt reason
 pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
     eth_dma.dmasr.write(|w|
         w
