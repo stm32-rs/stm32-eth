@@ -8,4 +8,4 @@ MEMORY
 }
 
 _stack_start = ORIGIN(RAM) + LENGTH(RAM);
-_eheap = _stack_start - 4K;
+_heap_size = LENGTH(RAM) - 4K;
