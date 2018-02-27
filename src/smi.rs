@@ -34,13 +34,13 @@ impl<'a> SMI<'a> {
         self.wait_ready();
 
         // Return value:
-        self.macmiidr.read().td().bits()
+        self.macmiidr.read().md().bits()
     }
 
     /// Write an SMI register
     pub fn write(&self, phy: u8, reg: u8, data: u16) {
         self.macmiidr.modify(|_, w| {
-            unsafe { w.td().bits(data) }
+            unsafe { w.md().bits(data) }
         });
         self.macmiiar.modify(|_, w| {
             unsafe {

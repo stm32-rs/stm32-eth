@@ -5,8 +5,8 @@ extern crate cortex_m_semihosting;
 extern crate alloc;
 extern crate volatile_register;
 
-#[cfg(feature = "board_stm32f429x")]
-extern crate stm32f429x as board;
+#[cfg(feature = "board_stm32f429")]
+extern crate stm32f429 as board;
 
 use board::*;
 

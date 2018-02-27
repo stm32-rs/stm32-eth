@@ -8,7 +8,7 @@ extern crate cortex_m;
 extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
 #[macro_use(exception, interrupt)]
-extern crate stm32f429x;
+extern crate stm32f429 as board;
 extern crate alloc_cortex_m;
 #[macro_use(vec)]
 extern crate alloc;
@@ -18,7 +18,7 @@ extern crate smoltcp;
 extern crate log;
 
 use cortex_m::asm;
-use stm32f429x::{Peripherals, CorePeripherals, SYST};
+use board::{Peripherals, CorePeripherals, SYST};
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
@@ -160,7 +160,7 @@ fn main() {
 }
 
 fn setup_systick(syst: &mut SYST) {
-    syst.set_reload(stm32f429x::SYST::get_ticks_per_10ms());
+    syst.set_reload(SYST::get_ticks_per_10ms());
     syst.enable_counter();
     syst.enable_interrupt();
 }
