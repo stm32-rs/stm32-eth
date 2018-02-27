@@ -4,8 +4,6 @@ use smoltcp::phy::{DeviceCapabilities, Device, RxToken, TxToken};
 use buffer::Buffer;
 use super::Eth;
 
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/m-labs/smoltcp)
 impl<'a> Device<'a> for Eth {
