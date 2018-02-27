@@ -28,12 +28,12 @@ use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
 use core::str::FromStr;
+use smoltcp::time::Instant;
 use smoltcp::phy::Device;
-//use smoltcp::phy::wait as phy_wait;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr,
                     Ipv4Address, Icmpv4Repr, Icmpv4Packet};
 use smoltcp::iface::{NeighborCache, EthernetInterfaceBuilder};
-use smoltcp::socket::{SocketSet, IcmpSocket, IcmpSocketBuffer, IcmpPacketBuffer, IcmpEndpoint};
+use smoltcp::socket::{SocketSet, IcmpSocket, IcmpSocketBuffer, IcmpEndpoint};
 use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
 use alloc::btree_map::BTreeMap;
 use log::{Record, Level, Metadata, LevelFilter};
@@ -130,7 +130,7 @@ fn main() {
             *TIME.borrow(cs)
                 .borrow()
         });
-        match iface.poll(&mut sockets, time) {
+        match iface.poll(&mut sockets, Instant::from_millis(time as i64)) {
             Ok(true) => {
                 let mut socket = sockets.get::<TcpSocket>(server_handle);
                 if !socket.is_open() {

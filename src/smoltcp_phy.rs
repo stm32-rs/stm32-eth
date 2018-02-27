@@ -1,4 +1,5 @@
 use smoltcp::Error;
+use smoltcp::time::Instant;
 use smoltcp::phy::{DeviceCapabilities, Device, RxToken, TxToken};
 use buffer::Buffer;
 use super::Eth;
@@ -39,7 +40,7 @@ pub struct EthRxToken {
 }
 
 impl RxToken for EthRxToken {
-    fn consume<R, F>(self, _timestamp: u64, f: F) -> Result<R, Error>
+    fn consume<R, F>(self, _timestamp: Instant, f: F) -> Result<R, Error>
         where F: FnOnce(&[u8]) -> Result<R, Error>
     {
         f(self.buffer.as_slice())
@@ -55,7 +56,7 @@ pub struct EthTxToken<'a> {
 impl<'a> TxToken for EthTxToken<'a> {
     /// Allocate a [`Buffer`](../struct.Buffer.html), yield with
     /// `f(buffer)`, and send it as an Ethernet packet.
-    fn consume<R, F>(self, _timestamp: u64, len: usize, f: F) -> Result<R, Error>
+    fn consume<R, F>(self, _timestamp: Instant, len: usize, f: F) -> Result<R, Error>
         where F: FnOnce(&mut [u8]) -> Result<R, Error>
     {
         let mut buffer = Buffer::new(len);
