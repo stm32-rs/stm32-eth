@@ -1,7 +1,6 @@
 #![no_std]
 #![feature(used)]
 #![feature(core_intrinsics)]
-#![feature(lang_items)]
 #![feature(alloc, global_allocator, allocator_api, box_heap)]
 
 extern crate cortex_m;
@@ -14,7 +13,6 @@ extern crate alloc_cortex_m;
 extern crate alloc;
 extern crate stm32f4x9_eth as eth;
 extern crate smoltcp;
-#[macro_use(error, log)]
 extern crate log;
 
 use cortex_m::asm;
@@ -54,13 +52,6 @@ impl log::Log for HioLogger {
         }
     }
     fn flush(&self) {}
-}
-
-#[lang = "panic_fmt"]
-#[no_mangle]
-unsafe extern "C" fn panic_fmt(msg: ::core::fmt::Arguments, file: &'static str, line: u32, col: u32) -> ! {
-    error!("{}:{}:{}: {}", file, line, col, msg);
-    ::core::intrinsics::abort()
 }
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
