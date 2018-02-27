@@ -18,7 +18,7 @@ const TXDESC_0_LS: u32 = 1 << 29;
 const TXDESC_0_TER: u32 = 1 << 21;
 /// Second address chained
 const TXDESC_0_TCH: u32 = 1 << 20;
-/// Second address chained
+/// Error status
 const TXDESC_0_ES: u32 = 1 << 15;
 
 const TXDESC_1_TBS_SHIFT: usize = 0;
