@@ -12,22 +12,23 @@ stm32f429 = { version = "0.3.0", features = ["rt"], optional = true }
 alloc-cortex-m = "0.3.2"
 volatile-register = "0.2.0"
 smoltcp = { git = "https://github.com/m-labs/smoltcp.git", default-features = false, features = ["alloc", "proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
+#smoltcp = { version = "0.4.0", default-features = false, features = ["alloc", "log", "verbose"], optional = true }
 log = { version = "0.4.1", optional = true }
 
 [features]
-smoltcp_phy = ["smoltcp", "log"]
+smoltcp-phy = ["smoltcp", "log"]
 default = []
 
 # Targets
-board_stm32f429 = ["stm32f429"]
+target-stm32f429 = ["stm32f429"]
 
 [[example]]
 name = "pktgen"
-required-features = ["board_stm32f429"]
+required-features = ["target-stm32f429"]
 
 [[example]]
 name = "ip"
-required-features = ["board_stm32f429", "smoltcp_phy"]
+required-features = ["target-stm32f429", "smoltcp-phy"]
 
 [profile.release]
 debug = 2

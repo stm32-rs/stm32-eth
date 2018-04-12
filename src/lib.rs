@@ -5,7 +5,7 @@ extern crate cortex_m_semihosting;
 extern crate alloc;
 extern crate volatile_register;
 
-#[cfg(feature = "board_stm32f429")]
+#[cfg(feature = "target-stm32f429")]
 extern crate stm32f429 as board;
 
 use board::*;
@@ -22,9 +22,9 @@ pub use self::buffer::Buffer;
 mod setup;
 pub use self::setup::setup;
 
-#[cfg(feature = "smoltcp_phy")]
+#[cfg(feature = "smoltcp-phy")]
 extern crate smoltcp;
-#[cfg(feature = "smoltcp_phy")]
+#[cfg(feature = "smoltcp-phy")]
 pub mod smoltcp_phy;
 
 /// The ethernet hardware drops the last bits of Rx/Tx DMA descriptors

@@ -13,7 +13,7 @@ if [[ "$EXAMPLE" = "" ]]; then
 fi
 
 xargo build --target=thumbv7em-none-eabihf --release \
-      --features="board_stm32f429 smoltcp_phy" \
+      --features="target-stm32f429 smoltcp-phy" \
       --example=$EXAMPLE \
     || exit 1
 
