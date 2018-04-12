@@ -1,8 +1,8 @@
 [package]
-categories = ["embedded", "no-std"]
-name = "stm32f4x9-eth"
+categories = ["embedded", "no-std", "hardware-support", "network-programming"]
+name = "stm32-eth"
 version = "0.0.0"
-keywords = ["ethernet", "network", "stm", "stm32", "stm32f4", "stm32f7"]
+keywords = ["ethernet", "network", "st", "stm32", "stm32f4", "stm32f7", "eth", "ethernet", "driver"]
 
 [dependencies]
 cortex-m = "0.4.3"
