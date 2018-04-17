@@ -1,13 +1,15 @@
+use core::ops::Deref;
 use smoltcp::Error;
 use smoltcp::time::Instant;
 use smoltcp::phy::{DeviceCapabilities, Device, RxToken, TxToken};
-use buffer::Buffer;
-use super::Eth;
+use Eth;
+use rx::{RxPacket, RxError};
+use tx::TxError;
 
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/m-labs/smoltcp)
-impl<'a> Device<'a> for Eth {
-    type RxToken = EthRxToken;
+impl<'a: 'rx + 'tx, 'rx, 'tx> Device<'a> for Eth<'rx, 'tx> {
+    type RxToken = EthRxToken<'a>;
     type TxToken = EthTxToken<'a>;
 
     fn capabilities(&self) -> DeviceCapabilities {
@@ -15,14 +17,16 @@ impl<'a> Device<'a> for Eth {
     }
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        match self.recv_next() {
-            Some(buffer) => {
-                let rx = EthRxToken { buffer };
-                let tx = EthTxToken { eth: self };
-                Some((rx, tx))
-            },
-            None => None,
-        }
+        let rx = match self.recv_next() {
+            Ok(packet) =>
+                EthRxToken { packet },
+            Err(_) =>
+                // Silently dropping errors, TODO: log?
+                return None,
+        };
+
+        let tx = EthTxToken { eth: self };
+        Some((rx, tx))
     }
 
     fn transmit(&'a mut self) -> Option<Self::TxToken> {
@@ -32,23 +36,22 @@ impl<'a> Device<'a> for Eth {
     }
 }
 
-/// Contains the [`Buffer`](../struct.Buffer.html) of a received packet
-pub struct EthRxToken {
-    buffer: Buffer,
+pub struct EthRxToken<'a> {
+    packet: RxPacket<'a>
 }
 
-impl RxToken for EthRxToken {
+impl<'a> RxToken for EthRxToken<'a> {
     fn consume<R, F>(self, _timestamp: Instant, f: F) -> Result<R, Error>
         where F: FnOnce(&[u8]) -> Result<R, Error>
     {
-        f(self.buffer.as_slice())
+        f(self.packet.deref())
     }
 }
 
 /// Just a reference to [`Eth`](../struct.Eth.html) for sending a
 /// packet later with [`consume()`](#method.consume)
 pub struct EthTxToken<'a> {
-    eth: &'a mut Eth,
+    eth: &'a mut Eth<'a, 'a>,
 }
 
 impl<'a> TxToken for EthTxToken<'a> {
@@ -57,10 +60,10 @@ impl<'a> TxToken for EthTxToken<'a> {
     fn consume<R, F>(self, _timestamp: Instant, len: usize, f: F) -> Result<R, Error>
         where F: FnOnce(&mut [u8]) -> Result<R, Error>
     {
-        let mut buffer = Buffer::new(len);
-        buffer.set_len(len);
-        let result = f(buffer.as_mut_slice());
-        self.eth.send(buffer);
-        result
+        match self.eth.send(len, f) {
+            Err(TxError::WouldBlock) =>
+                Err(Error::Exhausted),
+            Ok(r) => r,
+        }
     }
 }

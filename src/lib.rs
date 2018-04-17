@@ -1,9 +1,8 @@
-#![feature(alloc, allocator_api)]
 #![no_std]
 
 extern crate cortex_m_semihosting;
-extern crate alloc;
 extern crate volatile_register;
+extern crate aligned;
 
 #[cfg(feature = "target-stm32f429")]
 extern crate stm32f429 as board;
@@ -13,12 +12,15 @@ use board::*;
 pub mod phy;
 use self::phy::{Phy, PhyStatus};
 mod smi;
+mod ring;
+pub use ring::RingEntry;
+mod desc;
 mod rx;
-use self::rx::RxRing;
+use self::rx::{RxRing, RxRingEntry, RxPacket};
+pub use self::rx::RxError;
 mod tx;
-use self::tx::TxRing;
-mod buffer;
-pub use self::buffer::Buffer;
+use self::tx::{TxRing, TxRingEntry};
+pub use self::tx::TxError;
 mod setup;
 pub use self::setup::setup;
 
@@ -27,12 +29,9 @@ extern crate smoltcp;
 #[cfg(feature = "smoltcp-phy")]
 pub mod smoltcp_phy;
 
-/// The ethernet hardware drops the last bits of Rx/Tx DMA descriptors
-/// and buffers.
-pub const ALIGNMENT: usize = 0b1000;
-
 const PHY_ADDR: u8 = 0;
-const MTU: usize = 1518;
+/// From the datasheet: *VLAN Frame maxsize = 1522*
+const MTU: usize = 1522;
 
 #[allow(dead_code)]
 mod consts {
@@ -49,17 +48,17 @@ mod consts {
 }
 use self::consts::*;
 
-/// Ethernet driver for *STM32f429x* chips with a *LAN8742*
+/// Ethernet driver for *STM32* chips with a *LAN8742*
 /// [`Phy`](phy/struct.Phy.html) like they're found on STM Nucleo-144
 /// boards.
-pub struct Eth {
+pub struct Eth<'rx, 'tx> {
     eth_mac: ETHERNET_MAC,
     eth_dma: ETHERNET_DMA,
-    rx: RxRing,
-    tx: TxRing,
+    rx_ring: RxRing<'rx>,
+    tx_ring: TxRing<'tx>,
 }
 
-impl Eth {
+impl<'rx, 'tx> Eth<'rx, 'tx> {
     /// Initialize and start tx and rx DMA engines.
     ///
     /// You must call [`setup()`](fn.setup.html) before to initialize
@@ -68,18 +67,19 @@ impl Eth {
     /// Other than that, initializes and starts the Ethernet hardware
     /// so that you can [`send()`](#method.send) and
     /// [`recv_next()`](#method.recv_next).
-    pub fn new(eth_mac: ETHERNET_MAC, eth_dma: ETHERNET_DMA, rx_ring_len: usize) -> Self {
+    pub fn new(
+        eth_mac: ETHERNET_MAC, eth_dma: ETHERNET_DMA,
+        rx_buffer: &'rx mut [RxRingEntry], tx_buffer: &'tx mut [TxRingEntry]
+    ) -> Self {
         let mut eth = Eth {
             eth_mac,
             eth_dma,
-            rx: RxRing::new(MTU),
-            tx: TxRing::new(),
+            rx_ring: RxRing::new(rx_buffer),
+            tx_ring: TxRing::new(tx_buffer),
         };
         eth.init();
-        eth.tx.start(&eth.eth_dma);
-        if rx_ring_len > 0 {
-            eth.start_rx(rx_ring_len);
-        }
+        eth.rx_ring.start(&eth.eth_dma);
+        eth.tx_ring.start(&eth.eth_dma);
         eth
     }
 
@@ -201,41 +201,30 @@ impl Eth {
         self.get_phy().status()
     }
 
-    /// Start Rx DMA engine with a certain `ring_length`
-    pub fn start_rx(&mut self, ring_length: usize) -> &mut Self {
-        self.rx.start(ring_length, &self.eth_dma);
-
-        self
-    }
-
     /// Is Rx DMA currently running?
     ///
     /// It stops if the ring is full. Call `recv_next()` to free an
     /// entry and to demand poll from the hardware.
     pub fn rx_is_running(&self) -> bool {
-        self.rx.running_state(&self.eth_dma).is_running()
+        self.rx_ring.running_state(&self.eth_dma).is_running()
     }
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    pub fn recv_next(&mut self) -> Option<Buffer> {
-        self.rx.recv_next(&self.eth_dma)
+    pub fn recv_next<'a: 'b, 'b>(&'a mut self) -> Result<RxPacket<'b>, RxError> {
+        self.rx_ring.recv_next(&self.eth_dma)
+    }
+
+    /// Is Tx DMA currently running?
+    pub fn tx_is_running(&self) -> bool {
+        self.tx_ring.is_running(&self.eth_dma)
     }
 
     /// Send a packet
-    ///
-    /// Because DMA is async, ownership of `buffer` is taken.
-    pub fn send(&mut self, buffer: Buffer) {
-        self.tx.send(buffer);
-
-        if ! self.tx.is_running(&self.eth_dma) {
-            self.tx.demand_poll(&self.eth_dma);
-        }
-    }
-
-    /// Get Tx DMA queue length (amount of unsent packets)
-    pub fn queue_len(&self) -> usize {
-        self.tx.queue_len()
+    pub fn send<F: FnOnce(&mut [u8]) -> R, R>(&mut self, length: usize, f: F) -> Result<R, TxError> {
+        let result = self.tx_ring.send(length, f);
+        self.tx_ring.demand_poll(&self.eth_dma);
+        result
     }
 }
 

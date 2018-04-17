@@ -1,10 +1,8 @@
-use alloc::vec_deque::VecDeque;
-use alloc::allocator::{Alloc, Layout};
-use volatile_register::RW;
-use alloc::heap::Heap;
+use core::ops::{Deref, DerefMut};
 use board::ETHERNET_DMA;
 
-use super::buffer::Buffer;
+use desc::Descriptor;
+use ring::{RingEntry, RingDescriptor};
 
 /// Owned by DMA engine
 const TXDESC_0_OWN: u32 = 1 << 31;
@@ -24,220 +22,181 @@ const TXDESC_0_ES: u32 = 1 << 15;
 const TXDESC_1_TBS_SHIFT: usize = 0;
 const TXDESC_1_TBS_MASK: u32 = 0x0fff << TXDESC_1_TBS_SHIFT;
 
+#[derive(Debug, PartialEq)]
+pub enum TxError {
+    /// Ring buffer is full
+    WouldBlock,
+}
 
 #[repr(C)]
-struct TxDescriptor {
-    tdesc: &'static mut [RW<u32>; 4],
+#[derive(Clone)]
+pub struct TxDescriptor {
+    desc: Descriptor
 }
 
 impl Default for TxDescriptor {
     fn default() -> Self {
-        let mut this = Self::new();
+        let mut desc = Descriptor::default();
         // TODO
-        this.write(0,
-                   TXDESC_0_TCH | TXDESC_0_IC |
-                   TXDESC_0_FS | TXDESC_0_LS);
-        this.write(1, 0);
-        this.write(2, 0);
-        this.write(3, 0);
-        this
-    }
-}
-
-impl Drop for TxDescriptor {
-    fn drop(&mut self) {
         unsafe {
-            Heap.dealloc(self.tdesc.as_mut_ptr() as *mut u8, Self::memory_layout())
+            desc.write(0,
+                       TXDESC_0_TCH | TXDESC_0_IC |
+                       TXDESC_0_FS | TXDESC_0_LS);
         }
+        TxDescriptor { desc }
     }
 }
 
 impl TxDescriptor {
-    fn memory_layout() -> Layout {
-        Layout::from_size_align(4 * 4, super::ALIGNMENT)
-            .unwrap()
+    /// Is owned by the DMA engine?
+    fn is_owned(&self) -> bool {
+        (self.desc.read(0) & TXDESC_0_OWN) == TXDESC_0_OWN
     }
 
-    fn new() -> Self {
-        let mem = unsafe {
-            Heap.alloc(Self::memory_layout())
-        }.expect("alloc with memory_layout") as *mut [u32; 4];
+    /// Pass ownership to the DMA engine
+    fn set_owned(&mut self) {
+        unsafe { self.desc.modify(0, |w| w | TXDESC_0_OWN); }
+    }
 
-        TxDescriptor {
-            tdesc: unsafe { &mut *(mem as *mut [RW<u32>; 4]) },
+    #[allow(unused)]
+    fn has_error(&self) -> bool {
+        (self.desc.read(0) & TXDESC_0_ES) == TXDESC_0_ES
+    }
+
+    fn set_buffer1(&mut self, buffer: *const u8) {
+        unsafe {
+            self.desc.write(2, buffer as u32);
         }
     }
 
-    fn as_raw_ptr(&self) -> *const u8 {
-        self.tdesc.as_ptr() as *const u8
-    }
-
-    fn read(&self, i: usize) -> u32 {
-        self.tdesc[i].read()
-    }
-
-    fn write(&mut self, i: usize, data: u32) {
-        unsafe { self.tdesc[i].write(data) }
-    }
-
-    fn modify<F>(&mut self, i: usize, f: F)
-        where F: (FnOnce(u32) -> u32) {
-
-        unsafe { self.tdesc[i].modify(f) }
-    }
-
-    /// Is owned by the DMA engine?
-    pub fn is_owned(&self) -> bool {
-        (self.read(0) & TXDESC_0_OWN) == TXDESC_0_OWN
-    }
-
-    pub fn set_owned(&mut self) {
-        self.modify(0, |w| w | TXDESC_0_OWN);
-    }
-
-    pub fn has_error(&self) -> bool {
-        (self.read(0) & TXDESC_0_ES) == TXDESC_0_ES
-    }
-
-    /// Descriptor contains first buffer of frame
-    pub fn set_first(&mut self) {
-        self.modify(0, |w| w | TXDESC_0_FS);
-    }
-
-    /// Descriptor contains last buffers of frame
-    pub fn set_last(&mut self) {
-        self.modify(0, |w| w | TXDESC_0_LS);
-    }
-
-    pub fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
-        self.write(2, buffer as u32);
-        self.modify(1, |w| {
-            (w & !TXDESC_1_TBS_MASK) |
-            ((len as u32) << TXDESC_1_TBS_SHIFT)
-        });
+    fn set_buffer1_len(&mut self, len: usize) {
+        unsafe {
+            self.desc.modify(1, |w| {
+                (w & !TXDESC_1_TBS_MASK) |
+                ((len as u32) << TXDESC_1_TBS_SHIFT)
+            });
+        }
     }
 
     // points to next descriptor (RCH)
-    pub fn set_buffer2(&mut self, buffer: *const u8) {
-        self.write(3, buffer as u32);
+    fn set_buffer2(&mut self, buffer: *const u8) {
+        unsafe { self.desc.write(3, buffer as u32); }
     }
 
-    pub fn set_end_of_ring(&mut self) {
-        self.modify(1, |w| w | TXDESC_0_TER);
+    fn set_end_of_ring(&mut self) {
+        unsafe { self.desc.modify(0, |w| w | TXDESC_0_TER); }
     }
 }
 
-struct TxRingEntry {
-    desc: TxDescriptor,
-    buffer: Option<Buffer>,
+pub type TxRingEntry = RingEntry<TxDescriptor>;
+
+impl RingDescriptor for TxDescriptor {
+    fn setup(&mut self, buffer: *const u8, _len: usize, next: Option<&Self>) {
+        self.set_buffer1(buffer);
+        match next {
+            Some(next) =>
+                self.set_buffer2(&next.desc as *const Descriptor as *const u8),
+            None => {
+                self.set_buffer2(0 as *const u8);
+                self.set_end_of_ring();
+            },
+        };
+    }
 }
 
 impl TxRingEntry {
-    /// Allocate a new, unused (without a `buffer`) entry.
-    pub fn new() -> Self {
-        let desc = TxDescriptor::default();
-        TxRingEntry {
-            desc,
-            buffer: None,
+    fn prepare_packet<'a>(&'a mut self, length: usize) -> Option<TxPacket<'a>> {
+        assert!(length <= self.as_slice().len());
+
+        if ! self.desc().is_owned() {
+            self.desc_mut().set_buffer1_len(length);
+            Some(TxPacket { entry: self, length })
+        } else {
+            None
         }
     }
+}
 
-    /// Mark to be available for sending
-    ///
-    /// * Set this entry's `buffer` by taking ownership because DMA is
-    ///   asynchronous.
-    /// * Then set pointer to the next entry in the chain.
-    /// * Then mark as owned by the hardware.
-    pub fn send(&mut self, buffer: Buffer, next: Option<&TxRingEntry>) {
-        self.desc.set_buffer1(buffer.as_ptr(), buffer.len());
-        self.buffer = Some(buffer);
+pub struct TxPacket<'a> {
+    entry: &'a mut TxRingEntry,
+    length: usize,
+}
 
-        match next {
-            Some(next_buffer) => {
-                let ptr = next_buffer.desc.as_raw_ptr();
-                self.desc.set_buffer2(ptr);
-            },
-            // For the last in the ring
-            None => {
-                self.desc.set_buffer2(0 as *const u8);
-                self.desc.set_end_of_ring();
-            },
-        }
+impl<'a> Deref for TxPacket<'a> {
+    type Target = [u8];
 
-        self.desc.set_owned();
+    fn deref(&self) -> &Self::Target {
+        &self.entry.as_slice()[0..self.length]
+    }
+}
+
+impl<'a> DerefMut for TxPacket<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.entry.as_mut_slice()[0..self.length]
+    }
+}
+
+impl<'a> TxPacket<'a> {
+    // Pass to DMA engine
+    pub fn send(self) {
+        self.entry.desc_mut().set_owned();
     }
 }
 
 /// Tx DMA state
-pub struct TxRing {
-    entries: VecDeque<TxRingEntry>,
+pub struct TxRing<'a> {
+    entries: &'a mut [TxRingEntry],
+    next_entry: usize,
 }
 
-impl TxRing {
+impl<'a> TxRing<'a> {
     /// Allocate
     ///
     /// `start()` will be needed before `send()`
-    pub fn new() -> Self {
-        let mut entries = VecDeque::with_capacity(2);
-        entries.push_back(TxRingEntry::new());
-
+    pub fn new(entries: &'a mut [TxRingEntry]) -> Self {
         TxRing {
             entries,
+            next_entry: 0,
         }
     }
 
     /// Start the Tx DMA engine
-    pub fn start(&self, eth_dma: &ETHERNET_DMA) {
-        let ring_ptr = self.entries[0].desc.as_raw_ptr();
+    pub fn start(&mut self, eth_dma: &ETHERNET_DMA) {
+        // Setup ring
+        {
+            let mut previous: Option<&mut TxRingEntry> = None;
+            for entry in self.entries.iter_mut() {
+                previous.map(|previous| previous.setup(Some(entry)));
+                previous = Some(entry);
+            }
+            previous.map(|previous| previous.setup(None));
+        }
+        
+        let ring_ptr = self.entries[0].desc() as *const TxDescriptor;
         // Register TxDescriptor
         eth_dma.dmatdlar.write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
 
         // Start transmission
         eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
-
-        self.demand_poll(eth_dma);
     }
 
-    /// Send data
-    ///
-    /// Because DMA is async, ownership of `buffer` is taken so that
-    /// it can be freed by `flush()` once the Ethernet HW has sent out
-    /// the packet.
-    pub fn send(&mut self, buffer: Buffer) {
-        self.flush();
+    pub fn send<F: FnOnce(&mut [u8]) -> R, R>(&mut self, length: usize, f: F) -> Result<R, TxError> {
+        let entries_len = self.entries.len();
 
-        let i = self.entries.len() - 1;
-        let next_entry = {
-            let mut entry = &mut self.entries[i];
-            let next_entry = TxRingEntry::new();
-            entry.send(buffer, Some(&next_entry));
-            next_entry
-        };
-        self.entries.push_back(next_entry);
-    }
+        match self.entries[self.next_entry].prepare_packet(length) {
+            Some(mut pkt) => {
+                let r = f(pkt.deref_mut());
+                pkt.send();
 
-    /// Flushes entries that have been processed by the Ethernet DMA
-    /// engine.
-    pub fn flush(&mut self) -> usize {
-        fn is_done(entry: &TxRingEntry) -> bool {
-            // returned by DMA engine?
-            (! entry.desc.is_owned()) &&
-            // had a buffer associated (was used)
-            entry.buffer.is_some()
+                self.next_entry += 1;
+                if self.next_entry >= entries_len {
+                    self.next_entry = 0;
+                }
+                Ok(r)
+            }
+            None =>
+                Err(TxError::WouldBlock)
         }
-
-        let mut flushed = 0;
-        while is_done(&self.entries[0]) {
-            self.entries.pop_front();
-            flushed += 1;
-        }
-        flushed
-    }
-
-    /// Get the amount of entries that are not yet sent by the
-    /// hardware.
-    pub fn queue_len(&self) -> usize {
-        self.entries.len()
     }
 
     /// Demand that the DMA engine polls the current `TxDescriptor`
@@ -248,6 +207,45 @@ impl TxRing {
 
     /// Is the Tx DMA engine running?
     pub fn is_running(&self, eth_dma: &ETHERNET_DMA) -> bool {
-        eth_dma.dmasr.read().ts().bit()
+        self.running_state(&eth_dma).is_running()
+    }
+
+    fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
+        match eth_dma.dmasr.read().tps().bits() {
+            // Reset or Stop Transmit Command issued
+            0b000 => RunningState::Stopped,
+            // Fetching transmit transfer descriptor
+            0b001 => RunningState::Running,
+            // Waiting for status
+            0b010 => RunningState::Running,
+            // Reading Data from host memory buffer and queuing it to transmit buffer
+            0b011 => RunningState::Running,
+            0b100 | 0b101 => RunningState::Reserved,
+            // Transmit descriptor unavailable
+            0b110 => RunningState::Suspended,
+            _ => RunningState::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum RunningState {
+    /// Reset or Stop Transmit Command issued
+    Stopped,
+    /// Fetching transmit transfer descriptor;
+    /// Waiting for status;
+    /// Reading Data from host memory buffer and queuing it to transmit buffer
+    Running,
+    /// Reserved for future use
+    Reserved,
+    /// Transmit descriptor unavailable
+    Suspended,
+    /// Invalid value
+    Unknown,
+}
+
+impl RunningState {
+    pub fn is_running(&self) -> bool {
+        *self == RunningState::Running
     }
 }

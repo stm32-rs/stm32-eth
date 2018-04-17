@@ -11,7 +11,7 @@ extern crate stm32f429 as board;
 extern crate alloc_cortex_m;
 #[macro_use(vec)]
 extern crate alloc;
-extern crate stm32f4x9_eth as eth;
+extern crate stm32_eth as eth;
 extern crate smoltcp;
 extern crate log;
 

@@ -1,26 +1,24 @@
 #![no_std]
 #![feature(used)]
-#![feature(alloc, global_allocator, allocator_api, box_heap)]
 
 extern crate cortex_m;
 extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
 #[macro_use(exception, interrupt)]
 extern crate stm32f429 as board;
-extern crate alloc_cortex_m;
-extern crate stm32f4x9_eth as eth;
-
-use cortex_m::asm;
-use board::{Peripherals, CorePeripherals, SYST};
+extern crate stm32_eth as eth;
+extern crate panic_itm;
 
 use core::cell::RefCell;
+
+use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use alloc_cortex_m::CortexMHeap;
+use board::{Peripherals, CorePeripherals, SYST};
 
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
-use eth::Eth;
+use eth::{Eth, RingEntry, TxError};
 
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
@@ -28,28 +26,11 @@ const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
 const ETH_TYPE: [u8; 2] = [0x80, 0x00];
 
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
+static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
-#[global_allocator]
-pub static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
-
-// These symbols come from a linker script
-extern "C" {
-    static mut _sheap: u32;
-    static mut _eheap: u32;
-}
-
-/// Initialize the heap allocator `ALLOCATOR`
-pub fn init_alloc() -> usize {
-    let start = unsafe { &mut _sheap as *mut u32 as usize };
-    let end = unsafe { &mut _eheap as *mut u32 as usize };
-    unsafe { ALLOCATOR.init(start, end - start) }
-    end - start
-}
 
 fn main() {
-    let heap_size = init_alloc();
     let mut stdout = hio::hstdout().unwrap();
-    writeln!(stdout, "Heap: {} bytes", heap_size).unwrap();
 
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
@@ -58,7 +39,18 @@ fn main() {
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
     eth::setup(&p);
-    let mut eth = Eth::new(p.ETHERNET_MAC, p.ETHERNET_DMA, 32);
+    let mut rx_ring = [
+        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
+        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
+    ];
+    let mut tx_ring = [
+        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
+        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
+    ];
+    let mut eth = Eth::new(
+        p.ETHERNET_MAC, p.ETHERNET_DMA,
+        &mut rx_ring[..], &mut tx_ring[..]
+    );
     eth.enable_interrupt(&mut cp.NVIC);
 
     // Main loop
@@ -94,8 +86,7 @@ fn main() {
 
         // Link change detection
         let status = eth.status();
-        if last_status
-            .map(|last_status| last_status != status)
+        if last_status.map(|last_status| last_status != status)
             .unwrap_or(true)
         {
             if ! status.link_detected() {
@@ -120,39 +111,61 @@ fn main() {
         }
 
         // handle rx packet
-        let mut recvd = 0usize;
-        while let Some(pkt) = eth.recv_next() {
-            rx_bytes += pkt.len();
-            rx_pkts += 1;
+        let recvd = {
+            // let mut eth_ = eth.borrow_mut();
+            let mut recvd = 0usize;
+            while let Ok(pkt) = eth.recv_next() {
+                rx_bytes += pkt.len();
+                rx_pkts += 1;
+                pkt.free();
 
-            recvd += 1;
-            if recvd > 16 {
-                break;
+                recvd += 1;
+                if recvd > 16 {
+                    // Break arbitrarily to process tx eventually
+                    break;
+                }
             }
+            recvd
+        };
+        if ! eth.rx_is_running() {
+            writeln!(stdout, "RX stopped");
         }
 
         // fill tx queue
         let mut sent = 0usize;
         const SIZE: usize = 1500;
         if status.link_detected() {
-            while eth.queue_len() < 64 && sent < 16 {
-                let mut buf = eth::Buffer::new(SIZE);
-                buf.set_len(SIZE);
-                buf.as_mut_slice()[0..6].copy_from_slice(&DST_MAC);
-                buf.as_mut_slice()[6..12].copy_from_slice(&SRC_MAC);
-                buf.as_mut_slice()[12..14].copy_from_slice(&ETH_TYPE);
-                eth.send(buf);
+            'egress: loop {
+                let r = eth.send(SIZE, |buf| {
+                    buf[0..6].copy_from_slice(&DST_MAC);
+                    buf[6..12].copy_from_slice(&SRC_MAC);
+                    buf[12..14].copy_from_slice(&ETH_TYPE);
+                });
 
-                tx_bytes += SIZE;
-                tx_pkts += 1;
-                sent += 1;
+                match r {
+                    Ok(()) => {
+                        tx_bytes += SIZE;
+                        tx_pkts += 1;
+                        sent += 1;
+                    }
+                    Err(TxError::WouldBlock) => break 'egress,
+                    Err(e) => writeln!(stdout, "TX error: {:?}", e).unwrap(),
+                }
             }
         }
 
-        if recvd == 0 && sent == 0 {
-            // wait for next interrupt
-            asm::wfi();
-        }
+        cortex_m::interrupt::free(|cs| {
+            let mut eth_pending =
+                ETH_PENDING.borrow(cs)
+                .borrow_mut();
+            if ! *eth_pending {
+                asm::wfi();
+            }
+        });
+        // if recvd == 0 && sent == 0 {
+        //     // wait for next interrupt
+        //     asm::wfi();
+        // }
     }
 }
 
@@ -186,6 +199,13 @@ exception!(SYS_TICK, systick_interrupt_handler);
 
 fn eth_interrupt_handler() {
     let p = unsafe { Peripherals::steal() };
+
+    cortex_m::interrupt::free(|cs| {
+        let mut eth_pending =
+            ETH_PENDING.borrow(cs)
+            .borrow_mut();
+        *eth_pending = true;
+    });
 
     // Clear interrupt flags
     eth::eth_interrupt_handler(&p.ETHERNET_DMA);

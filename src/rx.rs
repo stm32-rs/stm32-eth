@@ -1,15 +1,16 @@
-use core::mem;
+use core::ops::Deref;
 use core::default::Default;
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
-use alloc::Vec;
-use alloc::allocator::{Alloc, Layout};
-use alloc::heap::Heap;
 use board::ETHERNET_DMA;
-use volatile_register::RW;
 
-use super::buffer::Buffer;
+use desc::Descriptor;
+use ring::{RingEntry, RingDescriptor};
 
+#[derive(Debug, PartialEq)]
+pub enum RxError {
+    WouldBlock,
+    Truncated,
+    DmaError,
+}
 
 /// Owned by DMA engine
 const RXDESC_0_OWN: u32 = 1 << 31;
@@ -31,216 +32,163 @@ const RXDESC_1_RCH: u32 = 1 << 14;
 const RXDESC_1_RER: u32 = 1 << 15;
 
 #[repr(C)]
-struct RxDescriptor {
-    rdesc: &'static mut [RW<u32>; 4],
+#[derive(Clone)]
+pub struct RxDescriptor {
+    desc: Descriptor,
 }
 
 impl Default for RxDescriptor {
     fn default() -> Self {
-        let mut this = Self::new();
-        this.write(0, 0);
-        this.write(1, RXDESC_1_RCH);
-        this.write(2, 0);
-        this.write(3, 0);
-        this
-    }
-}
-
-impl Drop for RxDescriptor {
-    fn drop(&mut self) {
-        unsafe {
-            Heap.dealloc(self.rdesc.as_mut_ptr() as *mut u8, Self::memory_layout())
-        }
+        let mut desc = Descriptor::default();
+        unsafe { desc.write(1, RXDESC_1_RCH); }
+        RxDescriptor { desc }
     }
 }
 
 impl RxDescriptor {
-    fn memory_layout() -> Layout {
-        Layout::from_size_align(4 * 4, super::ALIGNMENT)
-            .unwrap()
-    }
-
-    fn new() -> Self {
-        let mem = unsafe {
-            Heap.alloc(Self::memory_layout())
-        }.expect("alloc with memory_layout") as *mut [u32; 4];
-
-        RxDescriptor {
-            rdesc: unsafe { &mut *(mem as *mut [RW<u32>; 4]) },
-        }
-    }
-
-    fn as_raw_ptr(&self) -> *const u8 {
-        self.rdesc.as_ptr() as *const u8
-    }
-
-    fn read(&self, i: usize) -> u32 {
-        self.rdesc[i].read()
-    }
-
-    fn write(&mut self, i: usize, data: u32) {
-        unsafe { self.rdesc[i].write(data) }
-    }
-
-    fn modify<F>(&mut self, i: usize, f: F)
-        where F: (FnOnce(u32) -> u32) {
-
-        unsafe { self.rdesc[i].modify(f) }
-    }
-
     /// Is owned by the DMA engine?
-    pub fn is_owned(&self) -> bool {
-        (self.read(0) & RXDESC_0_OWN) == RXDESC_0_OWN
+    fn is_owned(&self) -> bool {
+        (self.desc.read(0) & RXDESC_0_OWN) == RXDESC_0_OWN
     }
 
-    pub fn set_owned(&mut self) {
-        self.modify(0, |w| w | RXDESC_0_OWN);
+    /// Pass ownership to the DMA engine
+    fn set_owned(&mut self) {
+        unsafe { self.desc.modify(0, |w| w | RXDESC_0_OWN); }
     }
 
-    pub fn has_error(&self) -> bool {
-        (self.read(0) & RXDESC_0_ES) == RXDESC_0_ES
+    fn has_error(&self) -> bool {
+        (self.desc.read(0) & RXDESC_0_ES) == RXDESC_0_ES
     }
 
     /// Descriptor contains first buffer of frame
-    pub fn is_first(&self) -> bool {
-        (self.read(0) & RXDESC_0_FS) == RXDESC_0_FS
+    fn is_first(&self) -> bool {
+        (self.desc.read(0) & RXDESC_0_FS) == RXDESC_0_FS
     }
 
     /// Descriptor contains last buffers of frame
-    pub fn is_last(&self) -> bool {
-        (self.read(0) & RXDESC_0_LS) == RXDESC_0_LS
+    fn is_last(&self) -> bool {
+        (self.desc.read(0) & RXDESC_0_LS) == RXDESC_0_LS
     }
 
-    pub fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
-        self.write(2, buffer as u32);
-        self.modify(1, |w| {
-            (w & !RXDESC_1_RBS_MASK) |
-            ((len as u32) << RXDESC_1_RBS_SHIFT)
-        });
+    fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
+        unsafe {
+            self.desc.write(2, buffer as u32);
+            self.desc.modify(1, |w| {
+                (w & !RXDESC_1_RBS_MASK) |
+                ((len as u32) << RXDESC_1_RBS_SHIFT)
+            });
+        }
     }
 
     // points to next descriptor (RCH)
-    pub fn set_buffer2(&mut self, buffer: *const u8) {
-        self.write(3, buffer as u32);
+    fn set_buffer2(&mut self, buffer: *const u8) {
+        unsafe { self.desc.write(3, buffer as u32); }
     }
 
-    pub fn set_end_of_ring(&mut self) {
-        self.modify(1, |w| w | RXDESC_1_RER);
+    fn set_end_of_ring(&mut self) {
+        unsafe { self.desc.modify(1, |w| w | RXDESC_1_RER); }
+    }
+
+    fn get_frame_len(&self) -> usize {
+        ((self.desc.read(0) >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize
     }
 }
 
-struct RxRingEntry {
-    desc: RxDescriptor,
-    buffer: Buffer,
+pub type RxRingEntry = RingEntry<RxDescriptor>;
+
+impl RingDescriptor for RxDescriptor {
+    fn setup(&mut self, buffer: *const u8, len: usize, next: Option<&Self>) {
+        self.set_buffer1(buffer, len);
+        match next {
+            Some(next) =>
+                self.set_buffer2(&next.desc as *const Descriptor as *const u8),
+            None => {
+                self.set_buffer2(0 as *const u8);
+                self.set_end_of_ring();
+            },
+        };
+        self.set_owned();
+    }
 }
 
 impl RxRingEntry {
-    fn new(capacity: usize) -> Self {
-        let mut desc = RxDescriptor::default();
-        let buffer = Buffer::new(capacity);
-        desc.set_buffer1(buffer.as_ptr(), buffer.capacity());
-        desc.set_owned();
-        RxRingEntry {
-            desc: desc,
-            buffer,
-        }
-    }
-
-    // Used to chain all buffers in the ring on start
-    pub fn set_next_buffer(&mut self, next: Option<&RxRingEntry>) {
-        match next {
-            Some(next_buffer) => {
-                let ptr = next_buffer.desc.as_raw_ptr();
-                self.desc.set_buffer2(ptr);
+    fn take_received(&mut self) -> Result<RxPacket, RxError> {
+        match self.desc().is_owned() {
+            true =>
+                Err(RxError::WouldBlock),
+            false if self.desc().has_error() => {
+                self.desc_mut().set_owned();
+                Err(RxError::DmaError)
             },
-            // For the last in the ring
-            None => {
-                self.desc.set_buffer2(0 as *const u8);
-                self.desc.set_end_of_ring();
-            },
-        }
-    }
-
-    fn take_received(&mut self) -> Option<Buffer> {
-        match self.desc.is_owned() {
-            true => None,
-            false if self.desc.has_error() => {
-                let mut stderr = hio::hstderr().unwrap();
-                writeln!(stderr, "Ethernet error: skipping error frame").unwrap();
-                self.desc.set_owned();
-                None
-            },
-            false if self.desc.is_first() && self.desc.is_last() => {
-                // Switch old with new
-                let new_buffer = Buffer::new(self.buffer.capacity());
-                let mut pkt_buffer = mem::replace(&mut self.buffer, new_buffer);
-                // Truncate received pkt to reported length
-                let frame_length = ((self.desc.read(0) >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize;
-                pkt_buffer.set_len(frame_length);
+            false if self.desc().is_first() && self.desc().is_last() => {
+                let frame_len = self.desc().get_frame_len();
                 // TODO: obtain ethernet frame type (RDESC_1_FT)
 
-                self.desc.set_buffer1(self.buffer.as_ptr(), self.buffer.capacity());
-                self.desc.set_owned();
-
-                Some(pkt_buffer)
+                let pkt = RxPacket { entry: self, length: frame_len };
+                Ok(pkt)
             },
             false => {
-                let mut stderr = hio::hstderr().unwrap();
-                writeln!(stderr, "Ethernet error: skipping truncated frame bufs (FS={:?} LS={:?})",
-                         self.desc.is_first(), self.desc.is_last()).unwrap();
-                self.desc.set_owned();
-                None
+                self.desc_mut().set_owned();
+                Err(RxError::Truncated)
             },
         }
+    }
+}
+
+pub struct RxPacket<'a> {
+    entry: &'a mut RxRingEntry,
+    length: usize,
+}
+
+impl<'a> Deref for RxPacket<'a> {
+    type Target = [u8];
+    
+    fn deref(&self) -> &Self::Target {
+        &self.entry.as_slice()[0..self.length]
+    }
+}
+
+impl<'a> Drop for RxPacket<'a> {
+    fn drop(&mut self) {
+        self.entry.desc_mut().set_owned();
+    }
+}
+
+impl<'a> RxPacket<'a> {
+    // Pass back to DMA engine
+    pub fn free(self) {
+        drop(self)
     }
 }
 
 /// Rx DMA state
-pub struct RxRing {
-    buffer_size: usize,
-    buffers: Vec<RxRingEntry>,
+pub struct RxRing<'a> {
+    entries: &'a mut [RxRingEntry],
     next_entry: usize,
 }
 
-impl RxRing {
+impl<'a> RxRing<'a> {
     /// Allocate
-    pub fn new(buffer_size: usize) -> Self {
+    pub fn new(entries: &'a mut [RxRingEntry]) -> Self {
         RxRing {
-            buffer_size,
-            buffers: Vec::new(),
+            entries,
             next_entry: 0,
         }
     }
 
     /// Setup the DMA engine (**required**)
-    pub fn start(&mut self, ring_length: usize, eth_dma: &ETHERNET_DMA) {
-        let mut buffers = mem::replace(&mut self.buffers, Vec::with_capacity(ring_length));
-        // Grow ring if necessary
-        let additional = ring_length.saturating_sub(buffers.len());
-        if additional > 0 {
-            self.buffers.reserve(additional);
-            while buffers.len() < ring_length {
-                let buffer = RxRingEntry::new(self.buffer_size);
-                buffers.push(buffer);
+    pub fn start(&mut self, eth_dma: &ETHERNET_DMA) {
+        // Setup ring
+        {
+            let mut previous: Option<&mut RxRingEntry> = None;
+            for entry in self.entries.iter_mut() {
+                previous.map(|previous| previous.setup(Some(entry)));
+                previous = Some(entry);
             }
+            previous.map(|previous| previous.setup(None));
         }
-
-        // Setup ring from `buffers` back into `self.buffers`
-        let mut previous: Option<RxRingEntry> = None;
-        for buffer in buffers.into_iter() {
-            previous.take().map(|mut previous| {
-                previous.set_next_buffer(Some(&buffer));
-                self.buffers.push(previous);
-            });
-            previous = Some(buffer);
-        }
-        previous.map(|mut previous| {
-            previous.set_next_buffer(None);
-            self.buffers.push(previous);
-        });
-
         self.next_entry = 0;
-        let ring_ptr = self.buffers[0].desc.as_raw_ptr();
+        let ring_ptr = self.entries[0].desc() as *const RxDescriptor;
         // Register RxDescriptor
         eth_dma.dmardlar.write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
 
@@ -277,20 +225,22 @@ impl RxRing {
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Option<Buffer> {
-        let result = self.buffers[self.next_entry]
-            .take_received()
-            .map(|pkt| {
-                self.next_entry += 1;
-                if self.next_entry >= self.buffers.len() {
-                    self.next_entry = 0;
-                }
-
-                pkt
-            });
-
+    // TODO: 'b or 'a?
+    pub fn recv_next<'b: 'c, 'c>(&'b mut self, eth_dma: &ETHERNET_DMA) -> Result<RxPacket<'c>, RxError> {
         if ! self.running_state(eth_dma).is_running() {
             self.demand_poll(eth_dma);
+        }
+
+        let entries_len = self.entries.len();
+        let result = self.entries[self.next_entry].take_received();
+        match result {
+            Err(RxError::WouldBlock) => {}
+            _ => {
+                self.next_entry += 1;
+                if self.next_entry >= entries_len {
+                    self.next_entry = 0;
+                }
+            }
         }
 
         result
