@@ -5,6 +5,7 @@ use board::ETHERNET_DMA;
 use desc::Descriptor;
 use ring::{RingEntry, RingDescriptor};
 
+
 #[derive(Debug, PartialEq)]
 pub enum RxError {
     WouldBlock,
