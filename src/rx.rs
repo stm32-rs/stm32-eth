@@ -233,7 +233,7 @@ impl<'a> RxRing<'a> {
         }
 
         let entries_len = self.entries.len();
-        let result = self.entries[0].take_received();
+        let result = self.entries[self.next_entry].take_received();
         match result {
             Err(RxError::WouldBlock) => {}
             _ => {
