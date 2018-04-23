@@ -110,6 +110,13 @@ fn main() {
             last_status = Some(status);
         }
 
+        cortex_m::interrupt::free(|cs| {
+            let mut eth_pending =
+                ETH_PENDING.borrow(cs)
+                .borrow_mut();
+            *eth_pending = false;
+        });
+
         // handle rx packet
         let recvd = {
             // let mut eth_ = eth.borrow_mut();

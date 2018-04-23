@@ -29,7 +29,7 @@ extern crate smoltcp;
 #[cfg(feature = "smoltcp-phy")]
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
-pub use smoltcp_phy::EthPhy;
+pub use smoltcp_phy::{EthRxToken, EthTxToken};
 
 const PHY_ADDR: u8 = 0;
 /// From the datasheet: *VLAN Frame maxsize = 1522*
