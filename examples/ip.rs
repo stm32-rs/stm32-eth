@@ -109,7 +109,6 @@ fn main() {
             *TIME.borrow(cs)
                 .borrow()
         });
-        writeln!(stdout, "L {}", time);
         cortex_m::interrupt::free(|cs| {
             let mut eth_pending =
                 ETH_PENDING.borrow(cs)
@@ -139,16 +138,16 @@ fn main() {
                 }
             },
             Ok(false) => {
-                writeln!(stdout, "Sleep at {}", time);
+                // Sleep if no ethernet work is pending
                 cortex_m::interrupt::free(|cs| {
                     let eth_pending =
                         ETH_PENDING.borrow(cs)
                         .borrow_mut();
                     if ! *eth_pending {
                         asm::wfi();
+                        // Awaken by interrupt
                     }
                 });
-                writeln!(stdout, "WAKE");
             },
             Err(e) =>
                 // Ignore malformed packets

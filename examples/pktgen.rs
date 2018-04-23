@@ -118,8 +118,7 @@ fn main() {
         });
 
         // handle rx packet
-        let recvd = {
-            // let mut eth_ = eth.borrow_mut();
+        {
             let mut recvd = 0usize;
             while let Ok(pkt) = eth.recv_next() {
                 rx_bytes += pkt.len();
@@ -132,14 +131,12 @@ fn main() {
                     break;
                 }
             }
-            recvd
-        };
+        }
         if ! eth.rx_is_running() {
-            writeln!(stdout, "RX stopped");
+            writeln!(stdout, "RX stopped").unwrap();
         }
 
         // fill tx queue
-        let mut sent = 0usize;
         const SIZE: usize = 1500;
         if status.link_detected() {
             'egress: loop {
@@ -153,26 +150,20 @@ fn main() {
                     Ok(()) => {
                         tx_bytes += SIZE;
                         tx_pkts += 1;
-                        sent += 1;
                     }
                     Err(TxError::WouldBlock) => break 'egress,
-                    Err(e) => writeln!(stdout, "TX error: {:?}", e).unwrap(),
                 }
             }
         }
 
         cortex_m::interrupt::free(|cs| {
-            let mut eth_pending =
+            let eth_pending =
                 ETH_PENDING.borrow(cs)
                 .borrow_mut();
             if ! *eth_pending {
                 asm::wfi();
             }
         });
-        // if recvd == 0 && sent == 0 {
-        //     // wait for next interrupt
-        //     asm::wfi();
-        // }
     }
 }
 
