@@ -226,13 +226,14 @@ impl<'a> RxRing<'a> {
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
     // TODO: 'b or 'a?
-    pub fn recv_next<'b: 'c, 'c>(&'b mut self, eth_dma: &ETHERNET_DMA) -> Result<RxPacket<'c>, RxError> {
+    pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Result<RxPacket, RxError>
+    {
         if ! self.running_state(eth_dma).is_running() {
             self.demand_poll(eth_dma);
         }
 
         let entries_len = self.entries.len();
-        let result = self.entries[self.next_entry].take_received();
+        let result = self.entries[0].take_received();
         match result {
             Err(RxError::WouldBlock) => {}
             _ => {

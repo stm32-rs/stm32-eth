@@ -27,7 +27,9 @@ pub use self::setup::setup;
 #[cfg(feature = "smoltcp-phy")]
 extern crate smoltcp;
 #[cfg(feature = "smoltcp-phy")]
-pub mod smoltcp_phy;
+mod smoltcp_phy;
+#[cfg(feature = "smoltcp-phy")]
+pub use smoltcp_phy::EthPhy;
 
 const PHY_ADDR: u8 = 0;
 /// From the datasheet: *VLAN Frame maxsize = 1522*
@@ -211,7 +213,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    pub fn recv_next<'a: 'b, 'b>(&'a mut self) -> Result<RxPacket<'b>, RxError> {
+    pub fn recv_next(&mut self) -> Result<RxPacket, RxError> {
         self.rx_ring.recv_next(&self.eth_dma)
     }
 
