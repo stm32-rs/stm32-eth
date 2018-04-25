@@ -24,13 +24,6 @@ pub use self::tx::TxError;
 mod setup;
 pub use self::setup::setup;
 
-#[cfg(feature = "smoltcp-phy")]
-extern crate smoltcp;
-#[cfg(feature = "smoltcp-phy")]
-mod smoltcp_phy;
-#[cfg(feature = "smoltcp-phy")]
-pub use smoltcp_phy::{EthRxToken, EthTxToken};
-
 const PHY_ADDR: u8 = 0;
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;

@@ -11,13 +11,8 @@ aligned = "0.1.1"
 
 stm32f429 = { path = "../stm32f429", features = ["rt"], optional = true }
 
-smoltcp = { git = "https://github.com/m-labs/smoltcp.git", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
-log = { version = "0.4.1", optional = true }
-
 [features]
-smoltcp-phy = ["smoltcp", "log"]
-#default = []
-default = ["target-stm32f429"]
+default = []
 
 # Targets
 target-stm32f429 = ["stm32f429"]
