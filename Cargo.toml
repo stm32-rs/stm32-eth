@@ -9,7 +9,7 @@ cortex-m-semihosting = "0.2.0"
 volatile-register = "0.2.0"
 aligned = "0.1.1"
 
-stm32f429 = { path = "../stm32f429", features = ["rt"], optional = true }
+stm32f429 = { version = "0.3.0", features = ["rt"], optional = true }
 
 [features]
 default = []
