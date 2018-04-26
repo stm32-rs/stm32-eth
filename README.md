@@ -1,5 +1,7 @@
 # Rust Ethernet Driver for STM32F* microcontrollers
 
+[![Build Status](https://travis-ci.org/astro/stm32-eth.svg?branch=master)](https://travis-ci.org/astro/stm32-eth)
+
 ## Supported microcontrollers
 
 * STM32F429 with feature `target-stm32f429`
