@@ -1,0 +1,9 @@
+language: rust
+matrix:
+  include:
+    - rust: nightly
+      env: FEATURES='stm32f429'
+    - rust: nightly
+      env: FEATURES='stm32f7x9'
+script:
+  - cargo test --no-default-features --features "$FEATURES"
