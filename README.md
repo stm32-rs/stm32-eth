@@ -50,14 +50,8 @@ fn main() {
     // Setup pins and initialize clocks.
     eth::setup(&p);
     // Allocate the ring buffers
-    let mut rx_ring = [
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-    ];
-    let mut tx_ring = [
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-    ];
+    let mut rx_ring: [RingEntry<_>; 8] = Default::default();
+    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
     // Instantiate driver
     let mut eth = Eth::new(
         p.ETHERNET_MAC, p.ETHERNET_DMA,
