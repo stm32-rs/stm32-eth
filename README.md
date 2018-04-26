@@ -3,6 +3,7 @@
 ## Supported microcontrollers
 
 * STM32F429 with feature `target-stm32f429`
+* STM32F7x9 with feature `target-stm32f7x9` (untested)
   
 ### Potentially supported microcontrollers
 
@@ -21,7 +22,6 @@ Similar hardware registers seem to appear in these microcontroller models:
 * STM32F7x5
 * STM32F7x6
 * STM32F7x7
-* STM32F7x9
 * STM32F7x
 
 Please send pull requests.
