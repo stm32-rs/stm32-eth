@@ -42,7 +42,7 @@ pub mod interrupt {
     /// Missing in the `stm32f7x9` crate
     #[derive(Debug, Clone, Copy)]
     pub enum Interrupt {
-        Eth = 61
+        ETH = 61
     }
 
     unsafe impl Nr for Interrupt {
@@ -209,7 +209,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         #[cfg(feature = "target-stm32f429")]
         let interrupt = Interrupt::ETH;
         #[cfg(feature = "target-stm32f7x9")]
-        let interrupt = interrupt::Interrupt::Eth;
+        let interrupt = interrupt::Interrupt::ETH;
 
         nvic.enable(interrupt);
     }
