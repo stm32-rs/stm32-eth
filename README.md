@@ -2,9 +2,9 @@
 
 ## Supported microcontrollers
 
-* STM32F429 with feature `target_stm32f429`
+* STM32F429 with feature `target-stm32f429`
   
-## Potentially supported microcontrollers
+### Potentially supported microcontrollers
 
 Similar hardware registers seem to appear in these microcontroller models:
 
@@ -25,3 +25,62 @@ Similar hardware registers seem to appear in these microcontroller models:
 * STM32F7x
 
 Please send pull requests.
+
+
+## Usage
+
+Add to the `[dependencies]` section in your `Cargo.toml`:
+```rust
+stm32-eth = { version = "*", features = ["target-stm32f429"] }
+```
+
+In `src/main.rs` add:
+```rust
+extern crate stm32f429 as target;
+use target::Peripherals;
+
+extern crate stm32_eth;
+use stm32_eth::{Eth, RingEntry};
+
+fn main() {
+    let p = Peripherals::take().unwrap();
+
+    // Setup pins and initialize clocks.
+    eth::setup(&p);
+    // Allocate the ring buffers
+    let mut rx_ring = [
+        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
+        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
+    ];
+    let mut tx_ring = [
+        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
+        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
+    ];
+    // Instantiate driver
+    let mut eth = Eth::new(
+        p.ETHERNET_MAC, p.ETHERNET_DMA,
+        &mut rx_ring[..], &mut tx_ring[..]
+    );
+    // If you have a handler, enable interrupts
+    eth.enable_interrupt(&mut cp.NVIC);
+
+
+    if let Ok(pkt) = eth.recv_next() {
+        // handle received pkt
+    }
+
+
+    eth.send(size, |buf| {
+        // write up to `size` bytes into buf before it is being sent
+    }).expect("send");
+}
+```
+
+## [smoltcp] support
+
+The `master` branch of `stm32-eth` contains support for the current
+`master` branch of the [smoltcp] TCP/IP stack. It has been removed for
+release because it is incompatible with latest [smoltcp] stable
+release `0.4.0`.
+
+[smoltcp]: https://github.com/m-labs/smoltcp
