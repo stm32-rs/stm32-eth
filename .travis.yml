@@ -6,4 +6,4 @@ matrix:
     - rust: nightly
       env: FEATURES='stm32f7x9'
 script:
-  - cargo test --no-default-features --features "$FEATURES"
+  - cargo build --no-default-features --features "$FEATURES"
