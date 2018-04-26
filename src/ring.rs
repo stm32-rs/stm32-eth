@@ -21,6 +21,12 @@ impl<T: Clone + RingDescriptor> Clone for RingEntry<T> {
     }
 }
 
+impl<T: Clone + RingDescriptor + Default> Default for RingEntry<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Clone + RingDescriptor + Default> RingEntry<T> {
     pub fn new() -> Self {
         RingEntry {

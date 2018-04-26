@@ -67,14 +67,8 @@ fn main() {
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
     eth::setup(&p);
-    let mut rx_ring = [
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-    ];
-    let mut tx_ring = [
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-    ];
+    let mut rx_ring: [RingEntry<_>; 8] = Default::default();
+    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
     let mut eth = Eth::new(
         p.ETHERNET_MAC, p.ETHERNET_DMA,
         &mut rx_ring[..], &mut tx_ring[..]

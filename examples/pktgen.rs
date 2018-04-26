@@ -10,6 +10,7 @@ extern crate stm32_eth as eth;
 extern crate panic_itm;
 
 use core::cell::RefCell;
+use core::default::Default;
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
@@ -39,14 +40,8 @@ fn main() {
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
     eth::setup(&p);
-    let mut rx_ring = [
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-    ];
-    let mut tx_ring = [
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-        RingEntry::new(), RingEntry::new(), RingEntry::new(), RingEntry::new(),
-    ];
+    let mut rx_ring: [RingEntry<_>; 16] = Default::default();
+    let mut tx_ring: [RingEntry<_>; 8] = Default::default();
     let mut eth = Eth::new(
         p.ETHERNET_MAC, p.ETHERNET_DMA,
         &mut rx_ring[..], &mut tx_ring[..]
