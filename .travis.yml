@@ -6,8 +6,8 @@ matrix:
     - rust: nightly
       env: FEATURES='target-stm32f7x9'
     - rust: nightly
-      env: FEATURES='target-stm32f769' ARGS="--release --target=thumbv7em-none-eabihf --example=pktgen"
+      env: FEATURES='target-stm32f429' ARGS="--release --target=thumbv7em-none-eabihf --example=pktgen"
     - rust: nightly
-      env: FEATURES='target-stm32f769 smoltcp-phy' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
+      env: FEATURES='target-stm32f429 smoltcp-phy' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
 script:
   - cargo build --no-default-features --features "$FEATURES"
