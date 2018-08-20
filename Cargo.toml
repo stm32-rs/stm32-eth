@@ -15,8 +15,7 @@ volatile-register = "0.2.0"
 aligned = "0.1.1"
 bare-metal = { version = "0.1.2", optional = true }
 
-#stm32f429 = { git = "https://github.com/jmesmon/stm32f429.git", branch = "master", features = ["rt"], optional = true }
-stm32f429 = { git = "https://github.com/astro/stm32f429", features = ["rt"], optional = true }
+stm32f429 = { version = "0.5", features = ["rt"], optional = true }
 stm32f7x9 = { git = "https://github.com/astro/stm32f7xx", branch = "update-cortex-m-rt", features = ["rt"], optional = true }
 
 smoltcp = { git = "https://github.com/astro/smoltcp.git", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
