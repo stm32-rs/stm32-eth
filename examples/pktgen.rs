@@ -1,10 +1,12 @@
 #![no_std]
+#![no_main]
 #![feature(used)]
 
 extern crate cortex_m;
+#[macro_use(exception, entry)]
 extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
-#[macro_use(exception, interrupt)]
+#[macro_use(interrupt)]
 extern crate stm32f429 as board;
 extern crate stm32_eth as eth;
 extern crate panic_itm;
@@ -30,7 +32,8 @@ static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 
-fn main() {
+entry!(main);
+fn main() -> ! {
     let mut stdout = hio::hstdout().unwrap();
 
     let p = Peripherals::take().unwrap();
@@ -187,7 +190,7 @@ fn systick_interrupt_handler() {
 }
 
 #[used]
-exception!(SYS_TICK, systick_interrupt_handler);
+exception!(SysTick, systick_interrupt_handler);
 
 
 fn eth_interrupt_handler() {

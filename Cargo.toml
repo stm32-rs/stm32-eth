@@ -10,10 +10,10 @@ travis-ci = { repository = "astro/stm32-eth", branch = "master" }
 maintenance = { status = "experimental" }
 
 [dependencies]
-cortex-m-semihosting = "0.2.0"
-volatile-register = "0.2.0"
-aligned = "0.1.1"
-bare-metal = { version = "0.1.2", optional = true }
+cortex-m-semihosting = "0.3"
+volatile-register = "0.2"
+aligned = "0.1"
+bare-metal = { version = "0.1", optional = true }
 
 stm32f429 = { version = "0.5", features = ["rt"], optional = true }
 stm32f7x9 = { git = "https://github.com/astro/stm32f7xx", branch = "update-cortex-m-rt", features = ["rt"], optional = true }
@@ -30,9 +30,9 @@ target-stm32f429 = ["stm32f429"]
 target-stm32f7x9 = ["stm32f7x9", "bare-metal"]
 
 [dev-dependencies]
-cortex-m = "0.4.3"
-cortex-m-rt = { version = "0.4.0" }
-panic-itm = "0.1.0"
+cortex-m = "0.5"
+cortex-m-rt = { version = "0.5" }
+panic-itm = "0.2"
 
 [[example]]
 name = "pktgen"

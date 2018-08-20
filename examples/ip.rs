@@ -1,11 +1,13 @@
 #![no_std]
+#![no_main]
 #![feature(used)]
 #![feature(core_intrinsics)]
 
 extern crate cortex_m;
+#[macro_use(exception, entry)]
 extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
-#[macro_use(exception, interrupt)]
+#[macro_use(interrupt)]
 extern crate stm32f429 as board;
 extern crate stm32_eth as eth;
 extern crate smoltcp;
@@ -54,7 +56,8 @@ const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 static TIME: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
-fn main() {
+entry!(main);
+fn main() -> ! {
     unsafe { log::set_logger(&LOGGER).unwrap(); }
     log::set_max_level(LevelFilter::Info);
     
@@ -166,7 +169,7 @@ fn systick_interrupt_handler() {
 }
 
 #[used]
-exception!(SYS_TICK, systick_interrupt_handler);
+exception!(SysTick, systick_interrupt_handler);
 
 
 fn eth_interrupt_handler() {
