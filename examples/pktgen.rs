@@ -11,6 +11,7 @@ extern crate stm32f429 as board;
 extern crate stm32_eth as eth;
 extern crate panic_itm;
 
+use cortex_m_rt::ExceptionFrame;
 use core::cell::RefCell;
 use core::default::Default;
 
@@ -188,6 +189,20 @@ fn systick_interrupt_handler() {
         *time += 1;
     })
 }
+
+
+#[used]
+exception!(HardFault, hard_fault);
+
+fn hard_fault(_ef: &ExceptionFrame) -> ! {
+    loop {}
+}
+
+#[used]
+exception!(*, default_handler);
+
+fn default_handler(_irqn: i16) {}
+
 
 #[used]
 exception!(SysTick, systick_interrupt_handler);

@@ -15,6 +15,7 @@ extern crate log;
 extern crate panic_itm;
 
 use cortex_m::asm;
+use cortex_m_rt::ExceptionFrame;
 use board::{Peripherals, CorePeripherals, SYST};
 
 use core::cell::RefCell;
@@ -167,6 +168,20 @@ fn systick_interrupt_handler() {
         *time += 1;
     })
 }
+
+
+#[used]
+exception!(HardFault, hard_fault);
+
+fn hard_fault(_ef: &ExceptionFrame) -> ! {
+    loop {}
+}
+
+#[used]
+exception!(*, default_handler);
+
+fn default_handler(_irqn: i16) {}
+
 
 #[used]
 exception!(SysTick, systick_interrupt_handler);
