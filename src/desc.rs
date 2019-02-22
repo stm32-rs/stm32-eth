@@ -1,18 +1,18 @@
 use core::ops::{Deref, DerefMut};
 
-use aligned::Aligned;
+use aligned::{Aligned, A8};
 use volatile_register::{RO, RW};
 
 
 #[repr(C)]
 pub struct Descriptor {
-    desc: Aligned<u64, [u32; 4]>,
+    desc: Aligned<A8, [u32; 4]>,
 }
 
 impl Clone for Descriptor {
     fn clone(&self) -> Self {
         Descriptor {
-            desc: Aligned(self.desc.array.clone())
+            desc: Aligned((*self.desc).clone())
         }
     }
 }

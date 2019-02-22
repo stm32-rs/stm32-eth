@@ -1,5 +1,5 @@
 use core::ops::{Deref, DerefMut};
-use aligned::Aligned;
+use aligned::{Aligned, A8};
 
 use MTU;
 
@@ -8,15 +8,15 @@ pub trait RingDescriptor {
 }
 
 pub struct RingEntry<T: Clone + RingDescriptor> {
-    desc: Aligned<u64, [T; 1]>,
-    buffer: Aligned<u64, [u8; MTU]>,
+    desc: Aligned<A8, [T; 1]>,
+    buffer: Aligned<A8, [u8; MTU]>,
 }
 
 impl<T: Clone + RingDescriptor> Clone for RingEntry<T> {
     fn clone(&self) -> Self {
         RingEntry {
-            desc: Aligned(self.desc.array.clone()),
-            buffer: Aligned(self.buffer.array.clone()),
+            desc: Aligned((*self.desc).clone()),
+            buffer: Aligned((*self.buffer).clone()),
         }
     }
 }
@@ -36,8 +36,8 @@ impl<T: Clone + RingDescriptor + Default> RingEntry<T> {
     }
 
     pub(crate) fn setup(&mut self, next: Option<&Self>) {
-        let buffer = self.buffer.array.as_ptr();
-        let len = self.buffer.array.len();
+        let buffer = self.buffer.as_ptr();
+        let len = self.buffer.len();
         self.desc_mut().setup(
             buffer, len,
             next.map(|next| next.desc())
@@ -56,12 +56,12 @@ impl<T: Clone + RingDescriptor + Default> RingEntry<T> {
 
     #[inline]
     pub(crate) fn as_slice(&self) -> &[u8] {
-        &self.buffer.array[..]
+        &(*self.buffer)[..]
     }
 
     #[inline]
     pub(crate) fn as_mut_slice(&mut self) -> &mut [u8] {
-        &mut self.buffer.array[..]
+        &mut (*self.buffer)[..]
     }
 }
 

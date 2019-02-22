@@ -12,7 +12,7 @@ maintenance = { status = "experimental" }
 [dependencies]
 cortex-m-semihosting = "0.3"
 volatile-register = "0.2"
-aligned = "0.2"
+aligned = "0.3"
 bare-metal = { version = "0.2", optional = true }
 
 stm32f429 = { version = "0.5", features = ["rt"], optional = true }
