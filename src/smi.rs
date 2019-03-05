@@ -20,14 +20,8 @@ impl<'a> SMI<'a> {
         while self.macmiiar.read().mb().bit_is_set() {}
     }
 
-    #[cfg(feature = "target-stm32f429")]
     fn read_data(&self) -> u16 {
         self.macmiidr.read().md().bits()
-    }
-
-    #[cfg(feature = "target-stm32f7x9")]
-    fn read_data(&self) -> u16 {
-        self.macmiidr.read().td().bits()
     }
 
     /// Read an SMI register
@@ -47,17 +41,9 @@ impl<'a> SMI<'a> {
         self.read_data()
     }
 
-    #[cfg(feature = "target-stm32f429")]
     fn write_data(&self, data: u16) {
         self.macmiidr.write(|w| {
             unsafe { w.md().bits(data) }
-        });
-    }
-
-    #[cfg(feature = "target-stm32f7x9")]
-    fn write_data(&self, data: u16) {
-        self.macmiidr.write(|w| {
-            unsafe { w.td().bits(data) }
         });
     }
 

@@ -5,11 +5,11 @@ extern crate volatile_register;
 extern crate aligned;
 
 #[cfg(feature = "target-stm32f429")]
-extern crate stm32f429 as board;
+pub extern crate stm32f429 as board;
 #[cfg(feature = "target-stm32f7x9")]
-extern crate stm32f7x9 as board;
+pub extern crate stm32f7;
 #[cfg(feature = "target-stm32f7x9")]
-extern crate bare_metal;
+pub use stm32f7::stm32f7x9 as board;
 
 use board::*;
 
@@ -35,22 +35,6 @@ mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::{EthRxToken, EthTxToken};
 
-#[cfg(feature = "target-stm32f7x9")]
-pub mod interrupt {
-    use bare_metal::Nr;
-
-    /// Missing in the `stm32f7x9` crate
-    #[derive(Debug, Clone, Copy)]
-    pub enum Interrupt {
-        ETH = 61
-    }
-
-    unsafe impl Nr for Interrupt {
-        fn nr(&self) -> u8 {
-            *self as u8
-        }
-    }
-}
 
 const PHY_ADDR: u8 = 0;
 /// From the datasheet: *VLAN Frame maxsize = 1522*
@@ -162,18 +146,34 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .osf().set_bit()
         });
         // bus mode register
+        #[cfg(feature = "target-stm32f429")]
         self.eth_dma.dmabmr.modify(|_, w| unsafe {
             // Address-aligned beats
             w.aab().set_bit()
-            // Fixed burst
+                // Fixed burst
                 .fb().set_bit()
-            // Rx DMA PBL
+                // Rx DMA PBL
                 .rdp().bits(32)
-            // Programmable burst length
+                // Programmable burst length
                 .pbl().bits(32)
-            // Rx Tx priority ratio 2:1
+                // Rx Tx priority ratio 2:1
                 .rtpr().bits(0b01)
-            // Use separate PBL
+                // Use separate PBL
+                .usp().set_bit()
+        });
+        #[cfg(feature = "target-stm32f7x9")]
+        self.eth_dma.dmabmr.modify(|_, w| unsafe {
+            // Address-aligned beats
+            w.aab().set_bit()
+                // Fixed burst
+                .fb().set_bit()
+                // Rx DMA PBL
+                .rdp().bits(32)
+                // Programmable burst length
+                .pbl().bits(32)
+                // Rx Tx priority ratio 2:1
+                .pm().bits(0b01)
+                // Use separate PBL
                 .usp().set_bit()
         });
 
@@ -206,10 +206,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         );
 
         // Enable ethernet interrupts
-        #[cfg(feature = "target-stm32f429")]
         let interrupt = Interrupt::ETH;
-        #[cfg(feature = "target-stm32f7x9")]
-        let interrupt = interrupt::Interrupt::ETH;
 
         nvic.enable(interrupt);
     }
