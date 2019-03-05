@@ -6,6 +6,8 @@ license = "Apache-2.0"
 authors = ["Astro <astro@spaceboyz.net>"]
 version = "0.0.0"
 keywords = ["ethernet", "eth", "stm32", "stm32f4", "stm32f7"]
+
+[badges]
 travis-ci = { repository = "astro/stm32-eth", branch = "master" }
 maintenance = { status = "experimental" }
 
@@ -15,11 +17,11 @@ volatile-register = "0.2"
 aligned = "0.3"
 bare-metal = { version = "0.2", optional = true }
 
-stm32f429 = { version = "0.5", features = ["rt"], optional = true }
+stm32f429 = { version = "0.6.1", features = ["rt"], optional = true }
 stm32f7x9 = { version = "0.2", features = ["rt"], optional = true }
 
-smoltcp = { git = "https://github.com/astro/smoltcp.git", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
-log = { version = "0.4.1", optional = true }
+smoltcp = { version = "0.5.0", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
+log = { version = "0.4", optional = true }
 
 [features]
 smoltcp-phy = ["smoltcp", "log"]
@@ -31,8 +33,8 @@ target-stm32f7x9 = ["stm32f7x9", "bare-metal"]
 
 [dev-dependencies]
 cortex-m = "0.5"
-cortex-m-rt = "0.5"
-panic-itm = "0.2"
+cortex-m-rt = "0.6"
+panic-itm = "0.4"
 
 [[example]]
 name = "pktgen"

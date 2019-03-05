@@ -1,23 +1,20 @@
 #![no_std]
 #![no_main]
-#![feature(used)]
 
 extern crate cortex_m;
-#[macro_use(exception, entry)]
 extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
-#[macro_use(interrupt)]
 extern crate stm32f429 as board;
 extern crate stm32_eth as eth;
 extern crate panic_itm;
 
-use cortex_m_rt::ExceptionFrame;
+use cortex_m_rt::{ExceptionFrame, entry, exception};
 use core::cell::RefCell;
 use core::default::Default;
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use board::{Peripherals, CorePeripherals, SYST};
+use board::{Peripherals, CorePeripherals, SYST, interrupt};
 
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
@@ -33,7 +30,7 @@ static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 
-entry!(main);
+#[entry]
 fn main() -> ! {
     let mut stdout = hio::hstdout().unwrap();
 
@@ -191,22 +188,18 @@ fn systick_interrupt_handler() {
 }
 
 
-#[used]
-exception!(HardFault, hard_fault);
+#[exception]
+fn DefaultHandler(_irqn: i16) {}
 
-fn hard_fault(_ef: &ExceptionFrame) -> ! {
-    loop {}
+#[exception]
+fn SysTick() {
+    systick_interrupt_handler();
 }
 
-#[used]
-exception!(*, default_handler);
-
-fn default_handler(_irqn: i16) {}
-
-
-#[used]
-exception!(SysTick, systick_interrupt_handler);
-
+#[interrupt]
+fn ETH() {
+    eth_interrupt_handler();
+}
 
 fn eth_interrupt_handler() {
     let p = unsafe { Peripherals::steal() };
@@ -221,6 +214,3 @@ fn eth_interrupt_handler() {
     // Clear interrupt flags
     eth::eth_interrupt_handler(&p.ETHERNET_DMA);
 }
-
-#[used]
-interrupt!(ETH, eth_interrupt_handler);

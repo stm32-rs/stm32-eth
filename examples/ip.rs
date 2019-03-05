@@ -1,13 +1,9 @@
 #![no_std]
 #![no_main]
-#![feature(used)]
-#![feature(core_intrinsics)]
 
 extern crate cortex_m;
-#[macro_use(exception, entry)]
 extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
-#[macro_use(interrupt)]
 extern crate stm32f429 as board;
 extern crate stm32_eth as eth;
 extern crate smoltcp;
@@ -15,8 +11,8 @@ extern crate log;
 extern crate panic_itm;
 
 use cortex_m::asm;
-use cortex_m_rt::ExceptionFrame;
-use board::{Peripherals, CorePeripherals, SYST};
+use cortex_m_rt::{ExceptionFrame, entry, exception};
+use board::{Peripherals, CorePeripherals, SYST, interrupt};
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
@@ -57,7 +53,7 @@ const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 static TIME: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
-entry!(main);
+#[entry]
 fn main() -> ! {
     unsafe { log::set_logger(&LOGGER).unwrap(); }
     log::set_max_level(LevelFilter::Info);
@@ -170,22 +166,23 @@ fn systick_interrupt_handler() {
 }
 
 
-#[used]
-exception!(HardFault, hard_fault);
-
-fn hard_fault(_ef: &ExceptionFrame) -> ! {
+#[exception]
+fn HardFault(_ef: &ExceptionFrame) -> ! {
     loop {}
 }
 
-#[used]
-exception!(*, default_handler);
+#[exception]
+fn DefaultHandler(_irqn: i16) {}
 
-fn default_handler(_irqn: i16) {}
+#[exception]
+fn SysTick() {
+    systick_interrupt_handler();
+}
 
-
-#[used]
-exception!(SysTick, systick_interrupt_handler);
-
+#[interrupt]
+fn ETH() {
+    eth_interrupt_handler();
+}
 
 fn eth_interrupt_handler() {
     let p = unsafe { Peripherals::steal() };
@@ -200,6 +197,3 @@ fn eth_interrupt_handler() {
     // Clear interrupt flags
     eth::eth_interrupt_handler(&p.ETHERNET_DMA);
 }
-
-#[used]
-interrupt!(ETH, eth_interrupt_handler);
