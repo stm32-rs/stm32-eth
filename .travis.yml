@@ -2,25 +2,9 @@ language: rust
 matrix:
   include:
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f401'
-    - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f405'
-    - rust: nightly
       env: FEATURES='stm32f4xx-hal/stm32f407'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f410'
-    - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f411'
-    - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f412'
-    - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f413'
-    - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f415'
-    - rust: nightly
       env: FEATURES='stm32f4xx-hal/stm32f417'
-    - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f423'
     - rust: nightly
       env: FEATURES='stm32f4xx-hal/stm32f427'
     - rust: nightly
@@ -29,8 +13,6 @@ matrix:
       env: FEATURES='stm32f4xx-hal/stm32f437'
     - rust: nightly
       env: FEATURES='stm32f4xx-hal/stm32f439'
-    - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f446'
     - rust: nightly
       env: FEATURES='stm32f4xx-hal/stm32f469'
     - rust: nightly
