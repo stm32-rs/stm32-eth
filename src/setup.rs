@@ -7,11 +7,11 @@ mod consts {
     pub const GPIO_PUPDR_NONE: u8 = 0b00;
     pub const GPIO_OSPEEDR_HIGH: u8 = 0b10;
 }
-use self::consts::*;
 
 /// Initialize GPIO pins. Enable syscfg and ethernet clocks. Reset the
 /// Ethernet MAC.
 pub fn setup(p: &Peripherals) {
+    #[cfg(feature = "stm32f4xx-hal/stm32f429")]
     init_pins(&p.RCC, &p.GPIOA, &p.GPIOB, &p.GPIOC, &p.GPIOG);
     
     // enable syscfg clock
@@ -42,8 +42,10 @@ fn reset_pulse(rcc: &RCC) {
 /// * No pull-up resistor
 /// * High-speed
 /// * Alternate function 11
-#[cfg(feature = "target-stm32f429")]
+#[cfg(feature = "stm32f4xx-hal/stm32f429")]
 pub fn init_pins(rcc: &RCC, gpioa: &GPIOA, gpiob: &GPIOB, gpioc: &GPIOC, gpiog: &GPIOG) {
+    use self::consts::*;
+
     rcc.ahb1enr.modify(|_, w| {
         w.gpioaen().set_bit()
             .gpioben().set_bit()

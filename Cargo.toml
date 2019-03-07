@@ -14,7 +14,7 @@ travis-ci = { repository = "astro/stm32-eth", branch = "master" }
 maintenance = { status = "experimental" }
 
 [package.metadata.docs.rs]
-features = [ "smoltcp-phy", "target-stm32f429" ]
+features = [ "smoltcp-phy", "stm32f4/stm32f429" ]
 default-target = "thumbv7em-none-eabihf"
 
 [dependencies]
@@ -22,8 +22,7 @@ cortex-m-semihosting = "0.3"
 volatile-register = "0.2"
 aligned = "0.3"
 
-stm32f429 = { version = "0.6.1", features = ["rt"], optional = true }
-stm32f7 = { version = "0.6.0", features = ["stm32f7x9", "rt"], optional = true }
+stm32f4xx-hal = { version = "0.3.0" }
 
 smoltcp = { version = "0.5.0", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
 log = { version = "0.4", optional = true }
@@ -32,10 +31,6 @@ log = { version = "0.4", optional = true }
 smoltcp-phy = ["smoltcp", "log"]
 default = []
 
-# Targets
-target-stm32f429 = ["stm32f429"]
-target-stm32f7x9 = ["stm32f7"]
-
 [dev-dependencies]
 cortex-m = "0.5"
 cortex-m-rt = "0.6"
@@ -43,11 +38,10 @@ panic-itm = "0.4"
 
 [[example]]
 name = "pktgen"
-required-features = ["target-stm32f429"]
 
 [[example]]
 name = "ip"
-required-features = ["target-stm32f429", "smoltcp-phy"]
+required-features = ["smoltcp-phy"]
 
 [profile.release]
 debug = 2

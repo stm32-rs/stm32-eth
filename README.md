@@ -4,27 +4,7 @@
 
 ## Supported microcontrollers
 
-* STM32F429 with feature `target-stm32f429`
-* STM32F7x9 with feature `target-stm32f7x9` (untested)
-  
-### Potentially supported microcontrollers
-
-Similar hardware registers seem to appear in these microcontroller models:
-
-* STM32F107xx
-* STM32F20x
-* STM32F21x
-* STM32F40x
-* STM32F41x
-* STM32F427
-* STM32F437
-* STM32F439
-* STM32F469
-* STM32F479
-* STM32F7x5
-* STM32F7x6
-* STM32F7x7
-* STM32F7x
+* STM32F4xx
 
 Please send pull requests.
 
@@ -33,13 +13,13 @@ Please send pull requests.
 
 Add to the `[dependencies]` section in your `Cargo.toml`:
 ```rust
-stm32-eth = { version = "*", features = ["target-stm32f429"] }
+stm32f4xx-hal = { version = "*", features = ["stm32f429"] }
+stm32-eth = { version = "*" }
 ```
 
 In `src/main.rs` add:
 ```rust
-extern crate stm32f429 as target;
-use target::Peripherals;
+use stm32f4xx_hal::stm32::Peripherals;
 
 extern crate stm32_eth;
 use stm32_eth::{Eth, RingEntry};
@@ -74,9 +54,4 @@ fn main() {
 
 ## [smoltcp] support
 
-The `master` branch of `stm32-eth` contains support for the current
-`master` branch of the [smoltcp] TCP/IP stack. It has been removed for
-release because it is incompatible with latest [smoltcp] stable
-release `0.4.0`.
-
-[smoltcp]: https://github.com/m-labs/smoltcp
+Use feature-flag `smoltcp-phy`

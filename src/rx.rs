@@ -191,7 +191,9 @@ impl<'a> RxRing<'a> {
         self.next_entry = 0;
         let ring_ptr = self.entries[0].desc() as *const RxDescriptor;
         // Register RxDescriptor
-        eth_dma.dmardlar.write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
+        eth_dma.dmardlar.write(|w| {
+            w.srl().bits(ring_ptr as u32)
+        });
 
         // Start receive
         eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());

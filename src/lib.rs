@@ -4,12 +4,8 @@ extern crate cortex_m_semihosting;
 extern crate volatile_register;
 extern crate aligned;
 
-#[cfg(feature = "target-stm32f429")]
-pub extern crate stm32f429 as board;
-#[cfg(feature = "target-stm32f7x9")]
-pub extern crate stm32f7;
-#[cfg(feature = "target-stm32f7x9")]
-pub use stm32f7::stm32f7x9 as board;
+extern crate stm32f4xx_hal;
+pub use stm32f4xx_hal::stm32 as board;
 
 use board::*;
 
@@ -126,7 +122,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .pm().set_bit()
         });
         // Flow Control Register
-        self.eth_mac.macfcr.modify(|_, w| unsafe {
+        self.eth_mac.macfcr.modify(|_, w| {
             // Pause time
             w.pt().bits(0x100)
         });
@@ -146,22 +142,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .osf().set_bit()
         });
         // bus mode register
-        #[cfg(feature = "target-stm32f429")]
-        self.eth_dma.dmabmr.modify(|_, w| unsafe {
-            // Address-aligned beats
-            w.aab().set_bit()
-                // Fixed burst
-                .fb().set_bit()
-                // Rx DMA PBL
-                .rdp().bits(32)
-                // Programmable burst length
-                .pbl().bits(32)
-                // Rx Tx priority ratio 2:1
-                .rtpr().bits(0b01)
-                // Use separate PBL
-                .usp().set_bit()
-        });
-        #[cfg(feature = "target-stm32f7x9")]
         self.eth_dma.dmabmr.modify(|_, w| unsafe {
             // Address-aligned beats
             w.aab().set_bit()

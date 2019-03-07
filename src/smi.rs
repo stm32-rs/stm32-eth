@@ -27,13 +27,11 @@ impl<'a> SMI<'a> {
     /// Read an SMI register
     pub fn read(&self, phy: u8, reg: u8) -> u16 {
         self.macmiiar.modify(|_, w| {
-            unsafe {
-                w.pa().bits(phy)
-                    .mr().bits(reg)
-                    /* Read operation MW=0 */
-                    .mw().clear_bit()
-                    .mb().set_bit()
-            }
+            w.pa().bits(phy)
+                .mr().bits(reg)
+                /* Read operation MW=0 */
+                .mw().clear_bit()
+                .mb().set_bit()
         });
         self.wait_ready();
 
@@ -43,7 +41,7 @@ impl<'a> SMI<'a> {
 
     fn write_data(&self, data: u16) {
         self.macmiidr.write(|w| {
-            unsafe { w.md().bits(data) }
+            w.md().bits(data)
         });
     }
 
@@ -51,13 +49,11 @@ impl<'a> SMI<'a> {
     pub fn write(&self, phy: u8, reg: u8, data: u16) {
         self.write_data(data);
         self.macmiiar.modify(|_, w| {
-            unsafe {
-                w.pa().bits(phy)
-                    .mr().bits(reg)
-                    /* Write operation MW=1*/
-                    .mw().set_bit()
-                    .mb().set_bit()
-            }
+            w.pa().bits(phy)
+                .mr().bits(reg)
+                /* Write operation MW=1*/
+                .mw().set_bit()
+                .mb().set_bit()
         });
         self.wait_ready();
     }
