@@ -40,4 +40,4 @@ matrix:
     - rust: nightly
       env: FEATURES='stm32f4xx-hal/rt stm32f4xx-hal/stm32f429 smoltcp-phy' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
 script:
-  - "cargo build --target=`uname -m`-`uname -p`-linux-gnu --no-default-features --features \"$FEATURES\""
+  - "cargo build --target=`uname -m`-unknown-linux-gnu --no-default-features --features \"$FEATURES\""
