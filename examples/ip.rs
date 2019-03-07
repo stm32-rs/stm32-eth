@@ -4,7 +4,8 @@
 extern crate cortex_m;
 extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
-extern crate stm32f429 as board;
+extern crate stm32f4xx_hal;
+use stm32f4xx_hal::stm32 as board;
 extern crate stm32_eth as eth;
 extern crate smoltcp;
 extern crate log;
