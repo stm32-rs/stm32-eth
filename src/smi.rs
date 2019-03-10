@@ -1,4 +1,4 @@
-use board::ethernet_mac::{MACMIIAR, MACMIIDR};
+use stm32f4xx_hal::stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 /// Station Management Interface
 pub struct SMI<'a> {

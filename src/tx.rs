@@ -1,8 +1,10 @@
 use core::ops::{Deref, DerefMut};
-use board::ETHERNET_DMA;
+use stm32f4xx_hal::stm32::ETHERNET_DMA;
 
-use desc::Descriptor;
-use ring::{RingEntry, RingDescriptor};
+use crate::{
+    desc::Descriptor,
+    ring::{RingEntry, RingDescriptor},
+};
 
 /// Owned by DMA engine
 const TXDESC_0_OWN: u32 = 1 << 31;

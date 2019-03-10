@@ -1,9 +1,11 @@
 use core::ops::Deref;
 use core::default::Default;
-use board::ETHERNET_DMA;
+use stm32f4xx_hal::stm32::ETHERNET_DMA;
 
-use desc::Descriptor;
-use ring::{RingEntry, RingDescriptor};
+use crate::{
+    desc::Descriptor,
+    ring::{RingEntry, RingDescriptor},
+};
 
 
 #[derive(Debug, PartialEq)]

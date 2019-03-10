@@ -1,13 +1,10 @@
 #![no_std]
 
-extern crate cortex_m_semihosting;
-extern crate volatile_register;
-extern crate aligned;
-
-extern crate stm32f4xx_hal;
-pub use stm32f4xx_hal::stm32 as board;
-
-use board::*;
+/// Re-export
+pub use stm32f4xx_hal as hal;
+/// Re-export
+pub use stm32f4xx_hal::stm32;
+use stm32f4xx_hal::stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
 
 pub mod phy;
 use self::phy::{Phy, PhyStatus};
@@ -25,7 +22,7 @@ mod setup;
 pub use self::setup::setup;
 
 #[cfg(feature = "smoltcp-phy")]
-extern crate smoltcp;
+pub use smoltcp;
 #[cfg(feature = "smoltcp-phy")]
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]

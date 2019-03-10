@@ -1,4 +1,4 @@
-use board::*;
+use stm32f4xx_hal::stm32::*;
 
 #[allow(dead_code)]
 mod consts {

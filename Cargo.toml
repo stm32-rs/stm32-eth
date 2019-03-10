@@ -8,6 +8,7 @@ version = "0.0.1"
 keywords = ["ethernet", "eth", "stm32", "stm32f4", "stm32f7"]
 repository = "https://github.com/astro/stm32-eth"
 documentation = "https://docs.rs/stm32-eth/"
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "astro/stm32-eth", branch = "master" }

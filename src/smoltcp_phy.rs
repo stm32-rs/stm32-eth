@@ -3,9 +3,7 @@ use core::ops::Deref;
 use smoltcp::Error;
 use smoltcp::time::Instant;
 use smoltcp::phy::{DeviceCapabilities, Device, RxToken, TxToken};
-use Eth;
-use rx::RxPacket;
-use tx::TxError;
+use crate::{Eth, rx::RxPacket, tx::TxError};
 
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/m-labs/smoltcp)

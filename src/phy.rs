@@ -1,7 +1,7 @@
 use core::option::Option;
-use board::ethernet_mac::{MACMIIAR, MACMIIDR};
+use stm32f4xx_hal::stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
 
-use smi::SMI;
+use crate::smi::SMI;
 
 #[allow(dead_code)]
 mod consts {
