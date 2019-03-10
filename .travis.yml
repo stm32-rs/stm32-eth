@@ -18,8 +18,8 @@ matrix:
     - rust: nightly
       env: FEATURES='stm32f4xx-hal/stm32f479'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/rt stm32f4xx-hal/stm32f429' ARGS="--release --target=thumbv7em-none-eabihf --example=pktgen"
+      env: FEATURES='stm32f4xx-hal/rt nucleo-f429zi' ARGS="--release --target=thumbv7em-none-eabihf --example=pktgen"
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/rt stm32f4xx-hal/stm32f429 smoltcp-phy' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
+      env: FEATURES='stm32f4xx-hal/rt nucleo-f429zi smoltcp-phy' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
 script:
   - "cargo build --target=`uname -m`-unknown-linux-gnu --no-default-features --features \"$FEATURES\""

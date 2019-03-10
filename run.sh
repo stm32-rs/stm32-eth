@@ -13,7 +13,7 @@ if [[ "$EXAMPLE" = "" ]]; then
 fi
 
 cargo build --target=thumbv7em-none-eabihf --release \
-      --features="stm32f4xx-hal/stm32f429 smoltcp-phy" \
+      --features="stm32f4xx-hal/rt nucleo-f429zi smoltcp-phy" \
       --example=$EXAMPLE \
     || exit 1
 

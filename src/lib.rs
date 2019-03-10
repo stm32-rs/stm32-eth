@@ -20,6 +20,8 @@ use self::tx::{TxRing, TxRingEntry};
 pub use self::tx::TxError;
 mod setup;
 pub use self::setup::setup;
+#[cfg(feature = "nucleo-f429zi")]
+pub use self::setup::setup_pins;
 
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp;
