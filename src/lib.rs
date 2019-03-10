@@ -66,6 +66,10 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     /// You must call [`setup()`](fn.setup.html) before to initialize
     /// the hardware!
     ///
+    /// Make sure that the buffers reside in a memory region that is
+    /// accessible by the peripheral. Core-Coupled Memory (CCM) is
+    /// usually not.
+    ///
     /// Other than that, initializes and starts the Ethernet hardware
     /// so that you can [`send()`](#method.send) and
     /// [`recv_next()`](#method.recv_next).
