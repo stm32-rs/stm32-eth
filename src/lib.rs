@@ -7,21 +7,21 @@ pub use stm32f4xx_hal::stm32;
 use stm32f4xx_hal::stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
 
 pub mod phy;
-use self::phy::{Phy, PhyStatus};
+use phy::{Phy, PhyStatus};
 mod smi;
 mod ring;
 pub use ring::RingEntry;
 mod desc;
 mod rx;
-use self::rx::{RxRing, RxRingEntry, RxPacket};
-pub use self::rx::RxError;
+use rx::{RxRing, RxRingEntry, RxPacket};
+pub use rx::RxError;
 mod tx;
-use self::tx::{TxRing, TxRingEntry};
-pub use self::tx::TxError;
+use tx::{TxRing, TxRingEntry};
+pub use tx::TxError;
 mod setup;
-pub use self::setup::setup;
+pub use setup::setup;
 #[cfg(feature = "nucleo-f429zi")]
-pub use self::setup::setup_pins;
+pub use setup::setup_pins;
 
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp;
