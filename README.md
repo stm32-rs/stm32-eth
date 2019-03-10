@@ -14,21 +14,30 @@ Please send pull requests.
 Add to the `[dependencies]` section in your `Cargo.toml`:
 ```rust
 stm32f4xx-hal = { version = "*", features = ["stm32f429"] }
-stm32-eth = { version = "*" }
+stm32-eth = { version = "0.1.0", feautes = ["nucleo-f429zi"] }
 ```
 
 In `src/main.rs` add:
 ```rust
-use stm32f4xx_hal::stm32::Peripherals;
-
-extern crate stm32_eth;
+use stm32f4xx_hal::{
+    gpio::GpioExt,
+    stm32::Peripherals,
+};
 use stm32_eth::{Eth, RingEntry};
 
 fn main() {
     let p = Peripherals::take().unwrap();
 
     // Setup pins and initialize clocks.
-    eth::setup(&p);
+    stm32_eth::setup(&p.RCC, &p.SYSCFG);
+    let gpioa = p.GPIOA.split();
+    let gpiob = p.GPIOB.split();
+    let gpioc = p.GPIOC.split();
+    let gpiog = p.GPIOG.split();
+    stm32_eth::setup_pins(
+        gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1,
+        gpioc.pc4, gpioc.pc5, gpiog.pg11, gpiog.pg13
+    );
     // Allocate the ring buffers
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
