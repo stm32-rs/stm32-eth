@@ -1,26 +1,23 @@
 #![no_std]
 #![no_main]
 
-extern crate cortex_m;
-extern crate cortex_m_rt;
-extern crate cortex_m_semihosting;
-extern crate stm32f4xx_hal;
-use stm32f4xx_hal::stm32 as board;
-extern crate stm32_eth as eth;
 extern crate panic_itm;
 
-use cortex_m_rt::{ExceptionFrame, entry, exception};
+use cortex_m_rt::{entry, exception};
 use core::cell::RefCell;
 use core::default::Default;
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use board::{Peripherals, CorePeripherals, SYST, interrupt};
+use stm32f4xx_hal::{
+    gpio::GpioExt,
+    stm32::{Peripherals, CorePeripherals, SYST, interrupt},
+};
 
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
-use eth::{Eth, RingEntry, TxError};
+use stm32_eth::{Eth, RingEntry, TxError};
 
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
@@ -41,7 +38,16 @@ fn main() -> ! {
     setup_systick(&mut cp.SYST);
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
-    eth::setup(&p);
+    stm32_eth::setup(&p.RCC, &p.SYSCFG);
+    let gpioa = p.GPIOA.split();
+    let gpiob = p.GPIOB.split();
+    let gpioc = p.GPIOC.split();
+    let gpiog = p.GPIOG.split();
+    stm32_eth::setup_pins(
+        gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1,
+        gpioc.pc4, gpioc.pc5, gpiog.pg11, gpiog.pg13
+    );
+
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
     let mut eth = Eth::new(
@@ -179,7 +185,8 @@ fn setup_systick(syst: &mut SYST) {
     }
 }
 
-fn systick_interrupt_handler() {
+#[exception]
+fn SysTick() {
     cortex_m::interrupt::free(|cs| {
         let mut time =
             TIME.borrow(cs)
@@ -188,23 +195,8 @@ fn systick_interrupt_handler() {
     })
 }
 
-
-#[exception]
-fn DefaultHandler(_irqn: i16) {}
-
-#[exception]
-fn SysTick() {
-    systick_interrupt_handler();
-}
-
 #[interrupt]
 fn ETH() {
-    eth_interrupt_handler();
-}
-
-fn eth_interrupt_handler() {
-    let p = unsafe { Peripherals::steal() };
-
     cortex_m::interrupt::free(|cs| {
         let mut eth_pending =
             ETH_PENDING.borrow(cs)
@@ -213,5 +205,6 @@ fn eth_interrupt_handler() {
     });
 
     // Clear interrupt flags
-    eth::eth_interrupt_handler(&p.ETHERNET_DMA);
+    let p = unsafe { Peripherals::steal() };
+    stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
 }
