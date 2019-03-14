@@ -14,10 +14,10 @@ pub use ring::RingEntry;
 mod desc;
 mod rx;
 use rx::{RxRing, RxRingEntry, RxPacket};
-pub use rx::RxError;
+pub use rx::{RxDescriptor, RxError};
 mod tx;
 use tx::{TxRing, TxRingEntry};
-pub use tx::TxError;
+pub use tx::{TxDescriptor, TxError};
 mod setup;
 pub use setup::setup;
 #[cfg(feature = "nucleo-f429zi")]
