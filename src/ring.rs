@@ -64,18 +64,3 @@ impl<T: Clone + RingDescriptor + Default> RingEntry<T> {
         &mut (*self.buffer)[..]
     }
 }
-
-// pub struct Ring<'a, T: 'a> {
-//     entries: &'a mut [RingEntry<T>],
-//     next_entry: usize,
-// }
-
-// impl<'a, T: 'a> Ring<'a, T> {
-//     /// Allocate
-//     pub fn new(entries: &'a mut [RingEntry<T>]) -> Self {
-//         Ring {
-//             entries,
-//             next_entry: 0,
-//         }
-//     }
-// }
