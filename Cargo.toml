@@ -22,7 +22,7 @@ cortex-m-semihosting = "0.3"
 volatile-register = "0.2"
 aligned = "0.3"
 
-stm32f4xx-hal = { version = "0.3.0" }
+stm32f4xx-hal = { git = "https://github.com/stm32-rs/stm32f4xx-hal.git" }
 
 smoltcp = { version = "0.5.0", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
 log = { version = "0.4", optional = true }
