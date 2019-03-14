@@ -39,7 +39,6 @@ pub struct TxDescriptor {
 impl Default for TxDescriptor {
     fn default() -> Self {
         let mut desc = Descriptor::default();
-        // TODO
         unsafe {
             desc.write(0,
                        TXDESC_0_TCH | TXDESC_0_IC |

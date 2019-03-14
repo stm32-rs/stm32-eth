@@ -230,7 +230,6 @@ impl<'a> RxRing<'a> {
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    // TODO: 'b or 'a?
     pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Result<RxPacket, RxError>
     {
         if ! self.running_state(eth_dma).is_running() {

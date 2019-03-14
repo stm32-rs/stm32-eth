@@ -1,5 +1,12 @@
-// TODO: port to hal gpio
 use stm32f4xx_hal::stm32::{RCC, SYSCFG};
+#[cfg(feature = "nucleo-f429zi")]
+use stm32f4xx_hal::gpio::{
+    gpioa::{PA1, PA2, PA7},
+    gpiob::{PB13},
+    gpioc::{PC1, PC4, PC5},
+    gpiog::{PG11, PG13},
+    Speed::VeryHigh,
+};
 
 /// Initialize GPIO pins. Enable syscfg and ethernet clocks. Reset the
 /// Ethernet MAC.
@@ -28,24 +35,15 @@ fn reset_pulse(rcc: &RCC) {
     rcc.ahb1rstr.modify(|_, w| w.ethmacrst().clear_bit());
 }
 
-/// Set RMII pins to
-/// * Alternate function mode
-/// * Push-pull mode
-/// * No pull-up resistor
-/// * High-speed
-/// * Alternate function 11
+/// Pin setup for the **STM32 Nucleo-F429ZI** dev board
+/// (feature: `nucleo-f429zi`)
 ///
-/// This function consume the pins so that you cannot use them
+/// Set RMII pins to
+/// * Alternate function 11
+/// * High-speed
+///
+/// This function consumes the pins so that you cannot use them
 /// anywhere else by accident.
-#[cfg(feature = "nucleo-f429zi")]
-use stm32f4xx_hal::gpio::{
-    gpioa::{PA1, PA2, PA7},
-    gpiob::{PB13},
-    gpioc::{PC1, PC4, PC5},
-    gpiog::{PG11, PG13},
-    Speed::VeryHigh,
-};
-
 #[cfg(feature = "nucleo-f429zi")]
 pub fn setup_pins<M1, M2, M3, M4, M5, M6, M7, M8, M9>(
     pa1: PA1<M1>, pa2: PA2<M2>, pa7: PA7<M3>, pb13: PB13<M4>, pc1: PC1<M5>,
