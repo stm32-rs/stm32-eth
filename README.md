@@ -14,7 +14,7 @@ Please send pull requests.
 Add to the `[dependencies]` section in your `Cargo.toml`:
 ```rust
 stm32f4xx-hal = { version = "*", features = ["stm32f429"] }
-stm32-eth = { version = "0.1.0", feautes = ["nucleo-f429zi"] }
+stm32-eth = { version = "0.1.0", features = ["nucleo-f429zi"] }
 ```
 
 In `src/main.rs` add:
