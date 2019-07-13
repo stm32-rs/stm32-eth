@@ -1,6 +1,6 @@
 use core::ops::Deref;
 use core::default::Default;
-use stm32f4xx_hal::stm32::ETHERNET_DMA;
+use stm32f2xx_hal::stm32::ETHERNET_DMA;
 
 use crate::{
     desc::Descriptor,
@@ -193,7 +193,7 @@ impl<'a> RxRing<'a> {
         self.next_entry = 0;
         let ring_ptr = self.entries[0].desc() as *const RxDescriptor;
         // Register RxDescriptor
-        eth_dma.dmardlar.write(|w| {
+        eth_dma.dmardlar.write(|w| unsafe {
             w.srl().bits(ring_ptr as u32)
         });
 

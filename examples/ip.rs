@@ -5,7 +5,7 @@ extern crate panic_itm;
 
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
-use stm32f4xx_hal::{
+use stm32f2xx_hal::{
     gpio::GpioExt,
     stm32::{Peripherals, CorePeripherals, SYST, interrupt},
 };
@@ -66,10 +66,10 @@ fn main() -> ! {
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
-    let gpiog = p.GPIOG.split();
+        // let gpiog = p.GPIOG.split();
     stm32_eth::setup_pins(
         gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1,
-        gpioc.pc4, gpioc.pc5, gpiog.pg11, gpiog.pg13
+        gpioc.pc4, gpioc.pc5, gpiob.pb11, gpiob.pb12
     );
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
@@ -80,7 +80,7 @@ fn main() -> ! {
     );
     eth.enable_interrupt(&mut cp.NVIC);
 
-    let local_addr = Ipv4Address::new(10, 0, 0, 1);
+    let local_addr = Ipv4Address::new(192, 168, 0, 78);
     let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
     let mut ip_addrs = [ip_addr];
     let mut neighbor_storage = [None; 16];

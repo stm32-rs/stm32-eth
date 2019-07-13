@@ -1,5 +1,5 @@
 use core::ops::{Deref, DerefMut};
-use stm32f4xx_hal::stm32::ETHERNET_DMA;
+use stm32f2xx_hal::stm32::ETHERNET_DMA;
 
 use crate::{
     desc::Descriptor,
@@ -175,7 +175,7 @@ impl<'a> TxRing<'a> {
         
         let ring_ptr = self.entries[0].desc() as *const TxDescriptor;
         // Register TxDescriptor
-        eth_dma.dmatdlar.write(|w| {
+        eth_dma.dmatdlar.write(|w| unsafe {
             w.stl().bits(ring_ptr as u32)
         });
 

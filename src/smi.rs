@@ -1,4 +1,4 @@
-use stm32f4xx_hal::stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
+use stm32f2xx_hal::stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 /// Station Management Interface
 pub struct SMI<'a> {
@@ -26,7 +26,7 @@ impl<'a> SMI<'a> {
 
     /// Read an SMI register
     pub fn read(&self, phy: u8, reg: u8) -> u16 {
-        self.macmiiar.modify(|_, w| {
+        self.macmiiar.modify(|_, w| unsafe {
             w.pa().bits(phy)
                 .mr().bits(reg)
                 /* Read operation MW=0 */
@@ -40,7 +40,7 @@ impl<'a> SMI<'a> {
     }
 
     fn write_data(&self, data: u16) {
-        self.macmiidr.write(|w| {
+        self.macmiidr.write(|w| unsafe {
             w.md().bits(data)
         });
     }
@@ -48,7 +48,7 @@ impl<'a> SMI<'a> {
     /// Write an SMI register
     pub fn write(&self, phy: u8, reg: u8, data: u16) {
         self.write_data(data);
-        self.macmiiar.modify(|_, w| {
+        self.macmiiar.modify(|_, w| unsafe {
             w.pa().bits(phy)
                 .mr().bits(reg)
                 /* Write operation MW=1*/

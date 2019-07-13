@@ -20,20 +20,27 @@ features = [ "smoltcp-phy", "nucleo-f429zi" ]
 [dependencies]
 volatile-register = "0.2"
 aligned = "0.3"
-stm32f4xx-hal = "0.4"
-
 smoltcp = { version = "0.5.0", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
 log = { version = "0.4", optional = true }
+
+[dependencies.stm32f2xx-hal]
+path = "../../projects/stm32f2xx-hal"
+features = ["rt"]
+version = "0.1.0"
+
 
 [features]
 smoltcp-phy = ["smoltcp", "log"]
 default = []
-nucleo-f429zi = ["stm32f4xx-hal/stm32f429"]
+f2-custom = []
+# nucleo-f429zi = ["stm32f4xx-hal/stm32f429"]
 
 [dev-dependencies]
 cortex-m = "0.5"
 cortex-m-rt = "0.6"
 panic-itm = "0.4"
+cortex-m-semihosting = "0.3.3"
+panic-semihosting = "0.5.2"
 
 [[example]]
 name = "pktgen"

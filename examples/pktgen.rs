@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-extern crate panic_itm;
+extern crate panic_semihosting;
 
 use cortex_m_rt::{entry, exception};
 use core::cell::RefCell;
@@ -9,7 +9,7 @@ use core::default::Default;
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use stm32f4xx_hal::{
+use stm32f2xx_hal::{
     gpio::GpioExt,
     stm32::{Peripherals, CorePeripherals, SYST, interrupt},
 };
@@ -42,10 +42,10 @@ fn main() -> ! {
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
-    let gpiog = p.GPIOG.split();
+    // let gpiog = p.GPIOG.split();
     stm32_eth::setup_pins(
         gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1,
-        gpioc.pc4, gpioc.pc5, gpiog.pg11, gpiog.pg13
+        gpioc.pc4, gpioc.pc5, gpiob.pb11, gpiob.pb12
     );
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();

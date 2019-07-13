@@ -1,10 +1,10 @@
 #![no_std]
 
 /// Re-export
-pub use stm32f4xx_hal as hal;
+pub use stm32f2xx_hal as hal;
 /// Re-export
-pub use stm32f4xx_hal::stm32;
-use stm32f4xx_hal::stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
+pub use stm32f2xx_hal::stm32;
+use stm32f2xx_hal::stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
 
 pub mod phy;
 use phy::{Phy, PhyStatus};
@@ -20,7 +20,7 @@ use tx::{TxRing, TxRingEntry};
 pub use tx::{TxDescriptor, TxError};
 mod setup;
 pub use setup::setup;
-#[cfg(feature = "nucleo-f429zi")]
+#[cfg(any(feature = "nucleo-f429zi", feature = "f2-custom"))]
 pub use setup::setup_pins;
 
 #[cfg(feature = "smoltcp-phy")]
@@ -125,7 +125,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .pm().set_bit()
         });
         // Flow Control Register
-        self.eth_mac.macfcr.modify(|_, w| {
+        self.eth_mac.macfcr.modify(|_, w| unsafe {
             // Pause time
             w.pt().bits(0x100)
         });
