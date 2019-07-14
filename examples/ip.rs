@@ -21,9 +21,9 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr,
                     Ipv4Address};
 use smoltcp::iface::{NeighborCache, EthernetInterfaceBuilder};
 use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
+use stm32_eth::{Eth, RingEntry};
 use log::{Record, Level, Metadata, LevelFilter};
 
-use stm32_eth::{Eth, RingEntry};
 
 static mut LOGGER: HioLogger = HioLogger {};
 

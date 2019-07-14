@@ -177,6 +177,24 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     /// [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html) to
     /// clear interrupt pending bits. Otherwise the interrupt will
     /// reoccur immediately.
+    pub fn enable_interrupt_peripheral(&self) {
+        self.eth_dma.dmaier.modify(|_, w|
+            w
+                // Normal interrupt summary enable
+                .nise().set_bit()
+                // Receive Interrupt Enable
+                .rie().set_bit()
+                // Transmit Interrupt Enable
+                .tie().set_bit()
+        );
+    }
+
+    /// Enable RX and TX interrupts
+    ///
+    /// In your handler you must call
+    /// [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html) to
+    /// clear interrupt pending bits. Otherwise the interrupt will
+    /// reoccur immediately.
     pub fn enable_interrupt(&self, nvic: &mut NVIC) {
         self.eth_dma.dmaier.modify(|_, w|
             w
