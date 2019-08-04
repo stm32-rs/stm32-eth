@@ -2,7 +2,8 @@ use core::intrinsics::transmute;
 use core::ops::Deref;
 use smoltcp::Error;
 use smoltcp::time::Instant;
-use smoltcp::phy::{DeviceCapabilities, Device, RxToken, TxToken};
+use smoltcp::phy::{DeviceCapabilities, ChecksumCapabilities, Checksum,
+                   Device, RxToken, TxToken};
 use crate::{Eth, rx::RxPacket, tx::TxError};
 
 
@@ -12,7 +13,15 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut Eth<'rx, 'tx> {
     type TxToken = EthTxToken<'a>;
 
     fn capabilities(&self) -> DeviceCapabilities {
-        DeviceCapabilities::default()
+        // from https://github.com/stm32-rs/stm32-eth/pull/5/commits/28c44ab2b65c4668c8957019154834d175a06b61
+        let mut checksum = ChecksumCapabilities::default();
+        checksum.ipv4 = Checksum::Tx;
+        checksum.udp = Checksum::Tx;
+        checksum.tcp = Checksum::Tx;
+        let mut capabilities = DeviceCapabilities::default();
+        capabilities.max_transmission_unit = 1500;
+        capabilities.checksum = checksum;
+        capabilities
     }
 
     fn receive(&mut self) -> Option<(Self::RxToken, Self::TxToken)> {

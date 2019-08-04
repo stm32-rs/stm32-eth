@@ -24,7 +24,7 @@ smoltcp = { version = "0.5.0", default-features = false, features = ["proto-ipv4
 log = { version = "0.4", optional = true }
 
 [dependencies.stm32f2xx-hal]
-path = "../../projects/stm32f2xx-hal"
+path = "../../hal/stm32f2xx-hal"
 features = ["rt"]
 version = "0.1.0"
 
