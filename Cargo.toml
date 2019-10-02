@@ -20,7 +20,7 @@ features = [ "smoltcp-phy", "nucleo-f429zi" ]
 [dependencies]
 volatile-register = "0.2"
 aligned = "0.3"
-smoltcp = { version = "0.5.0", git = "https://github.com/m-labs/smoltcp", rev = "1ada3da5aa33917daf891dda2242d7f5beadfb10", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
+smoltcp = { version = "0.5.0", git = "https://github.com/m-labs/smoltcp", rev = "15a3e84bacd0175582cadf01fdc04fa11509fe61", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose"], optional = true }
 log = { version = "0.4", optional = true }
 
 [dependencies.stm32f2xx-hal]
