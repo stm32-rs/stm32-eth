@@ -19,7 +19,7 @@ stm32-eth = { version = "0.1.1", features = ["nucleo-f429zi"] }
 
 In `src/main.rs` add:
 ```rust
-use stm32f4xx_hal::{
+use stm32f7xx_hal::{
     gpio::GpioExt,
     stm32::Peripherals,
 };

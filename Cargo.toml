@@ -15,12 +15,12 @@ travis-ci = { repository = "astro/stm32-eth", branch = "master" }
 maintenance = { status = "experimental" }
 
 [package.metadata.docs.rs]
-features = [ "smoltcp-phy", "nucleo-f429zi" ]
+features = [ "smoltcp-phy", "nucleo-f767zi" ]
 
 [dependencies]
 volatile-register = "0.2"
 aligned = "0.3"
-stm32f4xx-hal = "0.5"
+stm32f7xx-hal = {git = "https://github.com/dtjones190/stm32f7xx-hal"}
 
 smoltcp = { version = "0.6.0", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose", "ethernet"], optional = true }
 log = { version = "0.4", optional = true }
@@ -28,7 +28,7 @@ log = { version = "0.4", optional = true }
 [features]
 smoltcp-phy = ["smoltcp", "log"]
 default = []
-nucleo-f429zi = ["stm32f4xx-hal/stm32f429"]
+nucleo-f767zi = ["stm32f7xx-hal/stm32f767"]
 
 [dev-dependencies]
 cortex-m = "0.5"

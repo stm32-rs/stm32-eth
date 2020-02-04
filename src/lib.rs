@@ -1,10 +1,10 @@
 #![no_std]
 
 /// Re-export
-pub use stm32f4xx_hal as hal;
+pub use stm32f7xx_hal as hal;
 /// Re-export
-pub use stm32f4xx_hal::stm32;
-use stm32f4xx_hal::stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
+pub use stm32f7xx_hal::stm32;
+use stm32f7xx_hal::stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
 
 pub mod phy;
 use phy::{Phy, PhyStatus};
@@ -20,7 +20,7 @@ use tx::{TxRing, TxRingEntry};
 pub use tx::{TxDescriptor, TxError};
 mod setup;
 pub use setup::setup;
-#[cfg(feature = "nucleo-f429zi")]
+#[cfg(feature = "nucleo-f767zi")]
 pub use setup::setup_pins;
 
 #[cfg(feature = "smoltcp-phy")]
