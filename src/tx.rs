@@ -205,7 +205,7 @@ impl<'a> TxRing<'a> {
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
     pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
-        eth_dma.dmatpdr.write(|w| unsafe { w.tpd().bits(1) });
+        eth_dma.dmatpdr.write(|w| w.tpd().poll());
     }
 
     /// Is the Tx DMA engine running?

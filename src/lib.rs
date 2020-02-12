@@ -6,6 +6,8 @@ pub use stm32f7xx_hal as hal;
 pub use stm32f7xx_hal::stm32;
 use stm32f7xx_hal::stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
 
+use cortex_m::asm;
+
 pub mod phy;
 use phy::{Phy, PhyStatus};
 mod smi;
@@ -231,6 +233,8 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     /// Send a packet
     pub fn send<F: FnOnce(&mut [u8]) -> R, R>(&mut self, length: usize, f: F) -> Result<R, TxError> {
         let result = self.tx_ring.send(length, f);
+        //Wait for the memory to sync with the cache
+        asm::dsb();
         self.tx_ring.demand_poll(&self.eth_dma);
         result
     }
