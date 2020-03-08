@@ -177,7 +177,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     /// [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html) to
     /// clear interrupt pending bits. Otherwise the interrupt will
     /// reoccur immediately.
-    pub fn enable_interrupt(&self, nvic: &mut NVIC) {
+    pub fn enable_interrupt(&self) {
         self.eth_dma.dmaier.modify(|_, w|
             w
                 // Normal interrupt summary enable
@@ -191,7 +191,9 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         // Enable ethernet interrupts
         let interrupt = Interrupt::ETH;
 
-        nvic.enable(interrupt);
+        unsafe {
+            NVIC::unmask(interrupt);
+        }
     }
 
     /// Calls [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html)
