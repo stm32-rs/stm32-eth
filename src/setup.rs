@@ -1,4 +1,4 @@
-use stm32f7xx_hal::stm32::{RCC, SYSCFG};
+use stm32f7xx_hal::device::{RCC, SYSCFG};
 #[cfg(feature = "nucleo-f767zi")]
 use stm32f7xx_hal::gpio::{
     gpioa::{PA1, PA2, PA7},

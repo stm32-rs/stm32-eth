@@ -1,5 +1,5 @@
 use core::option::Option;
-use stm32f7xx_hal::stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
+use stm32f7xx_hal::device::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 use crate::smi::SMI;
 

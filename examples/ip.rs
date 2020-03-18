@@ -7,7 +7,7 @@ use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
 use stm32f7xx_hal::{
     gpio::GpioExt,
-    stm32::{Peripherals, CorePeripherals, SYST, interrupt},
+    device::{Peripherals, CorePeripherals, SYST, interrupt},
 };
 
 use core::cell::RefCell;

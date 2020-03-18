@@ -3,8 +3,8 @@
 /// Re-export
 pub use stm32f7xx_hal as hal;
 /// Re-export
-pub use stm32f7xx_hal::stm32;
-use stm32f7xx_hal::stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
+pub use stm32f7xx_hal::device;
+use stm32f7xx_hal::device::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
 
 use cortex_m::asm;
 

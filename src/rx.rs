@@ -1,6 +1,6 @@
 use core::ops::{Deref, DerefMut};
 use core::default::Default;
-use stm32f7xx_hal::stm32::ETHERNET_DMA;
+use stm32f7xx_hal::device::ETHERNET_DMA;
 
 use crate::{
     desc::Descriptor,
