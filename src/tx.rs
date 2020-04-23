@@ -3,7 +3,7 @@ use stm32f4xx_hal::stm32::ETHERNET_DMA;
 
 use crate::{
     desc::Descriptor,
-    ring::{RingEntry, RingDescriptor},
+    ring::{RingDescriptor, RingEntry},
 };
 
 /// Owned by DMA engine
@@ -33,16 +33,14 @@ pub enum TxError {
 #[repr(C)]
 #[derive(Clone)]
 pub struct TxDescriptor {
-    desc: Descriptor
+    desc: Descriptor,
 }
 
 impl Default for TxDescriptor {
     fn default() -> Self {
         let mut desc = Descriptor::default();
         unsafe {
-            desc.write(0,
-                       TXDESC_0_TCH | TXDESC_0_IC |
-                       TXDESC_0_FS | TXDESC_0_LS);
+            desc.write(0, TXDESC_0_TCH | TXDESC_0_IC | TXDESC_0_FS | TXDESC_0_LS);
         }
         TxDescriptor { desc }
     }
@@ -56,7 +54,9 @@ impl TxDescriptor {
 
     /// Pass ownership to the DMA engine
     fn set_owned(&mut self) {
-        unsafe { self.desc.modify(0, |w| w | TXDESC_0_OWN); }
+        unsafe {
+            self.desc.modify(0, |w| w | TXDESC_0_OWN);
+        }
     }
 
     #[allow(unused)]
@@ -73,19 +73,22 @@ impl TxDescriptor {
     fn set_buffer1_len(&mut self, len: usize) {
         unsafe {
             self.desc.modify(1, |w| {
-                (w & !TXDESC_1_TBS_MASK) |
-                ((len as u32) << TXDESC_1_TBS_SHIFT)
+                (w & !TXDESC_1_TBS_MASK) | ((len as u32) << TXDESC_1_TBS_SHIFT)
             });
         }
     }
 
     // points to next descriptor (RCH)
     fn set_buffer2(&mut self, buffer: *const u8) {
-        unsafe { self.desc.write(3, buffer as u32); }
+        unsafe {
+            self.desc.write(3, buffer as u32);
+        }
     }
 
     fn set_end_of_ring(&mut self) {
-        unsafe { self.desc.modify(0, |w| w | TXDESC_0_TER); }
+        unsafe {
+            self.desc.modify(0, |w| w | TXDESC_0_TER);
+        }
     }
 }
 
@@ -95,12 +98,11 @@ impl RingDescriptor for TxDescriptor {
     fn setup(&mut self, buffer: *const u8, _len: usize, next: Option<&Self>) {
         self.set_buffer1(buffer);
         match next {
-            Some(next) =>
-                self.set_buffer2(&next.desc as *const Descriptor as *const u8),
+            Some(next) => self.set_buffer2(&next.desc as *const Descriptor as *const u8),
             None => {
                 self.set_buffer2(0 as *const u8);
                 self.set_end_of_ring();
-            },
+            }
         };
     }
 }
@@ -109,9 +111,12 @@ impl TxRingEntry {
     fn prepare_packet<'a>(&'a mut self, length: usize) -> Option<TxPacket<'a>> {
         assert!(length <= self.as_slice().len());
 
-        if ! self.desc().is_owned() {
+        if !self.desc().is_owned() {
             self.desc_mut().set_buffer1_len(length);
-            Some(TxPacket { entry: self, length })
+            Some(TxPacket {
+                entry: self,
+                length,
+            })
         } else {
             None
         }
@@ -172,18 +177,20 @@ impl<'a> TxRing<'a> {
             }
             previous.map(|previous| previous.setup(None));
         }
-        
+
         let ring_ptr = self.entries[0].desc() as *const TxDescriptor;
         // Register TxDescriptor
-        eth_dma.dmatdlar.write(|w| {
-            w.stl().bits(ring_ptr as u32)
-        });
+        eth_dma.dmatdlar.write(|w| w.stl().bits(ring_ptr as u32));
 
         // Start transmission
         eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
     }
 
-    pub fn send<F: FnOnce(&mut [u8]) -> R, R>(&mut self, length: usize, f: F) -> Result<R, TxError> {
+    pub fn send<F: FnOnce(&mut [u8]) -> R, R>(
+        &mut self,
+        length: usize,
+        f: F,
+    ) -> Result<R, TxError> {
         let entries_len = self.entries.len();
 
         match self.entries[self.next_entry].prepare_packet(length) {
@@ -197,8 +204,7 @@ impl<'a> TxRing<'a> {
                 }
                 Ok(r)
             }
-            None =>
-                Err(TxError::WouldBlock)
+            None => Err(TxError::WouldBlock),
         }
     }
 
