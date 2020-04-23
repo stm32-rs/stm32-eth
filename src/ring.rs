@@ -1,5 +1,5 @@
-use core::ops::{Deref, DerefMut};
 use aligned::{Aligned, A8};
+use core::ops::{Deref, DerefMut};
 
 use crate::MTU;
 
@@ -38,10 +38,8 @@ impl<T: Clone + RingDescriptor + Default> RingEntry<T> {
     pub(crate) fn setup(&mut self, next: Option<&Self>) {
         let buffer = self.buffer.as_ptr();
         let len = self.buffer.len();
-        self.desc_mut().setup(
-            buffer, len,
-            next.map(|next| next.desc())
-        );
+        self.desc_mut()
+            .setup(buffer, len, next.map(|next| next.desc()));
     }
 
     #[inline]

@@ -3,15 +3,15 @@
 
 extern crate panic_itm;
 
-use cortex_m_rt::{entry, exception};
 use core::cell::RefCell;
 use core::default::Default;
+use cortex_m_rt::{entry, exception};
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
 use stm32f4xx_hal::{
     gpio::GpioExt,
-    stm32::{Peripherals, CorePeripherals, SYST, interrupt},
+    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
 use core::fmt::Write;
@@ -19,14 +19,12 @@ use cortex_m_semihosting::hio;
 
 use stm32_eth::{Eth, RingEntry, TxError};
 
-
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
 const ETH_TYPE: [u8; 2] = [0x80, 0x00];
 
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
-
 
 #[entry]
 fn main() -> ! {
@@ -44,15 +42,17 @@ fn main() -> ! {
     let gpioc = p.GPIOC.split();
     let gpiog = p.GPIOG.split();
     stm32_eth::setup_pins(
-        gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1,
-        gpioc.pc4, gpioc.pc5, gpiog.pg11, gpiog.pg13
+        gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1, gpioc.pc4, gpioc.pc5, gpiog.pg11,
+        gpiog.pg13,
     );
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
     let mut eth = Eth::new(
-        p.ETHERNET_MAC, p.ETHERNET_DMA,
-        &mut rx_ring[..], &mut tx_ring[..]
+        p.ETHERNET_MAC,
+        p.ETHERNET_DMA,
+        &mut rx_ring[..],
+        &mut tx_ring[..],
     );
     eth.enable_interrupt(&mut cp.NVIC);
 
@@ -65,20 +65,21 @@ fn main() -> ! {
     let mut last_status = None;
 
     loop {
-        let time: usize = cortex_m::interrupt::free(|cs| {
-            *TIME.borrow(cs)
-                .borrow()
-        });
+        let time: usize = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
 
         // print stats every 30 seconds
         if time >= last_stats_time + 30 {
             let t = time - last_stats_time;
             writeln!(
-                stdout, "T={}\tRx:\t{} KB/s\t{} pps\tTx:\t{} KB/s\t{} pps",
+                stdout,
+                "T={}\tRx:\t{} KB/s\t{} pps\tTx:\t{} KB/s\t{} pps",
                 time,
-                rx_bytes / 1024 / t, rx_pkts / t,
-                tx_bytes / 1024 / t, tx_pkts / t
-            ).unwrap();
+                rx_bytes / 1024 / t,
+                rx_pkts / t,
+                tx_bytes / 1024 / t,
+                tx_pkts / t
+            )
+            .unwrap();
             // Reset
             rx_bytes = 0;
             rx_pkts = 0;
@@ -89,14 +90,12 @@ fn main() -> ! {
 
         // Link change detection
         let status = eth.status();
-        if last_status.map(|last_status| last_status != status)
+        if last_status
+            .map(|last_status| last_status != status)
             .unwrap_or(true)
         {
-            if ! status.link_detected() {
-                writeln!(
-                    stdout,
-                    "Ethernet: no link detected"
-                ).unwrap();
+            if !status.link_detected() {
+                writeln!(stdout, "Ethernet: no link detected").unwrap();
             } else {
                 writeln!(
                     stdout,
@@ -107,16 +106,15 @@ fn main() -> ! {
                         Some(false) => "HD",
                         None => "?",
                     }
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             last_status = Some(status);
         }
 
         cortex_m::interrupt::free(|cs| {
-            let mut eth_pending =
-                ETH_PENDING.borrow(cs)
-                .borrow_mut();
+            let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
 
@@ -135,7 +133,7 @@ fn main() -> ! {
                 }
             }
         }
-        if ! eth.rx_is_running() {
+        if !eth.rx_is_running() {
             writeln!(stdout, "RX stopped").unwrap();
         }
 
@@ -160,10 +158,8 @@ fn main() -> ! {
         }
 
         cortex_m::interrupt::free(|cs| {
-            let eth_pending =
-                ETH_PENDING.borrow(cs)
-                .borrow_mut();
-            if ! *eth_pending {
+            let eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
+            if !*eth_pending {
                 asm::wfi();
             }
         });
@@ -175,22 +171,21 @@ fn setup_systick(syst: &mut SYST) {
     syst.enable_counter();
     syst.enable_interrupt();
 
-    if ! SYST::is_precise() {
+    if !SYST::is_precise() {
         let mut stderr = hio::hstderr().unwrap();
         writeln!(
             stderr,
             "Warning: SYSTICK with source {:?} is not precise",
             syst.get_clock_source()
-        ).unwrap();
+        )
+        .unwrap();
     }
 }
 
 #[exception]
 fn SysTick() {
     cortex_m::interrupt::free(|cs| {
-        let mut time =
-            TIME.borrow(cs)
-            .borrow_mut();
+        let mut time = TIME.borrow(cs).borrow_mut();
         *time += 1;
     })
 }
@@ -198,9 +193,7 @@ fn SysTick() {
 #[interrupt]
 fn ETH() {
     cortex_m::interrupt::free(|cs| {
-        let mut eth_pending =
-            ETH_PENDING.borrow(cs)
-            .borrow_mut();
+        let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
         *eth_pending = true;
     });
 

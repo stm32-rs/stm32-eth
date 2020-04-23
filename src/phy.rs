@@ -14,7 +14,7 @@ mod consts {
     pub const PHY_REG_ANEXP: u8 = 0x06;
     pub const PHY_REG_ANNPTX: u8 = 0x07;
     pub const PHY_REG_ANNPRX: u8 = 0x08;
-    pub const PHY_REG_SSR: u8 = 0x1F;  // Special Status Register
+    pub const PHY_REG_SSR: u8 = 0x1F; // Special Status Register
 
     pub const PHY_REG_BCR_COLTEST: u16 = 1 << 7;
     pub const PHY_REG_BCR_FD: u16 = 1 << 8;
@@ -55,10 +55,7 @@ impl<'a> Phy<'a> {
     pub fn new(macmiiar: &'a MACMIIAR, macmiidr: &'a MACMIIDR, phy: u8) -> Self {
         let smi = SMI::new(macmiiar, macmiidr);
 
-        Phy {
-            smi,
-            phy,
-        }
+        Phy { smi, phy }
     }
 
     /// Read current status registers
@@ -74,17 +71,10 @@ impl<'a> Phy<'a> {
 
     /// Reset the PHY
     pub fn reset(&self) -> &Self {
-        self.smi.set_bits(
-            self.phy,
-            PHY_REG_BCR,
-            PHY_REG_BCR_RESET
-        );
+        self.smi.set_bits(self.phy, PHY_REG_BCR, PHY_REG_BCR_RESET);
 
         // wait until reset bit is cleared by phy
-        while (self.smi.read(
-            self.phy,
-            PHY_REG_BCR
-        ) & PHY_REG_BCR_RESET) == PHY_REG_BCR_RESET {}
+        while (self.smi.read(self.phy, PHY_REG_BCR) & PHY_REG_BCR_RESET) == PHY_REG_BCR_RESET {}
 
         self
     }
@@ -94,7 +84,7 @@ impl<'a> Phy<'a> {
         self.smi.set_bits(
             self.phy,
             PHY_REG_BCR,
-            PHY_REG_BCR_AN | PHY_REG_BCR_ANRST | PHY_REG_BCR_100M
+            PHY_REG_BCR_AN | PHY_REG_BCR_ANRST | PHY_REG_BCR_100M,
         );
 
         self
@@ -116,35 +106,25 @@ impl PhyStatus {
 
     /// Has auto-negotiated?
     pub fn autoneg_done(&self) -> bool {
-        (self.bsr & PHY_REG_BSR_ANDONE) == PHY_REG_BSR_ANDONE ||
-        (self.ssr & PHY_REG_SSR_ANDONE) == PHY_REG_SSR_ANDONE
+        (self.bsr & PHY_REG_BSR_ANDONE) == PHY_REG_BSR_ANDONE
+            || (self.ssr & PHY_REG_SSR_ANDONE) == PHY_REG_SSR_ANDONE
     }
 
     /// FD, not HD?
     pub fn is_full_duplex(&self) -> Option<bool> {
         match self.ssr & PHY_REG_SSR_SPEED {
-            PHY_REG_SSR_10BASE_HD |
-            PHY_REG_SSR_100BASE_HD =>
-                Some(false),
-            PHY_REG_SSR_10BASE_FD |
-            PHY_REG_SSR_100BASE_FD =>
-                Some(true),
-            _ =>
-                None,
+            PHY_REG_SSR_10BASE_HD | PHY_REG_SSR_100BASE_HD => Some(false),
+            PHY_REG_SSR_10BASE_FD | PHY_REG_SSR_100BASE_FD => Some(true),
+            _ => None,
         }
     }
 
     /// 10, 100, or 0 Mbps
     pub fn speed(&self) -> u32 {
         match self.ssr & PHY_REG_SSR_SPEED {
-            PHY_REG_SSR_10BASE_HD |
-            PHY_REG_SSR_10BASE_FD =>
-                10,
-            PHY_REG_SSR_100BASE_HD |
-            PHY_REG_SSR_100BASE_FD =>
-                100,
-            _ =>
-                0,
+            PHY_REG_SSR_10BASE_HD | PHY_REG_SSR_10BASE_FD => 10,
+            PHY_REG_SSR_100BASE_HD | PHY_REG_SSR_100BASE_FD => 100,
+            _ => 0,
         }
     }
 
@@ -158,11 +138,9 @@ impl PhyStatus {
 /// attributes.
 impl PartialEq for PhyStatus {
     fn eq(&self, other: &PhyStatus) -> bool {
-        (self.link_detected() == false &&
-         other.link_detected() == false)
-        ||
-        (self.link_detected() == other.link_detected() &&
-         self.is_full_duplex() == other.is_full_duplex() &&
-         self.speed() == other.speed())
+        (self.link_detected() == false && other.link_detected() == false)
+            || (self.link_detected() == other.link_detected()
+                && self.is_full_duplex() == other.is_full_duplex()
+                && self.speed() == other.speed())
     }
 }
