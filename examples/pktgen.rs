@@ -12,6 +12,7 @@ use cortex_m::interrupt::Mutex;
 use stm32_eth::{
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
     hal::gpio::GpioExt,
+    hal::rcc::RccExt,
 };
 
 use core::fmt::Write;
@@ -48,11 +49,13 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
+    let clocks = p.RCC.constrain().cfgr.freeze();
     let mut eth = Eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
+        &clocks,
     );
     eth.enable_interrupt();
 

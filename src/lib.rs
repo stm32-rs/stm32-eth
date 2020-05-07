@@ -15,6 +15,10 @@ pub use stm32f4xx_hal as hal;
 pub use stm32f4xx_hal::stm32;
 
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
+use hal::{
+        rcc::Clocks,
+        time::U32Ext,
+};
 
 use cortex_m::asm;
 
@@ -46,21 +50,6 @@ const PHY_ADDR: u8 = 0;
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
 
-#[allow(dead_code)]
-mod consts {
-    /* For HCLK 60-100 MHz */
-    pub const ETH_MACMIIAR_CR_HCLK_DIV_42: u8 = 0;
-    /* For HCLK 100-150 MHz */
-    pub const ETH_MACMIIAR_CR_HCLK_DIV_62: u8 = 1;
-    /* For HCLK 20-35 MHz */
-    pub const ETH_MACMIIAR_CR_HCLK_DIV_16: u8 = 2;
-    /* For HCLK 35-60 MHz */
-    pub const ETH_MACMIIAR_CR_HCLK_DIV_26: u8 = 3;
-    /* For HCLK 150-168 MHz */
-    pub const ETH_MACMIIAR_CR_HCLK_DIV_102: u8 = 4;
-}
-use self::consts::*;
-
 /// Ethernet driver for *STM32* chips with a *LAN8742*
 /// [`Phy`](phy/struct.Phy.html) like they're found on STM Nucleo-144
 /// boards.
@@ -89,6 +78,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         eth_dma: ETHERNET_DMA,
         rx_buffer: &'rx mut [RxRingEntry],
         tx_buffer: &'tx mut [TxRingEntry],
+        clocks: &Clocks,
     ) -> Self {
         let mut eth = Eth {
             eth_mac,
@@ -96,17 +86,40 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
             rx_ring: RxRing::new(rx_buffer),
             tx_ring: TxRing::new(tx_buffer),
         };
-        eth.init();
+        eth.init(clocks);
         eth.rx_ring.start(&eth.eth_dma);
         eth.tx_ring.start(&eth.eth_dma);
         eth
     }
 
-    fn init(&mut self) -> &Self {
+    fn init(&mut self, clocks : &Clocks) -> &Self {
         self.reset_dma_and_wait();
 
+        /* For HCLK 60-100 MHz */
+        const ETH_MACMIIAR_CR_HCLK_DIV_42: u8 = 0;
+        /* For HCLK 100-150 MHz */
+        const ETH_MACMIIAR_CR_HCLK_DIV_62: u8 = 1;
+        /* For HCLK 20-35 MHz */
+        const ETH_MACMIIAR_CR_HCLK_DIV_16: u8 = 2;
+        /* For HCLK 35-60 MHz */
+        const ETH_MACMIIAR_CR_HCLK_DIV_26: u8 = 3;
+        /* For HCLK 150+ MHz */
+        const ETH_MACMIIAR_CR_HCLK_DIV_102: u8 = 4;
+
         // set clock range in MAC MII address register
-        let clock_range = ETH_MACMIIAR_CR_HCLK_DIV_26;
+        let clock_range;
+        if clocks.hclk() <= 35.mhz().into() {
+            clock_range = ETH_MACMIIAR_CR_HCLK_DIV_16;
+        } else if clocks.hclk() <= 60.mhz().into() {
+            clock_range = ETH_MACMIIAR_CR_HCLK_DIV_26;
+        } else if clocks.hclk() <= 100.mhz().into() {
+            clock_range = ETH_MACMIIAR_CR_HCLK_DIV_42;
+        } else if clocks.hclk() <= 150.mhz().into() {
+            clock_range = ETH_MACMIIAR_CR_HCLK_DIV_62;
+        } else {
+            clock_range = ETH_MACMIIAR_CR_HCLK_DIV_102;
+        }
+
         self.eth_mac
             .macmiiar
             .modify(|_, w| unsafe { w.cr().bits(clock_range) });

@@ -32,6 +32,7 @@ In `src/main.rs` add:
 ```rust
 use stm32_eth::{
     hal::gpio::GpioExt,
+    hal::rcc::RccExt,
     stm32::Peripherals,
 };
 
@@ -54,10 +55,12 @@ fn main() {
     // Allocate the ring buffers
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
+    let clocks = p.RCC.constrain().cfgr.freeze();
     // Instantiate driver
     let mut eth = Eth::new(
         p.ETHERNET_MAC, p.ETHERNET_DMA,
-        &mut rx_ring[..], &mut tx_ring[..]
+        &mut rx_ring[..], &mut tx_ring[..],
+        &clocks
     );
     // If you have a handler, enable interrupts
     eth.enable_interrupt(&mut cp.NVIC);
