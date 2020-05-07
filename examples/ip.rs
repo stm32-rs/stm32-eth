@@ -5,9 +5,9 @@ extern crate panic_itm;
 
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
-use stm32f7xx_hal::{
-    device::{interrupt, CorePeripherals, Peripherals, SYST},
-    gpio::GpioExt,
+use stm32_eth::{
+    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
+    hal::gpio::GpioExt,
 };
 
 use core::cell::RefCell;
@@ -80,7 +80,7 @@ fn main() -> ! {
         &mut rx_ring[..],
         &mut tx_ring[..],
     );
-    eth.enable_interrupt(&mut cp.NVIC);
+    eth.enable_interrupt();
 
     let local_addr = Ipv4Address::new(10, 0, 0, 1);
     let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);

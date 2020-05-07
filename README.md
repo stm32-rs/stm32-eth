@@ -9,6 +9,11 @@
 
 Please send pull requests.
 
+## Building Examples
+```
+cargo build --example="pktgen" --features="nucleo-f767zi"
+cargo build --example="ip" --features="nucleo-f767zi" --features="smoltcp-phy"
+```
 
 ## Usage
 

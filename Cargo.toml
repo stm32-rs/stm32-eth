@@ -30,13 +30,14 @@ log = { version = "0.4", optional = true }
 [features]
 smoltcp-phy = ["smoltcp", "log"]
 default = []
-nucleo-f767zi = ["stm32f7xx-hal", "stm32f7xx-hal/stm32f767"]
-nucleo-f429zi = ["stm32f4xx-hal", "stm32f4xx-hal/stm32f429"]
+nucleo-f767zi = ["stm32f7xx-hal", "stm32f7xx-hal/stm32f767", "stm32f7xx-hal/rt"]
+nucleo-f429zi = ["stm32f4xx-hal", "stm32f4xx-hal/stm32f429", "stm32f4xx-hal/rt"]
 
 [dev-dependencies]
 cortex-m = "0.5"
 cortex-m-rt = "0.6"
 panic-itm = "0.4"
+cortex-m-semihosting = "0.3.3"
 
 [[example]]
 name = "pktgen"

@@ -9,9 +9,9 @@ use cortex_m_rt::{entry, exception};
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use stm32f7xx_hal::{
-    device::{interrupt, CorePeripherals, Peripherals, SYST},
-    gpio::GpioExt,
+use stm32_eth::{
+    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
+    hal::gpio::GpioExt,
 };
 
 use core::fmt::Write;
@@ -54,7 +54,7 @@ fn main() -> ! {
         &mut rx_ring[..],
         &mut tx_ring[..],
     );
-    eth.enable_interrupt(&mut cp.NVIC);
+    eth.enable_interrupt();
 
     // Main loop
     let mut last_stats_time = 0usize;
