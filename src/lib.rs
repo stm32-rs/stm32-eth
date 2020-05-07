@@ -14,11 +14,8 @@ pub use stm32f4xx_hal as hal;
 #[cfg(feature = "stm32f4xx-hal")]
 pub use stm32f4xx_hal::stm32;
 
+use hal::{rcc::Clocks, time::U32Ext};
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
-use hal::{
-        rcc::Clocks,
-        time::U32Ext,
-};
 
 use cortex_m::asm;
 
@@ -92,7 +89,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         eth
     }
 
-    fn init(&mut self, clocks : &Clocks) -> &Self {
+    fn init(&mut self, clocks: &Clocks) -> &Self {
         self.reset_dma_and_wait();
 
         /* For HCLK 60-100 MHz */

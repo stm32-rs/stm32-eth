@@ -10,9 +10,9 @@ use cortex_m_rt::{entry, exception};
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
 use stm32_eth::{
-    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
+    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
 use core::fmt::Write;
