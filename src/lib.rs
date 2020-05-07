@@ -1,10 +1,21 @@
 #![no_std]
 
 /// Re-export
+#[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
 /// Re-export
-pub use stm32f7xx_hal::device;
-use stm32f7xx_hal::device::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
+#[cfg(feature = "stm32f7xx-hal")]
+pub use stm32f7xx_hal::device as stm32;
+
+/// Re-export
+#[cfg(feature = "stm32f4xx-hal")]
+pub use stm32f4xx_hal as hal;
+/// Re-export
+#[cfg(feature = "stm32f4xx-hal")]
+pub use stm32f4xx_hal::stm32 as stm32;
+
+
+use stm32::{ETHERNET_MAC, ETHERNET_DMA, NVIC, Interrupt};
 
 use cortex_m::asm;
 
@@ -22,7 +33,7 @@ use tx::{TxRing, TxRingEntry};
 pub use tx::{TxDescriptor, TxError};
 mod setup;
 pub use setup::setup;
-#[cfg(feature = "nucleo-f767zi")]
+#[cfg(any(feature = "nucleo-f767zi", feature = "nucleo-f429zi"))]
 pub use setup::setup_pins;
 
 #[cfg(feature = "smoltcp-phy")]

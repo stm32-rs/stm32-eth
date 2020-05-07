@@ -1,6 +1,21 @@
-use stm32f7xx_hal::device::{RCC, SYSCFG};
+#[cfg(feature = "stm32f4xx-hal")]
+use stm32f4xx_hal::stm32 as stm32;
+#[cfg(feature = "stm32f7xx-hal")]
+use stm32f7xx_hal::device as stm32;
+
+use stm32::{RCC, SYSCFG};
+
 #[cfg(feature = "nucleo-f767zi")]
 use stm32f7xx_hal::gpio::{
+    gpioa::{PA1, PA2, PA7},
+    gpiob::{PB13},
+    gpioc::{PC1, PC4, PC5},
+    gpiog::{PG11, PG13},
+    Speed::VeryHigh,
+};
+
+#[cfg(feature = "nucleo-f429zi")]
+use stm32f4xx_hal::gpio::{
     gpioa::{PA1, PA2, PA7},
     gpiob::{PB13},
     gpioc::{PC1, PC4, PC5},
@@ -44,7 +59,7 @@ fn reset_pulse(rcc: &RCC) {
 ///
 /// This function consumes the pins so that you cannot use them
 /// anywhere else by accident.
-#[cfg(feature = "nucleo-f767zi")]
+#[cfg(any(feature = "nucleo-f767zi", feature = "nucleo-f429zi"))]
 pub fn setup_pins<M1, M2, M3, M4, M5, M6, M7, M8, M9>(
     pa1: PA1<M1>, pa2: PA2<M2>, pa7: PA7<M3>, pb13: PB13<M4>, pc1: PC1<M5>,
     pc4: PC4<M6>, pc5: PC5<M7>, pg11: PG11<M8>, pg13: PG13<M9>

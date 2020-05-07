@@ -1,5 +1,11 @@
+#[cfg(feature = "stm32f4xx-hal")]
+use stm32f4xx_hal::stm32 as stm32;
+#[cfg(feature = "stm32f7xx-hal")]
+use stm32f7xx_hal::device as stm32;
+
+use stm32::ETHERNET_DMA;
+
 use core::ops::{Deref, DerefMut};
-use stm32f7xx_hal::device::ETHERNET_DMA;
 
 use crate::{
     desc::Descriptor,

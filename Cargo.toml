@@ -20,7 +20,8 @@ features = [ "smoltcp-phy", "nucleo-f767zi" ]
 [dependencies]
 volatile-register = "0.2"
 aligned = "0.3"
-stm32f7xx-hal = {git = "https://github.com/stm32-rs/stm32f7xx-hal"}
+stm32f7xx-hal = {git = "https://github.com/stm32-rs/stm32f7xx-hal", optional = true}
+stm32f4xx-hal = {version = "0.7", optional = true}
 cortex-m = "0.6.0"
 
 smoltcp = { version = "0.6", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "log", "verbose", "ethernet"], optional = true }
@@ -29,7 +30,8 @@ log = { version = "0.4", optional = true }
 [features]
 smoltcp-phy = ["smoltcp", "log"]
 default = []
-nucleo-f767zi = ["stm32f7xx-hal/stm32f767"]
+nucleo-f767zi = ["stm32f7xx-hal", "stm32f7xx-hal/stm32f767"]
+nucleo-f429zi = ["stm32f4xx-hal", "stm32f4xx-hal/stm32f429"]
 
 [dev-dependencies]
 cortex-m = "0.5"

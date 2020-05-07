@@ -5,6 +5,7 @@
 ## Supported microcontrollers
 
 * STM32F4xx
+* STM32F7xx
 
 Please send pull requests.
 
@@ -16,13 +17,20 @@ Add to the `[dependencies]` section in your `Cargo.toml`:
 stm32f4xx-hal = { version = "*", features = ["stm32f429"] }
 stm32-eth = { version = "0.1.1", features = ["nucleo-f429zi"] }
 ```
+or
+```rust
+stm32f7xx-hal = { git = "https://github.com/stm32-rs/stm32f7xx-hal", features = ["stm32f767"] }
+stm32-eth = { version = "0.1.1", features = ["nucleo-f767zi"]}
+```
 
 In `src/main.rs` add:
 ```rust
-use stm32f7xx_hal::{
-    gpio::GpioExt,
+use stm32_eth::{
+    hal::gpio::GpioExt,
     stm32::Peripherals,
 };
+
+
 use stm32_eth::{Eth, RingEntry};
 
 fn main() {
