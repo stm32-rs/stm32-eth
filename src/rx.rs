@@ -1,18 +1,17 @@
 #[cfg(feature = "stm32f4xx-hal")]
-use stm32f4xx_hal::stm32 as stm32;
+use stm32f4xx_hal::stm32;
 #[cfg(feature = "stm32f7xx-hal")]
 use stm32f7xx_hal::device as stm32;
 
 use stm32::ETHERNET_DMA;
 
-use core::ops::{Deref, DerefMut};
 use core::default::Default;
+use core::ops::{Deref, DerefMut};
 
 use crate::{
     desc::Descriptor,
-    ring::{RingEntry, RingDescriptor},
+    ring::{RingDescriptor, RingEntry},
 };
-
 
 #[derive(Debug, PartialEq)]
 pub enum RxError {
@@ -49,7 +48,9 @@ pub struct RxDescriptor {
 impl Default for RxDescriptor {
     fn default() -> Self {
         let mut desc = Descriptor::default();
-        unsafe { desc.write(1, RXDESC_1_RCH); }
+        unsafe {
+            desc.write(1, RXDESC_1_RCH);
+        }
         RxDescriptor { desc }
     }
 }
@@ -62,7 +63,9 @@ impl RxDescriptor {
 
     /// Pass ownership to the DMA engine
     fn set_owned(&mut self) {
-        unsafe { self.desc.modify(0, |w| w | RXDESC_0_OWN); }
+        unsafe {
+            self.desc.modify(0, |w| w | RXDESC_0_OWN);
+        }
     }
 
     fn has_error(&self) -> bool {
@@ -83,19 +86,22 @@ impl RxDescriptor {
         unsafe {
             self.desc.write(2, buffer as u32);
             self.desc.modify(1, |w| {
-                (w & !RXDESC_1_RBS_MASK) |
-                ((len as u32) << RXDESC_1_RBS_SHIFT)
+                (w & !RXDESC_1_RBS_MASK) | ((len as u32) << RXDESC_1_RBS_SHIFT)
             });
         }
     }
 
     // points to next descriptor (RCH)
     fn set_buffer2(&mut self, buffer: *const u8) {
-        unsafe { self.desc.write(3, buffer as u32); }
+        unsafe {
+            self.desc.write(3, buffer as u32);
+        }
     }
 
     fn set_end_of_ring(&mut self) {
-        unsafe { self.desc.modify(1, |w| w | RXDESC_1_RER); }
+        unsafe {
+            self.desc.modify(1, |w| w | RXDESC_1_RER);
+        }
     }
 
     fn get_frame_len(&self) -> usize {
@@ -109,12 +115,11 @@ impl RingDescriptor for RxDescriptor {
     fn setup(&mut self, buffer: *const u8, len: usize, next: Option<&Self>) {
         self.set_buffer1(buffer, len);
         match next {
-            Some(next) =>
-                self.set_buffer2(&next.desc as *const Descriptor as *const u8),
+            Some(next) => self.set_buffer2(&next.desc as *const Descriptor as *const u8),
             None => {
                 self.set_buffer2(0 as *const u8);
                 self.set_end_of_ring();
-            },
+            }
         };
         self.set_owned();
     }
@@ -123,23 +128,25 @@ impl RingDescriptor for RxDescriptor {
 impl RxRingEntry {
     fn take_received(&mut self) -> Result<RxPacket, RxError> {
         match self.desc().is_owned() {
-            true =>
-                Err(RxError::WouldBlock),
+            true => Err(RxError::WouldBlock),
             false if self.desc().has_error() => {
                 self.desc_mut().set_owned();
                 Err(RxError::DmaError)
-            },
+            }
             false if self.desc().is_first() && self.desc().is_last() => {
                 let frame_len = self.desc().get_frame_len();
                 // TODO: obtain ethernet frame type (RDESC_1_FT)
 
-                let pkt = RxPacket { entry: self, length: frame_len };
+                let pkt = RxPacket {
+                    entry: self,
+                    length: frame_len,
+                };
                 Ok(pkt)
-            },
+            }
             false => {
                 self.desc_mut().set_owned();
                 Err(RxError::Truncated)
-            },
+            }
         }
     }
 }
@@ -151,7 +158,7 @@ pub struct RxPacket<'a> {
 
 impl<'a> Deref for RxPacket<'a> {
     type Target = [u8];
-    
+
     fn deref(&self) -> &Self::Target {
         &self.entry.as_slice()[0..self.length]
     }
@@ -205,9 +212,7 @@ impl<'a> RxRing<'a> {
         self.next_entry = 0;
         let ring_ptr = self.entries[0].desc() as *const RxDescriptor;
         // Register RxDescriptor
-        eth_dma.dmardlar.write(|w| {
-            w.srl().bits(ring_ptr as u32)
-        });
+        eth_dma.dmardlar.write(|w| w.srl().bits(ring_ptr as u32));
 
         // Start receive
         eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
@@ -242,9 +247,8 @@ impl<'a> RxRing<'a> {
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Result<RxPacket, RxError>
-    {
-        if ! self.running_state(eth_dma).is_running() {
+    pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Result<RxPacket, RxError> {
+        if !self.running_state(eth_dma).is_running() {
             self.demand_poll(eth_dma);
         }
 

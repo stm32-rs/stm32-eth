@@ -3,7 +3,6 @@ use core::ops::{Deref, DerefMut};
 use aligned::{Aligned, A8};
 use volatile_register::{RO, RW};
 
-
 #[repr(C)]
 pub struct Descriptor {
     desc: Aligned<A8, [u32; 4]>,
@@ -12,7 +11,7 @@ pub struct Descriptor {
 impl Clone for Descriptor {
     fn clone(&self) -> Self {
         Descriptor {
-            desc: Aligned((*self.desc).clone())
+            desc: Aligned((*self.desc).clone()),
         }
     }
 }
@@ -45,7 +44,8 @@ impl Descriptor {
     }
 
     pub unsafe fn modify<F>(&mut self, n: usize, f: F)
-        where F: FnOnce(u32) -> u32
+    where
+        F: FnOnce(u32) -> u32,
     {
         self.rw(n).modify(f)
     }
