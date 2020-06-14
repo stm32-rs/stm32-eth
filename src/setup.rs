@@ -86,7 +86,7 @@ pub trait AlternateVeryHighSpeed {
 pub struct EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
     pub ref_clk: REFCLK,
     pub md_io: IO,
-    pub m_clk: CLK,
+    pub md_clk: CLK,
     pub crs: CRS,
     pub tx_en: TXEN,
     pub tx_d0: TXD0,
@@ -119,7 +119,7 @@ where
     pub fn setup(self) {
         self.ref_clk.into_af11_very_high_speed();
         self.md_io.into_af11_very_high_speed();
-        self.m_clk.into_af11_very_high_speed();
+        self.md_clk.into_af11_very_high_speed();
         self.crs.into_af11_very_high_speed();
         self.tx_en.into_af11_very_high_speed();
         self.tx_d0.into_af11_very_high_speed();

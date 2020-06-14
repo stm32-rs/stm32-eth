@@ -17,7 +17,7 @@ use stm32f4xx_hal::{
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
-use stm32_eth::{Eth, RingEntry, TxError};
+use stm32_eth::{Eth, EthPins, RingEntry, TxError};
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
@@ -36,15 +36,24 @@ fn main() -> ! {
     setup_systick(&mut cp.SYST);
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
-    stm32_eth::setup(&p.RCC, &p.SYSCFG);
+    stm32_eth::setup();
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
     let gpiog = p.GPIOG.split();
-    stm32_eth::setup_pins(
-        gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1, gpioc.pc4, gpioc.pc5, gpiog.pg11,
-        gpiog.pg13,
-    );
+
+    let eth_pins = EthPins {
+        ref_clk: gpioa.pa1,
+        md_io: gpioa.pa2,
+        md_clk: gpioc.pc1,
+        crs: gpioa.pa7,
+        tx_en: gpiog.pg11,
+        tx_d0: gpiog.pg13,
+        tx_d1: gpiob.pb13,
+        rx_d0: gpioc.pc4,
+        rx_d1: gpioc.pc5,
+    };
+    eth_pins.setup();
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
@@ -54,7 +63,7 @@ fn main() -> ! {
         &mut rx_ring[..],
         &mut tx_ring[..],
     );
-    eth.enable_interrupt(&mut cp.NVIC);
+    eth.enable_interrupt();
 
     // Main loop
     let mut last_stats_time = 0usize;

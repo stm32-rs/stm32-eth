@@ -22,7 +22,7 @@ use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use stm32_eth::{Eth, RingEntry};
+use stm32_eth::{Eth, EthPins, RingEntry};
 
 static mut LOGGER: HioLogger = HioLogger {};
 
@@ -62,15 +62,24 @@ fn main() -> ! {
     setup_systick(&mut cp.SYST);
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
-    stm32_eth::setup(&p.RCC, &p.SYSCFG);
+    stm32_eth::setup();
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
     let gpiog = p.GPIOG.split();
-    stm32_eth::setup_pins(
-        gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1, gpioc.pc4, gpioc.pc5, gpiog.pg11,
-        gpiog.pg13,
-    );
+
+    let eth_pins = EthPins {
+        ref_clk: gpioa.pa1,
+        md_io: gpioa.pa2,
+        md_clk: gpioc.pc1,
+        crs: gpioa.pa7,
+        tx_en: gpiog.pg11,
+        tx_d0: gpiog.pg13,
+        tx_d1: gpiob.pb13,
+        rx_d0: gpioc.pc4,
+        rx_d1: gpioc.pc5,
+    };
+    eth_pins.setup();
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
@@ -80,7 +89,7 @@ fn main() -> ! {
         &mut rx_ring[..],
         &mut tx_ring[..],
     );
-    eth.enable_interrupt(&mut cp.NVIC);
+    eth.enable_interrupt();
 
     let local_addr = Ipv4Address::new(10, 0, 0, 1);
     let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
