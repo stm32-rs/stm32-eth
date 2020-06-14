@@ -19,9 +19,7 @@ mod tx;
 pub use tx::{TxDescriptor, TxError};
 use tx::{TxRing, TxRingEntry};
 mod setup;
-pub use setup::setup;
-#[cfg(feature = "nucleo-f429zi")]
-pub use setup::setup_pins;
+pub use setup::{setup, EthPins};
 
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp;
