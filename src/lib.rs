@@ -225,7 +225,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     }
 
     /// Construct a PHY driver
-    pub fn get_phy<'a>(&'a self) -> Phy<'a> {
+    pub fn get_phy(&self) -> Phy {
         Phy::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, PHY_ADDR)
     }
 

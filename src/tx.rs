@@ -100,6 +100,7 @@ impl RingDescriptor for TxDescriptor {
         match next {
             Some(next) => self.set_buffer2(&next.desc as *const Descriptor as *const u8),
             None => {
+                #[allow(clippy::zero_ptr)]
                 self.set_buffer2(0 as *const u8);
                 self.set_end_of_ring();
             }
@@ -108,7 +109,7 @@ impl RingDescriptor for TxDescriptor {
 }
 
 impl TxRingEntry {
-    fn prepare_packet<'a>(&'a mut self, length: usize) -> Option<TxPacket<'a>> {
+    fn prepare_packet(&mut self, length: usize) -> Option<TxPacket> {
         assert!(length <= self.as_slice().len());
 
         if !self.desc().is_owned() {
@@ -172,10 +173,14 @@ impl<'a> TxRing<'a> {
         {
             let mut previous: Option<&mut TxRingEntry> = None;
             for entry in self.entries.iter_mut() {
-                previous.map(|previous| previous.setup(Some(entry)));
+                if let Some(prev_entry) = &mut previous {
+                    prev_entry.setup(Some(entry));
+                }
                 previous = Some(entry);
             }
-            previous.map(|previous| previous.setup(None));
+            if let Some(entry) = &mut previous {
+                entry.setup(None);
+            }
         }
 
         let ring_ptr = self.entries[0].desc() as *const TxDescriptor;
