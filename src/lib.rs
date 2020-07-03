@@ -21,7 +21,7 @@ use rx::{RxPacket, RxRing, RxRingEntry};
 mod tx;
 pub use tx::{TxDescriptor, TxError};
 use tx::{TxRing, TxRingEntry};
-mod setup;
+pub mod setup;
 pub use setup::EthPins;
 use setup::{
     AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1,
@@ -121,10 +121,10 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
 
     fn init(&mut self, clocks: Clocks) -> Result<(), WrongClock> {
         let clock_range = match clocks.hclk().0 {
-            60_000_000..=99_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_42,
-            100_000_000..=149_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_62,
-            25_000_000..=34_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_16,
-            35_000_000..=59_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_26,
+            60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
+            100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
+            25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
+            35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
             150_000_000..=168_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_102,
             _ => return Err(WrongClock),
         };
