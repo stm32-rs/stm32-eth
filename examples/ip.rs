@@ -7,6 +7,7 @@ use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
 use stm32f4xx_hal::{
     gpio::GpioExt,
+    prelude::*,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
@@ -22,7 +23,7 @@ use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use stm32_eth::{Eth, EthPins, RingEntry};
+use stm32_eth::{Eth, EthPins, PhyAddress, RingEntry};
 
 static mut LOGGER: HioLogger = HioLogger {};
 
@@ -59,10 +60,13 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
+    let rcc = p.RCC.constrain();
+    // HCLK must be between 25MHz and 168MHz to use the ethernet peripheral
+    let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
+
     setup_systick(&mut cp.SYST);
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
-    stm32_eth::setup();
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
@@ -79,7 +83,6 @@ fn main() -> ! {
         rx_d0: gpioc.pc4,
         rx_d1: gpioc.pc5,
     };
-    eth_pins.setup();
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
@@ -88,7 +91,11 @@ fn main() -> ! {
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
-    );
+        PhyAddress::_0,
+        clocks,
+        eth_pins,
+    )
+    .unwrap();
     eth.enable_interrupt();
 
     let local_addr = Ipv4Address::new(10, 0, 0, 1);

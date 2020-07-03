@@ -18,11 +18,8 @@ const ETH_TX_BIT: u8 = 26;
 const ETH_RX_BIT: u8 = 27;
 const MII_RMII_BIT: u8 = 23;
 
-/// Initialize GPIO pins. Enable syscfg and ethernet clocks. Reset the
-/// Ethernet MAC.
-///
-/// If supported, you should also call `setup_pins()`.
-pub fn setup() {
+// Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
+pub(crate) fn setup() {
     unsafe {
         //NOTE(unsafe) This will only be used for atomic writes with no side-effects
         let rcc = &*RCC::ptr();
@@ -116,7 +113,7 @@ where
     ///
     /// This function consumes the pins so that you cannot use them
     /// anywhere else by accident.
-    pub fn setup(self) {
+    pub fn setup_pins(self) {
         self.ref_clk.into_af11_very_high_speed();
         self.md_io.into_af11_very_high_speed();
         self.md_clk.into_af11_very_high_speed();
