@@ -4,7 +4,10 @@
 pub use stm32f4xx_hal as hal;
 /// Re-export
 pub use stm32f4xx_hal::stm32;
-use stm32f4xx_hal::stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
+use stm32f4xx_hal::{
+    rcc::Clocks,
+    stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC},
+};
 
 pub mod phy;
 use phy::{Phy, PhyStatus};
@@ -18,10 +21,12 @@ use rx::{RxPacket, RxRing, RxRingEntry};
 mod tx;
 pub use tx::{TxDescriptor, TxError};
 use tx::{TxRing, TxRingEntry};
-mod setup;
-pub use setup::setup;
-#[cfg(feature = "nucleo-f429zi")]
-pub use setup::setup_pins;
+pub mod setup;
+pub use setup::EthPins;
+use setup::{
+    AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1,
+    RmiiTxEN, MDC, MDIO,
+};
 
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp;
@@ -30,11 +35,9 @@ mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::{EthRxToken, EthTxToken};
 
-const PHY_ADDR: u8 = 0;
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
 
-#[allow(dead_code)]
 mod consts {
     /* For HCLK 60-100 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_42: u8 = 0;
@@ -49,52 +52,85 @@ mod consts {
 }
 use self::consts::*;
 
-/// Ethernet driver for *STM32* chips with a *LAN8742*
-/// [`Phy`](phy/struct.Phy.html) like they're found on STM Nucleo-144
-/// boards.
+/// HCLK must be between 25MHz and 168MHz to use the ethernet peripheral.
+#[derive(Debug)]
+pub struct WrongClock;
+
+/// Initial PHY address, must be zero or one.
+#[derive(Copy, Clone, Debug)]
+#[repr(u8)]
+pub enum PhyAddress {
+    _0 = 0,
+    _1 = 1,
+}
+
+/// Ethernet driver for *STM32* chips with a RMII [`Phy`](phy/struct.Phy.html).
 pub struct Eth<'rx, 'tx> {
     eth_mac: ETHERNET_MAC,
     eth_dma: ETHERNET_DMA,
     rx_ring: RxRing<'rx>,
     tx_ring: TxRing<'tx>,
+    phy_address: PhyAddress,
 }
 
 impl<'rx, 'tx> Eth<'rx, 'tx> {
     /// Initialize and start tx and rx DMA engines.
     ///
-    /// You must call [`setup()`](fn.setup.html) before to initialize
-    /// the hardware!
-    ///
     /// Make sure that the buffers reside in a memory region that is
     /// accessible by the peripheral. Core-Coupled Memory (CCM) is
-    /// usually not.
+    /// usually not accessible. Also, HCLK must be between 25MHz and 168MHz to use the ethernet
+    /// peripheral.
     ///
     /// Other than that, initializes and starts the Ethernet hardware
     /// so that you can [`send()`](#method.send) and
     /// [`recv_next()`](#method.recv_next).
-    pub fn new(
+    pub fn new<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
         eth_mac: ETHERNET_MAC,
         eth_dma: ETHERNET_DMA,
         rx_buffer: &'rx mut [RxRingEntry],
         tx_buffer: &'tx mut [TxRingEntry],
-    ) -> Self {
+        phy_address: PhyAddress,
+        clocks: Clocks,
+        pins: EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
+    ) -> Result<Self, WrongClock>
+    where
+        REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
+        IO: MDIO + AlternateVeryHighSpeed,
+        CLK: MDC + AlternateVeryHighSpeed,
+        CRS: RmiiCrsDv + AlternateVeryHighSpeed,
+        TXEN: RmiiTxEN + AlternateVeryHighSpeed,
+        TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
+        TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
+        RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
+        RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
+    {
+        setup::setup();
+        pins.setup_pins();
         let mut eth = Eth {
             eth_mac,
             eth_dma,
             rx_ring: RxRing::new(rx_buffer),
             tx_ring: TxRing::new(tx_buffer),
+            phy_address,
         };
-        eth.init();
+        eth.init(clocks)?;
         eth.rx_ring.start(&eth.eth_dma);
         eth.tx_ring.start(&eth.eth_dma);
-        eth
+        Ok(eth)
     }
 
-    fn init(&mut self) -> &Self {
+    fn init(&mut self, clocks: Clocks) -> Result<(), WrongClock> {
+        let clock_range = match clocks.hclk().0 {
+            60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
+            100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
+            25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
+            35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
+            150_000_000..=168_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_102,
+            _ => return Err(WrongClock),
+        };
         self.reset_dma_and_wait();
 
         // set clock range in MAC MII address register
-        let clock_range = ETH_MACMIIAR_CR_HCLK_DIV_16;
         self.eth_mac
             .macmiiar
             .modify(|_, w| unsafe { w.cr().bits(clock_range) });
@@ -181,8 +217,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .usp()
                 .set_bit()
         });
-
-        self
+        Ok(())
     }
 
     /// reset DMA bus mode register
@@ -227,8 +262,12 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     }
 
     /// Construct a PHY driver
-    pub fn get_phy<'a>(&'a self) -> Phy<'a> {
-        Phy::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, PHY_ADDR)
+    pub fn get_phy(&self) -> Phy {
+        Phy::new(
+            &self.eth_mac.macmiiar,
+            &self.eth_mac.macmiidr,
+            self.phy_address as u8,
+        )
     }
 
     /// Obtain PHY status

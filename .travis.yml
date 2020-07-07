@@ -2,24 +2,24 @@ language: rust
 matrix:
   include:
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f407'
+      env: FEATURES='stm32f407'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f417'
+      env: FEATURES='stm32f417'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f427'
+      env: FEATURES='stm32f427'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f429'
+      env: FEATURES='stm32f429'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f437'
+      env: FEATURES='stm32f437'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f439'
+      env: FEATURES='stm32f439'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f469'
+      env: FEATURES='stm32f469'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/stm32f479'
+      env: FEATURES='stm32f479'
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/rt nucleo-f429zi' ARGS="--release --target=thumbv7em-none-eabihf --example=pktgen"
+      env: FEATURES='stm32f429' ARGS="--release --target=thumbv7em-none-eabihf --example=pktgen"
     - rust: nightly
-      env: FEATURES='stm32f4xx-hal/rt nucleo-f429zi smoltcp-phy' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
+      env: FEATURES='stm32f429 smoltcp-phy smoltcp-log smoltcp-verbose' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
 script:
   - "cargo build --target=`uname -m`-unknown-linux-gnu --no-default-features --features \"$FEATURES\""

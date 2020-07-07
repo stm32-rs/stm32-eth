@@ -11,7 +11,7 @@ pub struct Descriptor {
 impl Clone for Descriptor {
     fn clone(&self) -> Self {
         Descriptor {
-            desc: Aligned((*self.desc).clone()),
+            desc: Aligned(*self.desc),
         }
     }
 }

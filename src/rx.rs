@@ -111,6 +111,7 @@ impl RingDescriptor for RxDescriptor {
         match next {
             Some(next) => self.set_buffer2(&next.desc as *const Descriptor as *const u8),
             None => {
+                #[allow(clippy::zero_ptr)]
                 self.set_buffer2(0 as *const u8);
                 self.set_end_of_ring();
             }
@@ -121,26 +122,23 @@ impl RingDescriptor for RxDescriptor {
 
 impl RxRingEntry {
     fn take_received(&mut self) -> Result<RxPacket, RxError> {
-        match self.desc().is_owned() {
-            true => Err(RxError::WouldBlock),
-            false if self.desc().has_error() => {
-                self.desc_mut().set_owned();
-                Err(RxError::DmaError)
-            }
-            false if self.desc().is_first() && self.desc().is_last() => {
-                let frame_len = self.desc().get_frame_len();
-                // TODO: obtain ethernet frame type (RDESC_1_FT)
+        if self.desc().is_owned() {
+            Err(RxError::WouldBlock)
+        } else if self.desc().has_error() {
+            self.desc_mut().set_owned();
+            Err(RxError::DmaError)
+        } else if self.desc().is_first() && self.desc().is_last() {
+            let frame_len = self.desc().get_frame_len();
 
-                let pkt = RxPacket {
-                    entry: self,
-                    length: frame_len,
-                };
-                Ok(pkt)
-            }
-            false => {
-                self.desc_mut().set_owned();
-                Err(RxError::Truncated)
-            }
+            // TODO: obtain ethernet frame type (RDESC_1_FT)
+            let pkt = RxPacket {
+                entry: self,
+                length: frame_len,
+            };
+            Ok(pkt)
+        } else {
+            self.desc_mut().set_owned();
+            Err(RxError::Truncated)
         }
     }
 }
@@ -198,10 +196,14 @@ impl<'a> RxRing<'a> {
         {
             let mut previous: Option<&mut RxRingEntry> = None;
             for entry in self.entries.iter_mut() {
-                previous.map(|previous| previous.setup(Some(entry)));
+                if let Some(prev_entry) = &mut previous {
+                    prev_entry.setup(Some(entry));
+                }
                 previous = Some(entry);
             }
-            previous.map(|previous| previous.setup(None));
+            if let Some(entry) = &mut previous {
+                entry.setup(None);
+            }
         }
         self.next_entry = 0;
         let ring_ptr = self.entries[0].desc() as *const RxDescriptor;
