@@ -72,7 +72,7 @@ pub(crate) fn setup() {
 
         if rcc.ahb1enr.read().ethmacen().bit_is_set() {
             // pmc must be changed with the ethernet controller disabled or under reset
-            rcc.ahb1enr.modify(|_, w| {w.ethmacen().clear_bit()});
+            rcc.ahb1enr.modify(|_, w| w.ethmacen().clear_bit());
         }
 
         // select MII or RMII mode

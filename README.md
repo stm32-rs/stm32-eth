@@ -11,8 +11,8 @@ Please send pull requests.
 
 ## Building Examples
 ```
-cargo build --example="pktgen" --features="nucleo-f767zi"
-cargo build --example="ip" --features="nucleo-f767zi" --features="smoltcp-phy"
+cargo build --example="pktgen" --features="stm32f429"
+cargo build --example="ip" --features="stm32f429" --features="smoltcp-phy smoltcp-log smoltcp-verbose"
 ```
 
 ## Usage
@@ -24,8 +24,8 @@ stm32-eth = { version = "0.2.0", features = ["stm32f429"] }
 ```
 or
 ```rust
-stm32f7xx-hal = { git = "https://github.com/stm32-rs/stm32f7xx-hal", features = ["stm32f767"] }
-stm32-eth = { version = "0.1.1", features = ["nucleo-f767zi"]}
+stm32f7xx-hal = { version = "0.2.0", features = ["stm32f767"] }
+stm32-eth = { version = "0.1.1", features = ["stm32f767"]}
 ```
 
 In `src/main.rs` add:
