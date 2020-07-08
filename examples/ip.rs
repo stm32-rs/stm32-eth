@@ -6,6 +6,7 @@ extern crate panic_itm;
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
 use stm32_eth::{
+    hal::time::U32Ext,
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
@@ -23,7 +24,7 @@ use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use stm32_eth::{Eth, RingEntry};
+use stm32_eth::{Eth, EthPins, PhyAddress, RingEntry};
 
 static mut LOGGER: HioLogger = HioLogger {};
 
@@ -60,29 +61,42 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
+    let rcc = p.RCC.constrain();
+    // HCLK must be between 25MHz and 168MHz to use the ethernet peripheral
+    let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
+
     setup_systick(&mut cp.SYST);
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
-    stm32_eth::setup(&p.RCC, &p.SYSCFG);
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
     let gpioc = p.GPIOC.split();
     let gpiog = p.GPIOG.split();
-    stm32_eth::setup_pins(
-        gpioa.pa1, gpioa.pa2, gpioa.pa7, gpiob.pb13, gpioc.pc1, gpioc.pc4, gpioc.pc5, gpiog.pg11,
-        gpiog.pg13,
-    );
+
+    let eth_pins = EthPins {
+        ref_clk: gpioa.pa1,
+        md_io: gpioa.pa2,
+        md_clk: gpioc.pc1,
+        crs: gpioa.pa7,
+        tx_en: gpiog.pg11,
+        tx_d0: gpiog.pg13,
+        tx_d1: gpiob.pb13,
+        rx_d0: gpioc.pc4,
+        rx_d1: gpioc.pc5,
+    };
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
-    let clocks = p.RCC.constrain().cfgr.freeze();
     let mut eth = Eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
-        &clocks,
-    );
+        PhyAddress::_0,
+        clocks,
+        eth_pins,
+    )
+    .unwrap();
     eth.enable_interrupt();
 
     let local_addr = Ipv4Address::new(10, 0, 0, 1);

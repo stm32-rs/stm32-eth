@@ -16,7 +16,7 @@ impl<T: Clone + RingDescriptor> Clone for RingEntry<T> {
     fn clone(&self) -> Self {
         RingEntry {
             desc: Aligned((*self.desc).clone()),
-            buffer: Aligned((*self.buffer).clone()),
+            buffer: Aligned(*self.buffer),
         }
     }
 }

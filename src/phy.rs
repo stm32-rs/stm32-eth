@@ -106,18 +106,18 @@ pub struct PhyStatus {
 
 impl PhyStatus {
     /// Has link?
-    pub fn link_detected(&self) -> bool {
+    pub fn link_detected(self) -> bool {
         (self.bsr & PHY_REG_BSR_UP) == PHY_REG_BSR_UP
     }
 
     /// Has auto-negotiated?
-    pub fn autoneg_done(&self) -> bool {
+    pub fn autoneg_done(self) -> bool {
         (self.bsr & PHY_REG_BSR_ANDONE) == PHY_REG_BSR_ANDONE
             || (self.ssr & PHY_REG_SSR_ANDONE) == PHY_REG_SSR_ANDONE
     }
 
     /// FD, not HD?
-    pub fn is_full_duplex(&self) -> Option<bool> {
+    pub fn is_full_duplex(self) -> Option<bool> {
         match self.ssr & PHY_REG_SSR_SPEED {
             PHY_REG_SSR_10BASE_HD | PHY_REG_SSR_100BASE_HD => Some(false),
             PHY_REG_SSR_10BASE_FD | PHY_REG_SSR_100BASE_FD => Some(true),
@@ -126,7 +126,7 @@ impl PhyStatus {
     }
 
     /// 10, 100, or 0 Mbps
-    pub fn speed(&self) -> u32 {
+    pub fn speed(self) -> u32 {
         match self.ssr & PHY_REG_SSR_SPEED {
             PHY_REG_SSR_10BASE_HD | PHY_REG_SSR_10BASE_FD => 10,
             PHY_REG_SSR_100BASE_HD | PHY_REG_SSR_100BASE_FD => 100,
@@ -135,7 +135,7 @@ impl PhyStatus {
     }
 
     /// Error?
-    pub fn remote_fault(&self) -> bool {
+    pub fn remote_fault(self) -> bool {
         (self.bsr & PHY_REG_BSR_FAULT) == PHY_REG_BSR_FAULT
     }
 }
@@ -144,7 +144,7 @@ impl PhyStatus {
 /// attributes.
 impl PartialEq for PhyStatus {
     fn eq(&self, other: &PhyStatus) -> bool {
-        (self.link_detected() == false && other.link_detected() == false)
+        (!self.link_detected() && !other.link_detected())
             || (self.link_detected() == other.link_detected()
                 && self.is_full_duplex() == other.is_full_duplex()
                 && self.speed() == other.speed())
