@@ -88,8 +88,10 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     ///
     /// Make sure that the buffers reside in a memory region that is
     /// accessible by the peripheral. Core-Coupled Memory (CCM) is
-    /// usually not accessible. Also, HCLK must be between 25MHz and 168MHz to use the ethernet
-    /// peripheral.
+    /// usually not accessible. HCLK must be between 25MHz and 168MHz for STM32F4xx 
+    /// or 25MHz to 216MHz for STM32F7xx.
+    ///
+    /// Uses an interrupt free critical section to turn on the ethernet clock for STM32F7xx.
     ///
     /// Other than that, initializes and starts the Ethernet hardware
     /// so that you can [`send()`](#method.send) and
