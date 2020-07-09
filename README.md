@@ -25,7 +25,7 @@ stm32-eth = { version = "0.2.0", features = ["stm32f429"] }
 or
 ```rust
 stm32f7xx-hal = { version = "0.2.0", features = ["stm32f767"] }
-stm32-eth = { version = "0.1.1", features = ["stm32f767"]}
+stm32-eth = { version = "0.2.0", features = ["stm32f767"]}
 ```
 
 In `src/main.rs` add:

@@ -312,8 +312,8 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         f: F,
     ) -> Result<R, TxError> {
         let result = self.tx_ring.send(length, f);
-        //Wait for the memory to sync with the cache
-        asm::dsb();
+        //Make sure the memory write occurs before triggering DMA
+        asm::dmb();
         self.tx_ring.demand_poll(&self.eth_dma);
         result
     }
