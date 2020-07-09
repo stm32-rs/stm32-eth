@@ -1,5 +1,11 @@
+#[cfg(feature = "stm32f4xx-hal")]
+use stm32f4xx_hal::stm32;
+#[cfg(feature = "stm32f7xx-hal")]
+use stm32f7xx_hal::device as stm32;
+
+use stm32::ETHERNET_DMA;
+
 use core::ops::{Deref, DerefMut};
-use stm32f4xx_hal::stm32::ETHERNET_DMA;
 
 use crate::{
     desc::Descriptor,
@@ -216,7 +222,7 @@ impl<'a> TxRing<'a> {
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
     pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
-        eth_dma.dmatpdr.write(|w| unsafe { w.tpd().bits(1) });
+        eth_dma.dmatpdr.write(|w| w.tpd().poll());
     }
 
     /// Is the Tx DMA engine running?

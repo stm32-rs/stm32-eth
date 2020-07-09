@@ -1,4 +1,4 @@
-#[cfg(feature = "device-selected")]
+#[cfg(feature = "stm32f4xx-hal")]
 use stm32f4xx_hal::{
     bb,
     gpio::{
@@ -12,15 +12,31 @@ use stm32f4xx_hal::{
     stm32::{RCC, SYSCFG},
 };
 
-const SYSCFG_BIT: u8 = 14;
-const ETH_MAC_BIT: u8 = 25;
-const ETH_TX_BIT: u8 = 26;
-const ETH_RX_BIT: u8 = 27;
-const MII_RMII_BIT: u8 = 23;
+#[cfg(feature = "stm32f7xx-hal")]
+use cortex_m::interrupt;
+#[cfg(feature = "stm32f7xx-hal")]
+use stm32f7xx_hal::{
+    device::{RCC, SYSCFG},
+    gpio::{
+        gpioa::{PA1, PA2, PA7},
+        gpiob::{PB11, PB12, PB13},
+        gpioc::{PC1, PC4, PC5},
+        gpiog::{PG11, PG13, PG14},
+        Floating, Input,
+        Speed::VeryHigh,
+    },
+};
 
 // Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
 pub(crate) fn setup() {
+    #[cfg(feature = "stm32f4xx-hal")]
     unsafe {
+        const SYSCFG_BIT: u8 = 14;
+        const ETH_MAC_BIT: u8 = 25;
+        const ETH_TX_BIT: u8 = 26;
+        const ETH_RX_BIT: u8 = 27;
+        const MII_RMII_BIT: u8 = 23;
+
         //NOTE(unsafe) This will only be used for atomic writes with no side-effects
         let rcc = &*RCC::ptr();
         let syscfg = &*SYSCFG::ptr();
@@ -45,6 +61,38 @@ pub(crate) fn setup() {
         bb::set(&rcc.ahb1rstr, ETH_MAC_BIT);
         bb::clear(&rcc.ahb1rstr, ETH_MAC_BIT);
     }
+    #[cfg(feature = "stm32f7xx-hal")]
+    //stm32f7xx-hal does not currently have bitbanding
+    interrupt::free(|_| unsafe {
+        //NOTE(unsafe) Interrupt free and we only modify mac bits
+        let rcc = &*RCC::ptr();
+        let syscfg = &*SYSCFG::ptr();
+        // enable syscfg clock
+        rcc.apb2enr.modify(|_, w| w.syscfgen().set_bit());
+
+        if rcc.ahb1enr.read().ethmacen().bit_is_set() {
+            // pmc must be changed with the ethernet controller disabled or under reset
+            rcc.ahb1enr.modify(|_, w| w.ethmacen().clear_bit());
+        }
+
+        // select MII or RMII mode
+        // 0 = MII, 1 = RMII
+        syscfg.pmc.modify(|_, w| w.mii_rmii_sel().set_bit());
+
+        // enable ethernet clocks
+        rcc.ahb1enr.modify(|_, w| {
+            w.ethmacen()
+                .set_bit()
+                .ethmactxen()
+                .set_bit()
+                .ethmacrxen()
+                .set_bit()
+        });
+
+        //reset pulse
+        rcc.ahb1rstr.modify(|_, w| w.ethmacrst().set_bit());
+        rcc.ahb1rstr.modify(|_, w| w.ethmacrst().clear_bit());
+    });
 }
 
 /// RMII Reference Clock.

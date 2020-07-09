@@ -5,9 +5,10 @@ extern crate panic_itm;
 
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
-use stm32f4xx_hal::{
-    gpio::GpioExt,
-    prelude::*,
+use stm32_eth::{
+    hal::gpio::GpioExt,
+    hal::rcc::RccExt,
+    hal::time::U32Ext,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 

@@ -1,5 +1,11 @@
+#[cfg(feature = "stm32f4xx-hal")]
+use stm32f4xx_hal::stm32;
+#[cfg(feature = "stm32f7xx-hal")]
+use stm32f7xx_hal::device as stm32;
+
+use stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
+
 use core::option::Option;
-use stm32f4xx_hal::stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 use crate::smi::SMI;
 

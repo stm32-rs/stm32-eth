@@ -5,9 +5,15 @@
 ## Supported microcontrollers
 
 * STM32F4xx
+* STM32F7xx
 
 Please send pull requests.
 
+## Building Examples
+```
+cargo build --example="pktgen" --features="stm32f429"
+cargo build --example="ip" --features="stm32f429" --features="smoltcp-phy smoltcp-log smoltcp-verbose"
+```
 
 ## Usage
 
@@ -16,13 +22,21 @@ Add to the `[dependencies]` section in your `Cargo.toml`:
 stm32f4xx-hal = { version = "0.8.3", features = ["stm32f429"] }
 stm32-eth = { version = "0.2.0", features = ["stm32f429"] }
 ```
+or
+```rust
+stm32f7xx-hal = { version = "0.2.0", features = ["stm32f767"] }
+stm32-eth = { version = "0.2.0", features = ["stm32f767"]}
+```
 
 In `src/main.rs` add:
 ```rust
-use stm32f4xx_hal::{
-    gpio::GpioExt,
+use stm32_eth::{
+    hal::gpio::GpioExt,
+    hal::rcc::RccExt,
     stm32::Peripherals,
 };
+
+
 use stm32_eth::{Eth, RingEntry};
 
 fn main() {

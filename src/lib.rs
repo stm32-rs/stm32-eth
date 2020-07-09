@@ -1,13 +1,23 @@
 #![no_std]
 
 /// Re-export
+#[cfg(feature = "stm32f7xx-hal")]
+pub use stm32f7xx_hal as hal;
+/// Re-export
+#[cfg(feature = "stm32f7xx-hal")]
+pub use stm32f7xx_hal::device as stm32;
+
+/// Re-export
+#[cfg(feature = "stm32f4xx-hal")]
 pub use stm32f4xx_hal as hal;
 /// Re-export
+#[cfg(feature = "stm32f4xx-hal")]
 pub use stm32f4xx_hal::stm32;
-use stm32f4xx_hal::{
-    rcc::Clocks,
-    stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC},
-};
+
+use hal::rcc::Clocks;
+use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
+
+use cortex_m::asm;
 
 pub mod phy;
 use phy::{Phy, PhyStatus};
@@ -78,8 +88,10 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     ///
     /// Make sure that the buffers reside in a memory region that is
     /// accessible by the peripheral. Core-Coupled Memory (CCM) is
-    /// usually not accessible. Also, HCLK must be between 25MHz and 168MHz to use the ethernet
-    /// peripheral.
+    /// usually not accessible. HCLK must be between 25MHz and 168MHz for STM32F4xx 
+    /// or 25MHz to 216MHz for STM32F7xx.
+    ///
+    /// Uses an interrupt free critical section to turn on the ethernet clock for STM32F7xx.
     ///
     /// Other than that, initializes and starts the Ethernet hardware
     /// so that you can [`send()`](#method.send) and
@@ -125,7 +137,10 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
             100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
             25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
             35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
+            #[cfg(feature = "stm32f4xx-hal")]
             150_000_000..=168_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_102,
+            #[cfg(feature = "stm32f7xx-hal")]
+            150_000_000..=216_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_102,
             _ => return Err(WrongClock),
         };
         self.reset_dma_and_wait();
@@ -249,10 +264,8 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         });
 
         // Enable ethernet interrupts
-        let interrupt = Interrupt::ETH;
-
         unsafe {
-            NVIC::unmask(interrupt);
+            NVIC::unmask(Interrupt::ETH);
         }
     }
 
@@ -301,6 +314,8 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         f: F,
     ) -> Result<R, TxError> {
         let result = self.tx_ring.send(length, f);
+        //Make sure the memory write occurs before triggering DMA
+        asm::dmb();
         self.tx_ring.demand_poll(&self.eth_dma);
         result
     }
