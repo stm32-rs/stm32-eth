@@ -5,7 +5,10 @@ use stm32f7xx_hal::device as stm32;
 
 use stm32::ETHERNET_DMA;
 
-use core::ops::{Deref, DerefMut};
+use core::{
+    ops::{Deref, DerefMut},
+    sync::atomic::{self, Ordering},
+};
 
 use crate::{
     desc::Descriptor,
@@ -152,6 +155,13 @@ impl<'a> DerefMut for TxPacket<'a> {
 impl<'a> TxPacket<'a> {
     // Pass to DMA engine
     pub fn send(self) {
+        // "Preceding reads and writes cannot be moved past subsequent writes."
+        #[cfg(feature = "stm32f7xx-hal")]
+        atomic::fence(Ordering::Release);
+
+        #[cfg(not(feature = "stm32f7xx-hal"))]
+        atomic::compiler_fence(Ordering::Release);
+
         self.entry.desc_mut().set_owned();
     }
 }
@@ -193,6 +203,13 @@ impl<'a> TxRing<'a> {
         // Register TxDescriptor
         eth_dma.dmatdlar.write(|w| w.stl().bits(ring_ptr as u32));
 
+        // "Preceding reads and writes cannot be moved past subsequent writes."
+        #[cfg(feature = "stm32f7xx-hal")]
+        atomic::fence(Ordering::Release);
+
+        // We don't need a compiler fence here because all interactions with `Descriptor` are
+        // volatiles
+
         // Start transmission
         eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
     }
@@ -222,6 +239,15 @@ impl<'a> TxRing<'a> {
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
     pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
+        // "Preceding reads and writes cannot be moved past subsequent writes."
+        #[cfg(feature = "stm32f7xx-hal")]
+        atomic::fence(Ordering::Release);
+
+        // We don't need a compiler fence here because all operations to the buffer were done before
+        // setting the owned bit (see fences in `TxPacket::send`). We also don't need a compiler
+        // fence between setting the owned bit and starting the poll, because setting the owned bit
+        // is a volatile operation
+
         eth_dma.dmatpdr.write(|w| w.tpd().poll());
     }
 

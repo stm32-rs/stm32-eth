@@ -17,8 +17,6 @@ pub use stm32f4xx_hal::stm32;
 use hal::rcc::Clocks;
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
 
-use cortex_m::asm;
-
 pub mod phy;
 use phy::{Phy, PhyStatus};
 mod ring;
@@ -88,7 +86,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     ///
     /// Make sure that the buffers reside in a memory region that is
     /// accessible by the peripheral. Core-Coupled Memory (CCM) is
-    /// usually not accessible. HCLK must be between 25MHz and 168MHz for STM32F4xx 
+    /// usually not accessible. HCLK must be between 25MHz and 168MHz for STM32F4xx
     /// or 25MHz to 216MHz for STM32F7xx.
     ///
     /// Uses an interrupt free critical section to turn on the ethernet clock for STM32F7xx.
@@ -314,8 +312,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         f: F,
     ) -> Result<R, TxError> {
         let result = self.tx_ring.send(length, f);
-        //Make sure the memory write occurs before triggering DMA
-        asm::dmb();
         self.tx_ring.demand_poll(&self.eth_dma);
         result
     }
