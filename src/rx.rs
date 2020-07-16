@@ -66,9 +66,19 @@ impl RxDescriptor {
 
     /// Pass ownership to the DMA engine
     fn set_owned(&mut self) {
+        // "Preceding reads and writes cannot be moved past subsequent writes."
+        #[cfg(feature = "fence")]
+        atomic::fence(Ordering::Release);
+
+        atomic::compiler_fence(Ordering::Release);
         unsafe {
             self.desc.modify(0, |w| w | RXDESC_0_OWN);
         }
+
+        // Used to flush the store buffer as fast as possible to make the buffer available for the
+        // DMA.
+        #[cfg(feature = "fence")]
+        atomic::fence(Ordering::SeqCst);
     }
 
     fn has_error(&self) -> bool {
@@ -125,7 +135,6 @@ impl RingDescriptor for RxDescriptor {
                 self.set_end_of_ring();
             }
         };
-        // There is already a fence before starting the DMA engine
         self.set_owned();
     }
 }
@@ -177,13 +186,6 @@ impl<'a> DerefMut for RxPacket<'a> {
 
 impl<'a> Drop for RxPacket<'a> {
     fn drop(&mut self) {
-        // "Preceding reads and writes cannot be moved past subsequent writes."
-        #[cfg(feature = "stm32f7xx-hal")]
-        atomic::fence(Ordering::Release);
-
-        #[cfg(not(feature = "stm32f7xx-hal"))]
-        atomic::compiler_fence(Ordering::Release);
-
         self.entry.desc_mut().set_owned();
     }
 }
@@ -230,12 +232,7 @@ impl<'a> RxRing<'a> {
         // Register RxDescriptor
         eth_dma.dmardlar.write(|w| w.srl().bits(ring_ptr as u32));
 
-        // "Preceding reads and writes cannot be moved past subsequent writes."
-        #[cfg(feature = "stm32f7xx-hal")]
-        atomic::fence(Ordering::Release);
-
-        // We don't need a compiler fence here because all interactions with `Descriptor` are
-        // volatiles
+        // We already have fences in `set_owned`, which is called in `setup`
 
         // Start receive
         eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
@@ -246,11 +243,6 @@ impl<'a> RxRing<'a> {
     /// Demand that the DMA engine polls the current `RxDescriptor`
     /// (when in `RunningState::Stopped`.)
     pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
-        // Prevent `set_owned` to me moved to after the poll
-        // "Preceding reads and writes cannot be moved past subsequent writes."
-        #[cfg(feature = "stm32f7xx-hal")]
-        atomic::fence(Ordering::Release);
-
         eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
     }
 

@@ -63,9 +63,19 @@ impl TxDescriptor {
 
     /// Pass ownership to the DMA engine
     fn set_owned(&mut self) {
+        // "Preceding reads and writes cannot be moved past subsequent writes."
+        #[cfg(feature = "fence")]
+        atomic::fence(Ordering::Release);
+
+        atomic::compiler_fence(Ordering::Release);
         unsafe {
             self.desc.modify(0, |w| w | TXDESC_0_OWN);
         }
+
+        // Used to flush the store buffer as fast as possible to make the buffer available for the
+        // DMA.
+        #[cfg(feature = "fence")]
+        atomic::fence(Ordering::SeqCst);
     }
 
     #[allow(unused)]
@@ -155,13 +165,6 @@ impl<'a> DerefMut for TxPacket<'a> {
 impl<'a> TxPacket<'a> {
     // Pass to DMA engine
     pub fn send(self) {
-        // "Preceding reads and writes cannot be moved past subsequent writes."
-        #[cfg(feature = "stm32f7xx-hal")]
-        atomic::fence(Ordering::Release);
-
-        #[cfg(not(feature = "stm32f7xx-hal"))]
-        atomic::compiler_fence(Ordering::Release);
-
         self.entry.desc_mut().set_owned();
     }
 }
@@ -204,7 +207,7 @@ impl<'a> TxRing<'a> {
         eth_dma.dmatdlar.write(|w| w.stl().bits(ring_ptr as u32));
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
-        #[cfg(feature = "stm32f7xx-hal")]
+        #[cfg(feature = "fence")]
         atomic::fence(Ordering::Release);
 
         // We don't need a compiler fence here because all interactions with `Descriptor` are
@@ -239,15 +242,6 @@ impl<'a> TxRing<'a> {
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
     pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
-        // "Preceding reads and writes cannot be moved past subsequent writes."
-        #[cfg(feature = "stm32f7xx-hal")]
-        atomic::fence(Ordering::Release);
-
-        // We don't need a compiler fence here because all operations to the buffer were done before
-        // setting the owned bit (see fences in `TxPacket::send`). We also don't need a compiler
-        // fence between setting the owned bit and starting the poll, because setting the owned bit
-        // is a volatile operation
-
         eth_dma.dmatpdr.write(|w| w.tpd().poll());
     }
 
