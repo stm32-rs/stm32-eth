@@ -22,13 +22,15 @@ volatile-register = "0.2"
 aligned = "0.3"
 stm32f7xx-hal = {version = "0.2.0", optional = true}
 stm32f4xx-hal = {version = "0.8.3", optional = true}
-cortex-m = "0.6.0"
+cortex-m = "0.6.2"
 
 smoltcp = { version = "0.6.0", default-features = false, features = ["proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "ethernet"], optional = true }
 log = { version = "0.4", optional = true }
 
 [features]
 device-selected = []
+fence = []
+
 stm32f407 = ["stm32f4xx-hal/stm32f407", "device-selected"]
 stm32f417 = ["stm32f4xx-hal/stm32f417", "device-selected"]
 stm32f427 = ["stm32f4xx-hal/stm32f427", "device-selected"]
@@ -38,15 +40,15 @@ stm32f439 = ["stm32f4xx-hal/stm32f439", "device-selected"]
 stm32f469 = ["stm32f4xx-hal/stm32f469", "device-selected"]
 stm32f479 = ["stm32f4xx-hal/stm32f479", "device-selected"]
 
-stm32f745 = ["stm32f7xx-hal/stm32f745", "device-selected"]
-stm32f746 = ["stm32f7xx-hal/stm32f746", "device-selected"]
-stm32f756 = ["stm32f7xx-hal/stm32f756", "device-selected"]
-stm32f765 = ["stm32f7xx-hal/stm32f765", "device-selected"]
-stm32f767 = ["stm32f7xx-hal/stm32f767", "device-selected"]
-stm32f769 = ["stm32f7xx-hal/stm32f769", "device-selected"]
-stm32f777 = ["stm32f7xx-hal/stm32f777", "device-selected"]
-stm32f778 = ["stm32f7xx-hal/stm32f778", "device-selected"]
-stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected"]
+stm32f745 = ["stm32f7xx-hal/stm32f745", "device-selected", "fence"]
+stm32f746 = ["stm32f7xx-hal/stm32f746", "device-selected", "fence"]
+stm32f756 = ["stm32f7xx-hal/stm32f756", "device-selected", "fence"]
+stm32f765 = ["stm32f7xx-hal/stm32f765", "device-selected", "fence"]
+stm32f767 = ["stm32f7xx-hal/stm32f767", "device-selected", "fence"]
+stm32f769 = ["stm32f7xx-hal/stm32f769", "device-selected", "fence"]
+stm32f777 = ["stm32f7xx-hal/stm32f777", "device-selected", "fence"]
+stm32f778 = ["stm32f7xx-hal/stm32f778", "device-selected", "fence"]
+stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 
 smoltcp-phy = ["smoltcp"]
 smoltcp-log = ["log", "smoltcp/log"]
