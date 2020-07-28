@@ -35,24 +35,24 @@ pub(crate) fn setup() {
         let syscfg = &*SYSCFG::ptr();
 
         // Enable syscfg clock.
-        rcc.apb2enr.write(|w| w.syscfgen().set_bit());
+        rcc.apb2enr.modify(|_, w| w.syscfgen().set_bit());
 
         if rcc.ahb1enr.read().ethmacen().bit_is_set() {
             // pmc must be changed with the ethernet controller disabled or under reset
-            rcc.ahb1enr.write(|w| w.ethmacen().clear_bit());
+            rcc.ahb1enr.modify(|_, w| w.ethmacen().clear_bit());
         }
 
         // 0 = MII, 1 = RMII.
-        syscfg.pmc.write(|w| w.mii_rmii_sel().set_bit());
+        syscfg.pmc.modify(|_, w| w.mii_rmii_sel().set_bit());
 
         // Enable ethernet clocks.
-        rcc.ahb1enr.write(|w| w.ethmacen().set_bit());
-        rcc.ahb1enr.write(|w| w.ethmactxen().set_bit());
-        rcc.ahb1enr.write(|w| w.ethmacrxen().set_bit());
+        rcc.ahb1enr.modify(|_, w| w.ethmacen().set_bit());
+        rcc.ahb1enr.modify(|_, w| w.ethmactxen().set_bit());
+        rcc.ahb1enr.modify(|_, w| w.ethmacrxen().set_bit());
 
         // Reset pulse.
-        rcc.ahb1rstr.write(|w| w.ethmacrst().set_bit());
-        rcc.ahb1rstr.write(|w| w.ethmacrst().clear_bit());
+        rcc.ahb1rstr.modify(|_, w| w.ethmacrst().set_bit());
+        rcc.ahb1rstr.modify(|_, w| w.ethmacrst().clear_bit());
     }
     #[cfg(feature = "stm32f7xx-hal")]
     //stm32f7xx-hal does not currently have bitbanding
