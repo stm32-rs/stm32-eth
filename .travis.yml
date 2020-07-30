@@ -20,7 +20,7 @@ matrix:
     - rust: nightly
       env: FEATURES='stm32f429' ARGS="--release --target=thumbv7em-none-eabihf --example=pktgen"
     - rust: nightly
-      env: FEATURES='stm32f429 smoltcp-phy smoltcp-log smoltcp-verbose' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
+      env: FEATURES='stm32f429 smoltcp-phy log smoltcp/socket-tcp smoltcp/socket-icmp smoltcp/log smoltcp/verbose' ARGS="--release --target=thumbv7em-none-eabihf --example=ip"
     - rust: nightly
       env: FEATURES='stm32f745'
     - rust: nightly
