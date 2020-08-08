@@ -12,7 +12,7 @@ Please send pull requests.
 ## Building Examples
 ```
 cargo build --example="pktgen" --features="stm32f429"
-cargo build --example="ip" --features="stm32f429" --features="smoltcp-phy smoltcp-log smoltcp-verbose"
+cargo build --example="ip" --features="stm32f429 smoltcp-phy log smoltcp/socket-tcp smoltcp/socket-icmp smoltcp/log smoltcp/verbose"
 ```
 
 ## Usage
