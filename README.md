@@ -43,7 +43,7 @@ fn main() {
     let p = Peripherals::take().unwrap();
 
     let rcc = p.RCC.constrain();
-    // HCLK must be between 25MHz and 168MHz to use the ethernet peripheral
+    // HCLK must be at least 25MHz to use the ethernet peripheral
     let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
 
     let gpioa = p.GPIOA.split();
