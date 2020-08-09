@@ -74,6 +74,13 @@ required-features = [
     "smoltcp/log", "smoltcp/verbose"
 ]
 
+[[example]]
+name = "repro-issue10"
+required-features = [
+    "stm32f429", "smoltcp-phy", "log", "smoltcp/socket-udp", "smoltcp/socket-icmp",
+    "smoltcp/log", "smoltcp/verbose"
+]
+
 [profile.release]
 debug = 2
 lto = true
