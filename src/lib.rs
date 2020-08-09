@@ -55,12 +55,12 @@ mod consts {
     pub const ETH_MACMIIAR_CR_HCLK_DIV_16: u8 = 2;
     /* For HCLK 35-60 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_26: u8 = 3;
-    /* For HCLK 150-168 MHz */
+    /* For HCLK over 150 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_102: u8 = 4;
 }
 use self::consts::*;
 
-/// HCLK must be between 25MHz and 168MHz to use the ethernet peripheral.
+/// HCLK must be at least 25MHz to use the ethernet peripheral.
 #[derive(Debug)]
 pub struct WrongClock;
 
@@ -86,10 +86,10 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     ///
     /// Make sure that the buffers reside in a memory region that is
     /// accessible by the peripheral. Core-Coupled Memory (CCM) is
-    /// usually not accessible. HCLK must be between 25MHz and 168MHz for STM32F4xx
-    /// or 25MHz to 216MHz for STM32F7xx.
+    /// usually not accessible. HCLK must be at least 25MHz.
     ///
-    /// Uses an interrupt free critical section to turn on the ethernet clock for STM32F7xx.
+    /// Uses an interrupt free critical section to turn on the ethernet clock
+    /// for STM32F7xx.
     ///
     /// Other than that, initializes and starts the Ethernet hardware
     /// so that you can [`send()`](#method.send) and
@@ -131,15 +131,12 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
 
     fn init(&mut self, clocks: Clocks) -> Result<(), WrongClock> {
         let clock_range = match clocks.hclk().0 {
-            60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
-            100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
+            0..=24_999_999 => return Err(WrongClock),
             25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
             35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
-            #[cfg(feature = "stm32f4xx-hal")]
-            150_000_000..=168_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_102,
-            #[cfg(feature = "stm32f7xx-hal")]
-            150_000_000..=216_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_102,
-            _ => return Err(WrongClock),
+            60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
+            100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
+            _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
         };
         self.reset_dma_and_wait();
 
