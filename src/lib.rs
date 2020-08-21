@@ -24,11 +24,11 @@ mod smi;
 pub use ring::RingEntry;
 mod desc;
 mod rx;
-pub use rx::{RxDescriptor, RxError};
-use rx::{RxPacket, RxRing, RxRingEntry};
+pub use rx::{RxDescriptor, RxError, RxRingEntry};
+use rx::{RxPacket, RxRing};
 mod tx;
-pub use tx::{TxDescriptor, TxError};
-use tx::{TxRing, TxRingEntry};
+use tx::TxRing;
+pub use tx::{TxDescriptor, TxError, TxRingEntry};
 pub mod setup;
 pub use setup::EthPins;
 use setup::{
