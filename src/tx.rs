@@ -47,15 +47,18 @@ pub struct TxDescriptor {
 
 impl Default for TxDescriptor {
     fn default() -> Self {
-        let mut desc = Descriptor::default();
-        unsafe {
-            desc.write(0, TXDESC_0_TCH | TXDESC_0_IC | TXDESC_0_FS | TXDESC_0_LS);
-        }
-        TxDescriptor { desc }
+        Self::new()
     }
 }
 
 impl TxDescriptor {
+    /// Creates an zeroed TxDescriptor.
+    pub const fn new() -> Self {
+        Self {
+            desc: Descriptor::new(),
+        }
+    }
+
     /// Is owned by the DMA engine?
     fn is_owned(&self) -> bool {
         (self.desc.read(0) & TXDESC_0_OWN) == TXDESC_0_OWN
@@ -115,6 +118,11 @@ pub type TxRingEntry = RingEntry<TxDescriptor>;
 
 impl RingDescriptor for TxDescriptor {
     fn setup(&mut self, buffer: *const u8, _len: usize, next: Option<&Self>) {
+        // Defer this initialization to this function, so we can have `RingEntry` on bss.
+        unsafe {
+            self.desc
+                .write(0, TXDESC_0_TCH | TXDESC_0_IC | TXDESC_0_FS | TXDESC_0_LS);
+        }
         self.set_buffer1(buffer);
         match next {
             Some(next) => self.set_buffer2(&next.desc as *const Descriptor as *const u8),

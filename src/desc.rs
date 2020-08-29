@@ -18,13 +18,17 @@ impl Clone for Descriptor {
 
 impl Default for Descriptor {
     fn default() -> Self {
-        Descriptor {
-            desc: Aligned([0; 4]),
-        }
+        Self::new()
     }
 }
 
 impl Descriptor {
+    pub const fn new() -> Self {
+        Self {
+            desc: Aligned([0; 4]),
+        }
+    }
+
     fn r(&self, n: usize) -> &RO<u32> {
         let ro = &self.desc.deref()[n] as *const _ as *const RO<u32>;
         unsafe { &*ro }

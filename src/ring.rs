@@ -1,7 +1,7 @@
 use aligned::{Aligned, A8};
 use core::ops::{Deref, DerefMut};
 
-use crate::MTU;
+use crate::{RxDescriptor, TxDescriptor, MTU};
 
 pub trait RingDescriptor {
     fn setup(&mut self, buffer: *const u8, len: usize, next: Option<&Self>);
@@ -23,18 +23,34 @@ impl<T: Clone + RingDescriptor> Clone for RingEntry<T> {
 
 impl<T: Clone + RingDescriptor + Default> Default for RingEntry<T> {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T: Clone + RingDescriptor + Default> RingEntry<T> {
-    pub fn new() -> Self {
         RingEntry {
             desc: Aligned([T::default()]),
             buffer: Aligned([0; MTU]),
         }
     }
+}
 
+impl RingEntry<TxDescriptor> {
+    /// Creates a RingEntry with a TxDescriptor.
+    pub const fn new() -> Self {
+        RingEntry {
+            desc: Aligned([TxDescriptor::new()]),
+            buffer: Aligned([0; MTU]),
+        }
+    }
+}
+
+impl RingEntry<RxDescriptor> {
+    /// Creates a RingEntry with a RxDescriptor.
+    pub const fn new() -> Self {
+        RingEntry {
+            desc: Aligned([RxDescriptor::new()]),
+            buffer: Aligned([0; MTU]),
+        }
+    }
+}
+
+impl<T: Clone + RingDescriptor> RingEntry<T> {
     pub(crate) fn setup(&mut self, next: Option<&Self>) {
         let buffer = self.buffer.as_ptr();
         let len = self.buffer.len();
