@@ -1,3 +1,5 @@
+/* STM32F429 */
+/*
 MEMORY
 {
   FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 2048K
@@ -6,6 +8,13 @@ MEMORY
   RAM3 (xrw)      : ORIGIN = 0x20020000, LENGTH = 64K
   CCMRAM (rw)     : ORIGIN = 0x10000000, LENGTH = 64K
 }
-
 _stack_start = ORIGIN(RAM) + LENGTH(RAM);
 _heap_size = LENGTH(RAM) - 4K;
+*/
+
+/* STM32F107 */
+MEMORY
+{
+  FLASH : ORIGIN = 0x08000000, LENGTH = 128K
+  RAM : ORIGIN = 0x20000000, LENGTH = 32K
+}

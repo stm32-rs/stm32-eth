@@ -1,9 +1,4 @@
-#[cfg(feature = "stm32f4xx-hal")]
-use stm32f4xx_hal::stm32;
-#[cfg(feature = "stm32f7xx-hal")]
-use stm32f7xx_hal::device as stm32;
-
-use stm32::ETHERNET_DMA;
+use crate::stm32::ETHERNET_DMA;
 
 use core::{
     default::Default,
@@ -237,7 +232,12 @@ impl<'a> RxRing<'a> {
         self.next_entry = 0;
         let ring_ptr = self.entries[0].desc() as *const RxDescriptor;
         // Register RxDescriptor
-        eth_dma.dmardlar.write(|w| w.srl().bits(ring_ptr as u32));
+        eth_dma.dmardlar.write(|w| {
+            // Note: unsafe block required for `stm32f107`.
+            unsafe {
+                w.srl().bits(ring_ptr as u32)
+            }
+        });
 
         // We already have fences in `set_owned`, which is called in `setup`
 

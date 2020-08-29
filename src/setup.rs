@@ -93,6 +93,31 @@ pub(crate) fn setup() {
         rcc.ahb1rstr.modify(|_, w| w.ethmacrst().set_bit());
         rcc.ahb1rstr.modify(|_, w| w.ethmacrst().clear_bit());
     });
+
+    #[cfg(feature = "stm32f1xx-hal")]
+    cortex_m::interrupt::free(|_| unsafe {
+        let afio = &*crate::stm32::AFIO::ptr();
+        let rcc = &*crate::stm32::RCC::ptr();
+
+        // select MII or RMII mode
+        // 0 = MII, 1 = RMII
+        afio.mapr.modify(|_, w| w.mii_rmii_sel().set_bit());
+
+        // enable ethernet clocks
+        rcc.ahbenr.modify(|_, w| {
+            w.ethmacen()
+                .set_bit()
+                .ethmactxen()
+                .set_bit()
+                .ethmacrxen()
+                .set_bit()
+        });
+
+        // Reset pulse.
+        rcc.ahbrstr.modify(|_, w| w.ethmacrst().set_bit());
+        rcc.ahbrstr.modify(|_, w| w.ethmacrst().clear_bit());
+    });
+
 }
 
 /// RMII Reference Clock.
@@ -174,6 +199,7 @@ where
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! impl_pins {
     ( $($traity:ident: [$($pin:ty,)+],)+ ) => {
         $(
@@ -190,7 +216,7 @@ macro_rules! impl_pins {
     };
 }
 
-#[cfg(feature = "device-selected")]
+#[cfg(all(feature = "device-selected", any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal")))]
 impl_pins!(
     RmiiRefClk: [
         PA1<Input<Floating>>,
@@ -223,3 +249,56 @@ impl_pins!(
         PC5<Input<Floating>>,
     ],
 );
+
+#[cfg(feature = "stm32f1xx-hal")]
+mod stm32f1 {
+    use super::*;
+    use stm32f1xx_hal::gpio::{
+        gpioa, gpiob, gpioc, gpiod, Alternate, Floating, Input, OpenDrain, Output, PushPull,
+    };
+
+    // STM32F1xx's require access to the CRL/CRH registers to change pin mode. As a result, we
+    // require that pins are already in the necessary mode before constructing `EthPins` as it
+    // would be inconvenient to pass CRL and CRH through to the `AlternateVeryHighSpeed` callsite.
+
+    type PA1 = gpioa::PA1<Output<OpenDrain>>;
+    type PA2 = gpioa::PA2<Input<Floating>>;
+    // TODO CRS_DV - Should this be `Output<OpenDrain>` or is this right??
+    type PA7 = gpioa::PA7<Input<Floating>>;
+    type PB11 = gpiob::PB11<Alternate<PushPull>>;
+    type PB12 = gpiob::PB12<Alternate<PushPull>>;
+    type PB13 = gpiob::PB13<Alternate<PushPull>>;
+    type PC1 = gpioc::PC1<Alternate<PushPull>>;
+    type PC4 = gpioc::PC4<Output<OpenDrain>>;
+    type PC5 = gpioc::PC5<Output<OpenDrain>>;
+    // TODO CRS_DV - Should this be `Output<OpenDrain>` or is this right??
+    type PD8 = gpiod::PD8<Input<Floating>>;
+    type PD9 = gpiod::PD9<Output<OpenDrain>>;
+    type PD10 = gpiod::PD10<Output<OpenDrain>>;
+
+
+    unsafe impl RmiiRefClk for PA1 {}
+    unsafe impl MDIO for PA2 {}
+    unsafe impl MDC for PC1 {}
+    unsafe impl RmiiCrsDv for PA7 {}
+    unsafe impl RmiiCrsDv for PD8 {}
+    unsafe impl RmiiTxEN for PB11 {}
+    unsafe impl RmiiTxD0 for PB12 {}
+    unsafe impl RmiiTxD1 for PB13 {}
+    unsafe impl RmiiRxD0 for PC4 {}
+    unsafe impl RmiiRxD0 for PD9 {}
+    unsafe impl RmiiRxD1 for PC5 {}
+    unsafe impl RmiiRxD1 for PD10 {}
+
+    macro_rules! impl_alt_very_high_speed {
+        ($($PIN:ident),*) => {
+            $(
+                impl AlternateVeryHighSpeed for $PIN {
+                    fn into_af11_very_high_speed(self) {}
+                }
+            )*
+        }
+    }
+
+    impl_alt_very_high_speed!(PA1, PA2, PA7, PB11, PB12, PB13, PC1, PC4, PC5, PD8, PD9, PD10);
+}
