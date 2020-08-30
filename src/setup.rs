@@ -99,6 +99,14 @@ pub(crate) fn setup() {
         let afio = &*crate::stm32::AFIO::ptr();
         let rcc = &*crate::stm32::RCC::ptr();
 
+        // enable AFIO clock
+        rcc.apb2enr.modify(|_, w| w.afioen().set_bit());
+
+        if rcc.ahbenr.read().ethmacen().bit_is_set() {
+            // ethernet controller must be disabled when configuring mapr
+            rcc.ahbenr.modify(|_, w| w.ethmacen().clear_bit());
+        }
+
         // select MII or RMII mode
         // 0 = MII, 1 = RMII
         afio.mapr.modify(|_, w| w.mii_rmii_sel().set_bit());
