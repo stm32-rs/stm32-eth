@@ -11,6 +11,7 @@ use stm32_eth::{
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
+    RxDescriptor, TxDescriptor,
 };
 
 use core::cell::RefCell;
@@ -24,7 +25,7 @@ use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 use stm32_eth::{Eth, EthPins, PhyAddress, RingEntry};
 
-use stm32f1xx_hal::flash::FlashExt;
+use stm32f1xx_hal::{prelude::*, flash::FlashExt};
 use rtt_target::{rprintln, rtt_init_print};
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
@@ -51,7 +52,7 @@ fn main() -> ! {
     // I'm unsure exactly why its necessary, but this should be addressed in stm32f1xx-hal before
     // merging this.
     rprintln!("Setting up clocks");
-    // let clocks = rcc.cfgr.sysclk(50.mhz()).hclk(25.mhz()).freeze(&mut flash.acr);
+    //let clocks = rcc.cfgr.sysclk(50.mhz()).hclk(50.mhz()).freeze(&mut flash.acr);
     let clocks = rcc.cfgr.freeze_explicit(
         &mut flash.acr,
         25_000_000,
@@ -69,6 +70,25 @@ fn main() -> ! {
         stm32f1xx_hal::stm32::rcc::cfgr::PPRE2_A::DIV1,
         stm32f1xx_hal::stm32::rcc::cfgr::ADCPRE_A::DIV4,
         stm32f1xx_hal::stm32::rcc::cfgr::OTGFSPRE_A::DIV1_5,
+    );
+
+    rprintln!("\
+    hclk: {}
+    pclk1: {}
+    pclk2: {}
+    pclk1_tim: {}
+    pclk2_tim: {}
+    sysclk: {}
+    adcclk: {}
+    usbclk_valid: {}",
+        clocks.hclk().0,
+        clocks.pclk1().0,
+        clocks.pclk2().0,
+        clocks.pclk1_tim().0,
+        clocks.pclk2_tim().0,
+        clocks.sysclk().0,
+        clocks.adcclk().0,
+        clocks.usbclk_valid(),
     );
 
     rprintln!("Setting up systick");
@@ -102,8 +122,20 @@ fn main() -> ! {
     };
 
     rprintln!("Constructing `Eth`");
-    let mut rx_ring: [RingEntry<_>; 8] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
+    let mut rx_ring: [RingEntry<_>; 8] = [
+        RingEntry::<RxDescriptor>::new(),
+        RingEntry::<RxDescriptor>::new(),
+        RingEntry::<RxDescriptor>::new(),
+        RingEntry::<RxDescriptor>::new(),
+        RingEntry::<RxDescriptor>::new(),
+        RingEntry::<RxDescriptor>::new(),
+        RingEntry::<RxDescriptor>::new(),
+        RingEntry::<RxDescriptor>::new(),
+    ];
+    let mut tx_ring: [RingEntry<_>; 2] = [
+        RingEntry::<TxDescriptor>::new(),
+        RingEntry::<TxDescriptor>::new(),
+    ];
     let mut eth = Eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_DMA,
