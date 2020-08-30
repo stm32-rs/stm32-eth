@@ -19,7 +19,7 @@ pub use stm32f4xx_hal::stm32;
 pub use stm32f1xx_hal as hal;
 /// Re-export
 #[cfg(feature = "stm32f1xx-hal")]
-pub use stm32f1xx_hal::device as stm32;
+pub use stm32f1xx_hal::pac as stm32;
 
 use hal::rcc::Clocks;
 use rtt_target::rprintln;
