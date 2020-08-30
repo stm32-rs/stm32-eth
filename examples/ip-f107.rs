@@ -52,7 +52,15 @@ fn main() -> ! {
     // I'm unsure exactly why its necessary, but this should be addressed in stm32f1xx-hal before
     // merging this.
     rprintln!("Setting up clocks");
-    //let clocks = rcc.cfgr.sysclk(50.mhz()).hclk(50.mhz()).freeze(&mut flash.acr);
+
+    // let clocks = rcc
+    //     .cfgr
+    //     .use_hse(8.mhz())
+    //     .sysclk(72.mhz())
+    //     .hclk(72.mhz())
+    //     .pclk1(36.mhz())
+    //     .freeze(&mut flash.acr);
+
     let clocks = rcc.cfgr.freeze_explicit(
         &mut flash.acr,
         25_000_000,
@@ -99,15 +107,15 @@ fn main() -> ! {
     let mut gpiob = p.GPIOB.split(&mut rcc.apb2);
     let mut gpioc = p.GPIOC.split(&mut rcc.apb2);
 
-    let ref_clk = gpioa.pa1.into_open_drain_output(&mut gpioa.crl);
-    let md_io = gpioa.pa2.into_floating_input(&mut gpioa.crl);
+    let ref_clk = gpioa.pa1.into_floating_input(&mut gpioa.crl);
+    let md_io = gpioa.pa2.into_alternate_push_pull(&mut gpioa.crl);
     let crs = gpioa.pa7.into_floating_input(&mut gpioa.crl);
     let md_clk = gpioc.pc1.into_alternate_push_pull(&mut gpioc.crl);
     let tx_en = gpiob.pb11.into_alternate_push_pull(&mut gpiob.crh);
     let tx_d0 = gpiob.pb12.into_alternate_push_pull(&mut gpiob.crh);
     let tx_d1 = gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh);
-    let rx_d0 = gpioc.pc4.into_open_drain_output(&mut gpioc.crl);
-    let rx_d1 = gpioc.pc5.into_open_drain_output(&mut gpioc.crl);
+    let rx_d0 = gpioc.pc4.into_floating_input(&mut gpioc.crl);
+    let rx_d1 = gpioc.pc5.into_floating_input(&mut gpioc.crl);
 
     let eth_pins = EthPins {
         ref_clk,

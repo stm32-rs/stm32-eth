@@ -262,28 +262,25 @@ impl_pins!(
 mod stm32f1 {
     use super::*;
     use stm32f1xx_hal::gpio::{
-        gpioa, gpiob, gpioc, gpiod, Alternate, Floating, Input, OpenDrain, Output, PushPull,
+        gpioa, gpiob, gpioc, gpiod, Alternate, Floating, Input, PushPull,
     };
 
     // STM32F1xx's require access to the CRL/CRH registers to change pin mode. As a result, we
     // require that pins are already in the necessary mode before constructing `EthPins` as it
     // would be inconvenient to pass CRL and CRH through to the `AlternateVeryHighSpeed` callsite.
 
-    type PA1 = gpioa::PA1<Output<OpenDrain>>;
-    type PA2 = gpioa::PA2<Input<Floating>>;
-    // TODO CRS_DV - Should this be `Output<OpenDrain>` or is this right??
+    type PA1 = gpioa::PA1<Input<Floating>>;
+    type PA2 = gpioa::PA2<Alternate<PushPull>>;
     type PA7 = gpioa::PA7<Input<Floating>>;
     type PB11 = gpiob::PB11<Alternate<PushPull>>;
     type PB12 = gpiob::PB12<Alternate<PushPull>>;
     type PB13 = gpiob::PB13<Alternate<PushPull>>;
     type PC1 = gpioc::PC1<Alternate<PushPull>>;
-    type PC4 = gpioc::PC4<Output<OpenDrain>>;
-    type PC5 = gpioc::PC5<Output<OpenDrain>>;
-    // TODO CRS_DV - Should this be `Output<OpenDrain>` or is this right??
+    type PC4 = gpioc::PC4<Input<Floating>>;
+    type PC5 = gpioc::PC5<Input<Floating>>;
     type PD8 = gpiod::PD8<Input<Floating>>;
-    type PD9 = gpiod::PD9<Output<OpenDrain>>;
-    type PD10 = gpiod::PD10<Output<OpenDrain>>;
-
+    type PD9 = gpiod::PD9<Input<Floating>>;
+    type PD10 = gpiod::PD10<Input<Floating>>;
 
     unsafe impl RmiiRefClk for PA1 {}
     unsafe impl MDIO for PA2 {}
