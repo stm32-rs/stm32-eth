@@ -53,51 +53,13 @@ fn main() -> ! {
     // merging this.
     rprintln!("Setting up clocks");
 
-    // let clocks = rcc
-    //     .cfgr
-    //     .use_hse(8.mhz())
-    //     .sysclk(72.mhz())
-    //     .hclk(72.mhz())
-    //     .pclk1(36.mhz())
-    //     .freeze(&mut flash.acr);
-
-    let clocks = rcc.cfgr.freeze_explicit(
-        &mut flash.acr,
-        25_000_000,
-        stm32f1xx_hal::stm32::rcc::cfgr2::PREDIV1_A::DIV4,
-        stm32f1xx_hal::stm32::rcc::cfgr2::PREDIV2_A::DIV7,
-        stm32f1xx_hal::stm32::rcc::cfgr2::PLL2MUL_A::MUL16,
-        stm32f1xx_hal::stm32::rcc::cfgr2::PLL3MUL_A::MUL12,
-        stm32f1xx_hal::stm32::rcc::cfgr2::PREDIV1SRC_A::HSE,
-        stm32f1xx_hal::stm32::rcc::cfgr::PLLSRC_A::HSE_DIV_PREDIV,
-        stm32f1xx_hal::stm32::rcc::cfgr::PLLMUL_A::MUL8,
-        stm32f1xx_hal::stm32::flash::acr::LATENCY_A::WS2,
-        stm32f1xx_hal::stm32::rcc::cfgr::HPRE_A::DIV1,
-        stm32f1xx_hal::stm32::rcc::cfgr::SW_A::PLL,
-        stm32f1xx_hal::stm32::rcc::cfgr::PPRE1_A::DIV2,
-        stm32f1xx_hal::stm32::rcc::cfgr::PPRE2_A::DIV1,
-        stm32f1xx_hal::stm32::rcc::cfgr::ADCPRE_A::DIV4,
-        stm32f1xx_hal::stm32::rcc::cfgr::OTGFSPRE_A::DIV1_5,
-    );
-
-    rprintln!("\
-    hclk: {}
-    pclk1: {}
-    pclk2: {}
-    pclk1_tim: {}
-    pclk2_tim: {}
-    sysclk: {}
-    adcclk: {}
-    usbclk_valid: {}",
-        clocks.hclk().0,
-        clocks.pclk1().0,
-        clocks.pclk2().0,
-        clocks.pclk1_tim().0,
-        clocks.pclk2_tim().0,
-        clocks.sysclk().0,
-        clocks.adcclk().0,
-        clocks.usbclk_valid(),
-    );
+    let clocks = rcc
+        .cfgr
+        .use_hse(8.mhz())
+        .sysclk(72.mhz())
+        .hclk(72.mhz())
+        .pclk1(36.mhz())
+        .freeze(&mut flash.acr);
 
     rprintln!("Setting up systick");
     setup_systick(&mut cp.SYST);
@@ -208,8 +170,8 @@ fn main() -> ! {
                 cortex_m::interrupt::free(|cs| {
                     let eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
                     if !*eth_pending {
-                        asm::wfi();
                         // Awaken by interrupt
+                        asm::wfi();
                     }
                 });
             }

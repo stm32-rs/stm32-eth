@@ -124,6 +124,21 @@ pub(crate) fn setup() {
         // Reset pulse.
         rcc.ahbrstr.modify(|_, w| w.ethmacrst().set_bit());
         rcc.ahbrstr.modify(|_, w| w.ethmacrst().clear_bit());
+
+        // Workaround for the issue mentioned in the Errata (2.20.11) related to wfi:
+        //
+        // "
+        // If a WFI/WFE instruction is executed to put the system in sleep mode while the Ethernet
+        // MAC master clock on the AHB bus matrix is ON and all remaining masters clocks are OFF,
+        // the Ethernet DMA is unable to perform any AHB master accesses during sleep mode.
+        //
+        // Workaround: Enable DMA1 or DMA2 clocks in the RCC_AHBENR register before executing the
+        // WFI/WFE instruction.
+        // "
+        if rcc.ahbenr.read().dma1en().is_disabled() && rcc.ahbenr.read().dma2en().is_disabled() {
+            rcc.ahbenr.modify(|_, w| w.dma2en().enabled());
+            while rcc.ahbenr.read().dma2en().is_disabled() {}
+        }
     });
 
 }
