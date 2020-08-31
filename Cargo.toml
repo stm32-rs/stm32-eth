@@ -20,8 +20,6 @@ features = [ "smoltcp-phy", "stm32f429" ]
 [dependencies]
 volatile-register = "0.2"
 aligned = "0.3"
-panic-rtt-target = { version = "0.1", features = ["cortex-m"] }
-rtt-target = { version = "0.2.0", features = ["cortex-m"] }
 stm32f1xx-hal = {version = "0.6.1", optional = true}
 stm32f7xx-hal = {version = "0.2.0", optional = true}
 stm32f4xx-hal = {version = "0.8.3", optional = true}
@@ -65,6 +63,8 @@ smoltcp-phy = ["smoltcp"]
 cortex-m = "0.6.2"
 cortex-m-rt = "0.6"
 panic-itm = "0.4"
+panic-rtt-target = { version = "0.1", features = ["cortex-m"] }
+rtt-target = { version = "0.2.0", features = ["cortex-m"] }
 cortex-m-semihosting = "0.3.5"
 stm32f1xx-hal = {version = "0.6.1", features = ["rt"] }
 #stm32f4xx-hal = {version = "0.8.3", features = ["rt"] }

@@ -22,7 +22,6 @@ pub use stm32f1xx_hal as hal;
 pub use stm32f1xx_hal::pac as stm32;
 
 use hal::rcc::Clocks;
-use rtt_target::rprintln;
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
 
 pub mod phy;
@@ -147,19 +146,15 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
             _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
         };
 
-        rprintln!("reset_dma_and_wait");
         self.reset_dma_and_wait();
 
-        rprintln!("set clock range");
         // set clock range in MAC MII address register
         self.eth_mac
             .macmiiar
             .modify(|_, w| unsafe { w.cr().bits(clock_range) });
 
-        rprintln!("Reset PHY");
         self.get_phy().reset().set_autoneg();
 
-        rprintln!("MAC configuration");
         // Configuration Register
         self.eth_mac.maccr.modify(|_, w| {
             // CRC stripping for Type frames. STM32F1xx do not have this bit.
@@ -186,7 +181,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .set_bit()
         });
 
-        rprintln!("MAC frame filter");
         // frame filter register
         self.eth_mac.macffr.modify(|_, w| {
             // Receive All
@@ -197,7 +191,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .set_bit()
         });
 
-        rprintln!("MAC flow control register");
         // Flow Control Register
         self.eth_mac.macfcr.modify(|_, w| {
             // Pause time
@@ -207,7 +200,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
             }
         });
 
-        rprintln!("DMA operation mode");
         // operation mode register
         self.eth_dma.dmaomr.modify(|_, w| {
             // Dropping of TCP/IP checksum error frames disable
@@ -230,7 +222,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .set_bit()
         });
 
-        rprintln!("DMA bus mode");
         // bus mode register
         self.eth_dma.dmabmr.modify(|_, w| unsafe {
             // Rx Tx priority ratio 2:1.
@@ -254,8 +245,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .usp()
                 .set_bit()
         });
-
-        rprintln!("Eth::init end");
 
         Ok(())
     }

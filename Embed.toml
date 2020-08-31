@@ -1,0 +1,13 @@
+[default.probe]
+protocol = "Swd"
+
+[default.flashing]
+enabled = true
+
+[default.general]
+chip = "STM32F107RC"
+
+[default.rtt]
+enabled = true
+show_timestamps = true
+timeout = 3000

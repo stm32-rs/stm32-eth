@@ -44,15 +44,7 @@ fn main() -> ! {
     let mut rcc = p.RCC.constrain();
 
     // HCLK must be at least 25MHz to use the ethernet peripheral
-    //
-    // TODO: `freeze_explicit` method comes from here:
-    //
-    // https://github.com/stm32-rs/stm32f1xx-hal/compare/master...torkeldanielsson:master#diff-c6941ad2425cd611249033bed1925f02R396
-    //
-    // I'm unsure exactly why its necessary, but this should be addressed in stm32f1xx-hal before
-    // merging this.
     rprintln!("Setting up clocks");
-
     let clocks = rcc
         .cfgr
         .use_hse(8.mhz())
