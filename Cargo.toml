@@ -74,6 +74,10 @@ required-features = [
     "smoltcp/log", "smoltcp/verbose"
 ]
 
+[[example]]
+name = "arp-smoltcp"
+required-features = ["stm32f429", "smoltcp-phy"]
+
 [profile.release]
 debug = 2
 lto = true
