@@ -18,7 +18,6 @@ use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use cortex_m_semihosting::hio::HStdout;
 use rtic::export::DWT;
 use stm32_eth::smoltcp::iface::Neighbor;
 use stm32_eth::smoltcp::socket::{SocketHandle, SocketSetItem};
@@ -59,13 +58,24 @@ const APP: () = {
         server_handle: SocketHandle,
         sockets: Sockets,
         interface: Ethernet,
-        stdout: HStdout,
     }
 
     #[init(schedule = [ms_tick])]
     fn init(cx: init::Context) -> init::LateResources {
-        static mut RX_RING: Option<[RingEntry<RxDescriptor>; 8]> = None;
-        static mut TX_RING: Option<[RingEntry<TxDescriptor>; 2]> = None;
+        static mut TX_RING: [RingEntry<TxDescriptor>; 2] = [
+            RingEntry::<TxDescriptor>::new(),
+            RingEntry::<TxDescriptor>::new(),
+        ];
+        static mut RX_RING: [RingEntry<RxDescriptor>; 8] = [
+            RingEntry::<RxDescriptor>::new(),
+            RingEntry::<RxDescriptor>::new(),
+            RingEntry::<RxDescriptor>::new(),
+            RingEntry::<RxDescriptor>::new(),
+            RingEntry::<RxDescriptor>::new(),
+            RingEntry::<RxDescriptor>::new(),
+            RingEntry::<RxDescriptor>::new(),
+            RingEntry::<RxDescriptor>::new(),
+        ];
 
         static mut IP_ADDRS: Option<[IpCidr; 1]> = None;
 
@@ -82,8 +92,6 @@ const APP: () = {
         }
         log::set_max_level(LevelFilter::Info);
 
-        let mut stdout = hio::hstdout().unwrap();
-
         let mut core: rtic::Peripherals = cx.core;
         let device: stm32f4xx_hal::stm32::Peripherals = cx.device;
 
@@ -96,7 +104,7 @@ const APP: () = {
         // HCLK must be at least 25MHz to use the ethernet peripheral
         let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
 
-        writeln!(stdout, "Enabling ethernet...").unwrap();
+        log::info!("Enabling ethernet...");
         let gpioa = device.GPIOA.split();
         let gpiob = device.GPIOB.split();
         let gpioc = device.GPIOC.split();
@@ -114,14 +122,11 @@ const APP: () = {
             rx_d1: gpioc.pc5,
         };
 
-        *RX_RING = Some(Default::default());
-        *TX_RING = Some(Default::default());
-
         let eth = Eth::new(
             device.ETHERNET_MAC,
             device.ETHERNET_DMA,
-            RX_RING.as_mut().unwrap(),
-            TX_RING.as_mut().unwrap(),
+            RX_RING.as_mut(),
+            TX_RING.as_mut(),
             PhyAddress::_0,
             clocks,
             eth_pins,
@@ -147,7 +152,7 @@ const APP: () = {
         let mut sockets = SocketSet::new(SOCKETS_STORAGE.as_mut());
         let server_handle = sockets.add(server_socket);
 
-        writeln!(stdout, "Ready, listening at {}", ip_addr).unwrap();
+        log::info!("Ready, listening at {}", ip_addr);
 
         let now = cx.start;
         cx.schedule.ms_tick(now + MS_PERIOD.cycles()).unwrap();
@@ -156,17 +161,15 @@ const APP: () = {
             server_handle,
             sockets,
             interface,
-            stdout,
         }
     }
 
-    #[idle(resources = [eth_pending, time, interface, sockets, server_handle, stdout])]
+    #[idle(resources = [eth_pending, time, interface, sockets, server_handle])]
     fn idle(mut cx: idle::Context) -> ! {
         let pending: &mut bool = cx.resources.eth_pending;
         let interface: &mut Ethernet = cx.resources.interface;
         let sockets: &mut Sockets = cx.resources.sockets;
         let handle: &mut SocketHandle = cx.resources.server_handle;
-        let stdout: &mut HStdout = cx.resources.stdout;
 
         loop {
             let time: u64 = cx.resources.time.lock(|time| *time);
@@ -175,26 +178,24 @@ const APP: () = {
                 Ok(true) => {
                     let mut socket = sockets.get::<TcpSocket>(*handle);
                     if !socket.is_open() {
-                        socket
-                            .listen(80)
-                            .or_else(|e| writeln!(stdout, "TCP listen error: {:?}", e))
-                            .unwrap();
+                        if let Err(e) = socket.listen(80) {
+                            log::error!("TCP listen error: {:?}", e)
+                        }
                     }
 
                     if socket.can_send() {
-                        write!(socket, "hello\n")
-                            .map(|_| {
-                                socket.close();
-                            })
-                            .or_else(|e| writeln!(stdout, "TCP send error: {:?}", e))
-                            .unwrap();
+                        if let Err(e) = write!(socket, "hello\n").map(|_| {
+                            socket.close();
+                        }) {
+                            log::error!("TCP send error: {:?}", e)
+                        }
                     }
                 }
                 Ok(false) => {}
                 Err(e) =>
                 // Ignore malformed packets
                 {
-                    // defmt::error!("Malformed packet.");
+                    log::error!("Malformed packet.");
                 }
             }
         }
