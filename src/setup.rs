@@ -2,9 +2,9 @@
 use stm32f4xx_hal::{
     bb,
     gpio::{
-        gpioa::{PA1, PA2, PA7},
+        gpioa::{PA1, PA7},
         gpiob::{PB11, PB12, PB13},
-        gpioc::{PC1, PC4, PC5},
+        gpioc::{PC4, PC5},
         gpiog::{PG11, PG13, PG14},
         Floating, Input,
         Speed::VeryHigh,
@@ -18,9 +18,9 @@ use cortex_m::interrupt;
 use stm32f7xx_hal::{
     device::{RCC, SYSCFG},
     gpio::{
-        gpioa::{PA1, PA2, PA7},
+        gpioa::{PA1, PA7},
         gpiob::{PB11, PB12, PB13},
-        gpioc::{PC1, PC4, PC5},
+        gpioc::{PC4, PC5},
         gpiog::{PG11, PG13, PG14},
         Floating, Input,
         Speed::VeryHigh,
@@ -98,12 +98,6 @@ pub(crate) fn setup() {
 /// RMII Reference Clock.
 pub unsafe trait RmiiRefClk {}
 
-/// RMII MDIO.
-pub unsafe trait MDIO {}
-
-/// RMII MDC.
-pub unsafe trait MDC {}
-
 /// RMII RX Data Valid.
 pub unsafe trait RmiiCrsDv {}
 
@@ -128,10 +122,8 @@ pub trait AlternateVeryHighSpeed {
     fn into_af11_very_high_speed(self);
 }
 
-pub struct EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
+pub struct EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
     pub ref_clk: REFCLK,
-    pub md_io: IO,
-    pub md_clk: CLK,
     pub crs: CRS,
     pub tx_en: TXEN,
     pub tx_d0: TXD0,
@@ -140,12 +132,10 @@ pub struct EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
     pub rx_d1: RXD1,
 }
 
-impl<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
-    EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
+impl<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
+    EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
-    IO: MDIO + AlternateVeryHighSpeed,
-    CLK: MDC + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
     TXEN: RmiiTxEN + AlternateVeryHighSpeed,
     TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
@@ -163,8 +153,6 @@ where
     /// anywhere else by accident.
     pub fn setup_pins(self) {
         self.ref_clk.into_af11_very_high_speed();
-        self.md_io.into_af11_very_high_speed();
-        self.md_clk.into_af11_very_high_speed();
         self.crs.into_af11_very_high_speed();
         self.tx_en.into_af11_very_high_speed();
         self.tx_d0.into_af11_very_high_speed();
@@ -194,12 +182,6 @@ macro_rules! impl_pins {
 impl_pins!(
     RmiiRefClk: [
         PA1<Input<Floating>>,
-    ],
-    MDIO: [
-        PA2<Input<Floating>>,
-    ],
-    MDC: [
-        PC1<Input<Floating>>,
     ],
     RmiiCrsDv: [
         PA7<Input<Floating>>,

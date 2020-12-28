@@ -5,16 +5,42 @@ use stm32f7xx_hal::device as stm32;
 
 use stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
 
-/// Station Management Interface
-pub struct SMI<'a> {
-    macmiiar: &'a MACMIIAR,
-    macmiidr: &'a MACMIIDR,
+/// MDIO pin types.
+pub unsafe trait MdioPin {}
+/// MDC pin types.
+pub unsafe trait MdcPin {}
+
+/// Station Management Interface.
+///
+/// Provides access to the MIIM implementation exposed by the MCU's MAC API.
+pub struct Smi<'eth, 'pins, Mdio, Mdc> {
+    macmiiar: &'eth MACMIIAR,
+    macmiidr: &'eth MACMIIDR,
+    _mdio: &'pins mut Mdio,
+    _mdc: &'pins mut Mdc,
 }
 
-impl<'a> SMI<'a> {
-    /// Allocate
-    pub fn new(macmiiar: &'a MACMIIAR, macmiidr: &'a MACMIIDR) -> Self {
-        SMI { macmiiar, macmiidr }
+impl<'eth, 'pins, Mdio, Mdc> Smi<'eth, 'pins, Mdio, Mdc>
+where
+    Mdio: MdioPin,
+    Mdc: MdcPin,
+{
+    /// Create the temporary `Smi` instance.
+    ///
+    /// Temporarily take exclusive access to the MDIO and MDC pins to ensure they are not used
+    /// elsewhere for the duration of SMI communication.
+    pub fn new(
+        macmiiar: &'eth MACMIIAR,
+        macmiidr: &'eth MACMIIDR,
+        _mdio: &'pins mut Mdio,
+        _mdc: &'pins mut Mdc,
+    ) -> Self {
+        Self {
+            macmiiar,
+            macmiidr,
+            _mdio,
+            _mdc,
+        }
     }
 
     /// Wait for not busy
@@ -65,11 +91,15 @@ impl<'a> SMI<'a> {
         });
         self.wait_ready();
     }
+}
 
-    /// Helper: `read()` and `write()` by OR-ing the current value of
-    /// the register `reg` with `mask`.
-    pub fn set_bits(&self, phy: u8, reg: u8, mask: u16) {
-        let value = self.read(phy, reg);
-        self.write(phy, reg, value | mask);
-    }
+#[cfg(feature = "device-selected")]
+mod pin_impls {
+    #[cfg(feature = "stm32f4xx-hal")]
+    use stm32f4xx_hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, AF11};
+    #[cfg(feature = "stm32f7xx-hal")]
+    use stm32f7xx_hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, AF11};
+
+    unsafe impl super::MdioPin for PA2<Alternate<AF11>> {}
+    unsafe impl super::MdcPin for PC1<Alternate<AF11>> {}
 }

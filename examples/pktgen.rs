@@ -1,3 +1,7 @@
+//! Example assumes use of an STM32F429 connected to a network via a single PHY whose address is
+//! `0`. The PHY is expected to be accessible via SMI with an implementation of the standard basic
+//! status register as described in the IEEE 802.3 Ethernet standard.
+
 #![no_std]
 #![no_main]
 
@@ -10,20 +14,22 @@ use cortex_m_rt::{entry, exception};
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
 use stm32_eth::{
-    hal::gpio::GpioExt,
+    hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
     hal::time::U32Ext,
+    smi,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
-use stm32_eth::{Eth, EthPins, PhyAddress, RingEntry, TxError};
+use stm32_eth::{Eth, EthPins, RingEntry, TxError};
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
 const ETH_TYPE: [u8; 2] = [0x80, 0x00];
+const PHY_ADDR: u8 = 0;
 
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
@@ -49,8 +55,6 @@ fn main() -> ! {
 
     let eth_pins = EthPins {
         ref_clk: gpioa.pa1,
-        md_io: gpioa.pa2,
-        md_clk: gpioc.pc1,
         crs: gpioa.pa7,
         tx_en: gpiog.pg11,
         tx_d0: gpiog.pg13,
@@ -59,6 +63,9 @@ fn main() -> ! {
         rx_d1: gpioc.pc5,
     };
 
+    let mut mdio = gpioa.pa2.into_alternate_af11().set_speed(Speed::VeryHigh);
+    let mut mdc = gpioc.pc1.into_alternate_af11().set_speed(Speed::VeryHigh);
+
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
     let mut eth = Eth::new(
@@ -66,7 +73,6 @@ fn main() -> ! {
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
-        PhyAddress::_0,
         clocks,
         eth_pins,
     )
@@ -79,7 +85,7 @@ fn main() -> ! {
     let mut rx_pkts = 0usize;
     let mut tx_bytes = 0usize;
     let mut tx_pkts = 0usize;
-    let mut last_status = None;
+    let mut last_link_up = false;
 
     loop {
         let time: usize = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
@@ -106,28 +112,14 @@ fn main() -> ! {
         }
 
         // Link change detection
-        let status = eth.status();
-        if last_status
-            .map(|last_status| last_status != status)
-            .unwrap_or(true)
-        {
-            if !status.link_detected() {
+        let link_up = link_detected(eth.smi(&mut mdio, &mut mdc));
+        if link_up != last_link_up {
+            if link_up {
                 writeln!(stdout, "Ethernet: no link detected").unwrap();
             } else {
-                writeln!(
-                    stdout,
-                    "Ethernet: link detected with {} Mbps/{}",
-                    status.speed(),
-                    match status.is_full_duplex() {
-                        Some(true) => "FD",
-                        Some(false) => "HD",
-                        None => "?",
-                    }
-                )
-                .unwrap();
+                writeln!(stdout, "Ethernet: link detected!").unwrap();
             }
-
-            last_status = Some(status);
+            last_link_up = link_up;
         }
 
         cortex_m::interrupt::free(|cs| {
@@ -156,7 +148,7 @@ fn main() -> ! {
 
         // fill tx queue
         const SIZE: usize = 1500;
-        if status.link_detected() {
+        if link_detected(eth.smi(&mut mdio, &mut mdc)) {
             'egress: loop {
                 let r = eth.send(SIZE, |buf| {
                     buf[0..6].copy_from_slice(&DST_MAC);
@@ -217,4 +209,15 @@ fn ETH() {
     // Clear interrupt flags
     let p = unsafe { Peripherals::steal() };
     stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
+}
+
+fn link_detected<Mdio, Mdc>(smi: smi::Smi<Mdio, Mdc>) -> bool
+where
+    Mdio: smi::MdioPin,
+    Mdc: smi::MdcPin,
+{
+    const STATUS_REG_ADDR: u8 = 0x3;
+    const STATUS_REG_UP_MASK: u16 = 1 << 2;
+    let status = smi.read(PHY_ADDR, STATUS_REG_ADDR);
+    (status & STATUS_REG_UP_MASK) == STATUS_REG_UP_MASK
 }
