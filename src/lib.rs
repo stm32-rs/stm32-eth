@@ -17,10 +17,9 @@ pub use stm32f4xx_hal::stm32;
 use hal::rcc::Clocks;
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
 
-pub mod phy;
-use phy::{Phy, PhyStatus};
 mod ring;
-mod smi;
+#[cfg(feature = "smi")]
+pub mod smi;
 pub use ring::RingEntry;
 mod desc;
 mod rx;
@@ -33,7 +32,7 @@ pub mod setup;
 pub use setup::EthPins;
 use setup::{
     AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1,
-    RmiiTxEN, MDC, MDIO,
+    RmiiTxEN,
 };
 
 #[cfg(feature = "smoltcp-phy")]
@@ -64,21 +63,12 @@ use self::consts::*;
 #[derive(Debug)]
 pub struct WrongClock;
 
-/// Initial PHY address, must be zero or one.
-#[derive(Copy, Clone, Debug)]
-#[repr(u8)]
-pub enum PhyAddress {
-    _0 = 0,
-    _1 = 1,
-}
-
-/// Ethernet driver for *STM32* chips with a RMII [`Phy`](phy/struct.Phy.html).
+/// Ethernet driver for *STM32* chips.
 pub struct Eth<'rx, 'tx> {
     eth_mac: ETHERNET_MAC,
     eth_dma: ETHERNET_DMA,
     rx_ring: RxRing<'rx>,
     tx_ring: TxRing<'tx>,
-    phy_address: PhyAddress,
 }
 
 impl<'rx, 'tx> Eth<'rx, 'tx> {
@@ -94,19 +84,16 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     /// Other than that, initializes and starts the Ethernet hardware
     /// so that you can [`send()`](#method.send) and
     /// [`recv_next()`](#method.recv_next).
-    pub fn new<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
+    pub fn new<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
         eth_mac: ETHERNET_MAC,
         eth_dma: ETHERNET_DMA,
         rx_buffer: &'rx mut [RxRingEntry],
         tx_buffer: &'tx mut [TxRingEntry],
-        phy_address: PhyAddress,
         clocks: Clocks,
-        pins: EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
+        pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
     ) -> Result<Self, WrongClock>
     where
         REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
-        IO: MDIO + AlternateVeryHighSpeed,
-        CLK: MDC + AlternateVeryHighSpeed,
         CRS: RmiiCrsDv + AlternateVeryHighSpeed,
         TXEN: RmiiTxEN + AlternateVeryHighSpeed,
         TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
@@ -121,7 +108,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
             eth_dma,
             rx_ring: RxRing::new(rx_buffer),
             tx_ring: TxRing::new(tx_buffer),
-            phy_address,
         };
         eth.init(clocks)?;
         eth.rx_ring.start(&eth.eth_dma);
@@ -144,8 +130,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         self.eth_mac
             .macmiiar
             .modify(|_, w| unsafe { w.cr().bits(clock_range) });
-
-        self.get_phy().reset().set_autoneg();
 
         // Configuration Register
         self.eth_mac.maccr.modify(|_, w| {
@@ -269,20 +253,6 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         eth_interrupt_handler(&self.eth_dma);
     }
 
-    /// Construct a PHY driver
-    pub fn get_phy(&self) -> Phy {
-        Phy::new(
-            &self.eth_mac.macmiiar,
-            &self.eth_mac.macmiidr,
-            self.phy_address as u8,
-        )
-    }
-
-    /// Obtain PHY status
-    pub fn status(&self) -> PhyStatus {
-        self.get_phy().status()
-    }
-
     /// Is Rx DMA currently running?
     ///
     /// It stops if the ring is full. Call `recv_next()` to free an
@@ -311,6 +281,26 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         let result = self.tx_ring.send(length, f);
         self.tx_ring.demand_poll(&self.eth_dma);
         result
+    }
+
+    #[cfg(feature = "smi")]
+    /// Borrow access to the MAC's SMI.
+    ///
+    /// Allows for controlling and monitoring any PHYs that may be accessible via the MDIO/MDC
+    /// pins.
+    ///
+    /// Exclusive access to the `MDIO` and `MDC` is required to ensure that are not used elsewhere
+    /// for the duration of SMI communication.
+    pub fn smi<'eth, 'pins, Mdio, Mdc>(
+        &'eth mut self,
+        mdio: &'pins mut Mdio,
+        mdc: &'pins mut Mdc,
+    ) -> smi::Smi<'eth, 'pins, Mdio, Mdc>
+    where
+        Mdio: smi::MdioPin,
+        Mdc: smi::MdcPin,
+    {
+        smi::Smi::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, mdio, mdc)
     }
 }
 

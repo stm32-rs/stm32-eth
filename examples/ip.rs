@@ -24,7 +24,7 @@ use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use stm32_eth::{Eth, EthPins, PhyAddress, RingEntry};
+use stm32_eth::{Eth, EthPins, RingEntry};
 
 static mut LOGGER: HioLogger = HioLogger {};
 
@@ -75,8 +75,6 @@ fn main() -> ! {
 
     let eth_pins = EthPins {
         ref_clk: gpioa.pa1,
-        md_io: gpioa.pa2,
-        md_clk: gpioc.pc1,
         crs: gpioa.pa7,
         tx_en: gpiog.pg11,
         tx_d0: gpiog.pg13,
@@ -92,7 +90,6 @@ fn main() -> ! {
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
-        PhyAddress::_0,
         clocks,
         eth_pins,
     )

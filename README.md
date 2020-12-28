@@ -70,7 +70,6 @@ fn main() {
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
-        PhyAddress::_0,
         clocks,
         eth_pins,
     )
