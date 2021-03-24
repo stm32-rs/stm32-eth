@@ -25,8 +25,8 @@ use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 use stm32_eth::{Eth, EthPins, PhyAddress, RingEntry};
 
-use stm32f1xx_hal::{prelude::*, flash::FlashExt};
 use rtt_target::{rprintln, rtt_init_print};
+use stm32f1xx_hal::{flash::FlashExt, prelude::*};
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
@@ -37,21 +37,73 @@ static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 fn main() -> ! {
     rtt_init_print!();
 
-    let p = Peripherals::take().unwrap();
+    let p = stm32f1xx_hal::stm32::Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
     let mut flash = p.FLASH.constrain();
-    let mut rcc = p.RCC.constrain();
 
     // HCLK must be at least 25MHz to use the ethernet peripheral
     rprintln!("Setting up clocks");
+
+    // Code below handle situation when ethernet controller has its own clock
+
+    // let mut rcc = p.RCC.constrain();
+    // let clocks = rcc
+    //     .cfgr
+    //     .use_hse(8.mhz())
+    //     .sysclk(72.mhz())
+    //     .hclk(72.mhz())
+    //     .pclk1(36.mhz())
+    //     .freeze(&mut flash.acr);
+    ///////////////////////////////////////////////////////////////////////////////
+
+    // This case handles case when ethernet controller clock is connected to MCO pin of STM32F107
+    // MCU has connected 25 MHz oscillator to XTAL
+    // Prescaller valuses (see clock diagram for STM32F107)
+    // PREDIV2 = /5
+    // PLL2MUL = x8
+    // PREDIV1 = /5 (We have 8 Mhz for 'Clock from PREDIV1')
+    // PLL3MUL = x10
+    // PREDIV1SRC = PPL2
+    let rcc = p.RCC;
+    rcc.cfgr2.write(|w| {
+        w.prediv2()
+            .div5()
+            .pll2mul()
+            .mul8()
+            .prediv1src()
+            .pll2()
+            .prediv1()
+            .div5()
+            .pll3mul()
+            .mul10()
+    });
+
+    // enable HSE and wait for it to be ready
+    rcc.cr.modify(|_, w| w.hseon().set_bit());
+    while rcc.cr.read().hserdy().bit_is_clear() {}
+
+    // enable PLL2 and wait until ready
+    rcc.cr.modify(|_, w| w.pll2on().set_bit());
+    while rcc.cr.read().pll2rdy().bit_is_clear() {}
+
+    // enable PLL3 and wait until ready
+    rcc.cr.modify(|_, w| w.pll3on().set_bit());
+    while rcc.cr.read().pll3rdy().bit_is_clear() {}
+
+    // Get PLL3 clock on PA8 pin (MCO)
+    rcc.cfgr.modify(|_, w| w.mco().pll3ethernet());
+
+    let mut rcc = rcc.constrain();
+    let acr = &mut flash.acr;
+
     let clocks = rcc
         .cfgr
-        .use_hse(8.mhz())
+        .use_hse(8.mhz()) // HSE (Clock from PREDIV1), PLL configuration PREDIV2/PLL2MUL changes 25Mhz to 8Mhz
         .sysclk(72.mhz())
-        .hclk(72.mhz())
         .pclk1(36.mhz())
-        .freeze(&mut flash.acr);
+        .freeze(acr);
+    ///////////////////////////////////////////////////////////////////////////////
 
     rprintln!("Setting up systick");
     setup_systick(&mut cp.SYST);
@@ -60,6 +112,9 @@ fn main() -> ! {
     let mut gpioa = p.GPIOA.split(&mut rcc.apb2);
     let mut gpiob = p.GPIOB.split(&mut rcc.apb2);
     let mut gpioc = p.GPIOC.split(&mut rcc.apb2);
+
+    // PLL3CLK goes to MCO (Main Clock Output) (PA8)
+    let _mco = gpioa.pa8.into_alternate_push_pull(&mut gpioa.crh);
 
     let ref_clk = gpioa.pa1.into_floating_input(&mut gpioa.crl);
     let md_io = gpioa.pa2.into_alternate_push_pull(&mut gpioa.crl);
