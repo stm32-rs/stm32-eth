@@ -16,7 +16,7 @@ use stm32f4xx_hal::{
 use cortex_m::interrupt;
 #[cfg(feature = "stm32f7xx-hal")]
 use stm32f7xx_hal::{
-    device::{RCC, SYSCFG},
+    pac::{RCC, SYSCFG},
     gpio::{
         gpioa::{PA1, PA2, PA7},
         gpiob::{PB11, PB12, PB13},
