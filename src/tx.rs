@@ -212,7 +212,9 @@ impl<'a> TxRing<'a> {
 
         let ring_ptr = self.entries[0].desc() as *const TxDescriptor;
         // Register TxDescriptor
-        eth_dma.dmatdlar.write(|w| w.stl().bits(ring_ptr as u32));
+        eth_dma
+            .dmatdlar
+            .write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]

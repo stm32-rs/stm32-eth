@@ -170,7 +170,7 @@ macro_rules! impl_pins {
 
                 impl AlternateVeryHighSpeed for $pin {
                     fn into_af11_very_high_speed(self) {
-                        self.into_alternate_af11().set_speed(VeryHigh);
+                        self.into_alternate::<11>().set_speed(VeryHigh);
                     }
                 }
             )+

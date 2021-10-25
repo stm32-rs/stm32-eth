@@ -20,9 +20,9 @@ features = [ "smi", "smoltcp-phy", "stm32f429" ]
 [dependencies]
 volatile-register = "0.2"
 aligned = "0.3"
-stm32f7xx-hal = {version = "0.5.0", optional = true}
-stm32f4xx-hal = {version = "0.8.3", optional = true}
-cortex-m = "0.6.2"
+stm32f7xx-hal = {version = "0.6.0", optional = true}
+stm32f4xx-hal = {version = "0.10.1", optional = true}
+cortex-m = "0.7"
 log = { version = "0.4", optional = true }
 
 [dependencies.smoltcp]
@@ -58,11 +58,11 @@ stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 smoltcp-phy = ["smoltcp"]
 
 [dev-dependencies]
-cortex-m = "0.6.2"
-cortex-m-rt = "0.6"
+cortex-m = "0.7"
+cortex-m-rt = ">=0.6.15, <0.8"
 panic-itm = "0.4"
 cortex-m-semihosting = "0.3.5"
-stm32f4xx-hal = {version = "0.8.3", features = ["rt"] }
+stm32f4xx-hal = {version = "0.10.1", features = ["rt"] }
 
 [[example]]
 name = "pktgen"
