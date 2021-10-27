@@ -132,8 +132,7 @@ pub struct EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
     pub rx_d1: RXD1,
 }
 
-impl<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
-    EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
+impl<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,

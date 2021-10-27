@@ -31,8 +31,7 @@ pub use tx::{TxDescriptor, TxError, TxRingEntry};
 pub mod setup;
 pub use setup::EthPins;
 use setup::{
-    AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1,
-    RmiiTxEN,
+    AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1, RmiiTxEN,
 };
 
 #[cfg(feature = "smoltcp-phy")]
