@@ -76,8 +76,12 @@ required-features = [
 ]
 
 [[example]]
+name = "arp"
+required-features = ["stm32f407", "smi"]
+
+[[example]]
 name = "arp-smoltcp"
-required-features = ["stm32f429", "smoltcp-phy"]
+required-features = ["stm32f407", "smi", "smoltcp-phy", "smoltcp/socket-icmp"]
 
 [profile.release]
 debug = 2
