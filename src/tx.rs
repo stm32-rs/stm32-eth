@@ -1,7 +1,7 @@
 #[cfg(feature = "stm32f4xx-hal")]
 use stm32f4xx_hal::stm32;
 #[cfg(feature = "stm32f7xx-hal")]
-use stm32f7xx_hal::device as stm32;
+use stm32f7xx_hal::pac as stm32;
 
 use stm32::ETHERNET_DMA;
 
@@ -212,7 +212,9 @@ impl<'a> TxRing<'a> {
 
         let ring_ptr = self.entries[0].desc() as *const TxDescriptor;
         // Register TxDescriptor
-        eth_dma.dmatdlar.write(|w| w.stl().bits(ring_ptr as u32));
+        eth_dma
+            .dmatdlar
+            .write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]
