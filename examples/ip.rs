@@ -19,8 +19,8 @@ use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
 use log::{Level, LevelFilter, Metadata, Record};
-use smoltcp::iface::{EthernetInterfaceBuilder, NeighborCache};
-use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
+use smoltcp::iface::{InterfaceBuilder, NeighborCache};
+use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
@@ -102,8 +102,10 @@ fn main() -> ! {
     let mut neighbor_storage = [None; 16];
     let neighbor_cache = NeighborCache::new(&mut neighbor_storage[..]);
     let ethernet_addr = EthernetAddress(SRC_MAC);
-    let mut iface = EthernetInterfaceBuilder::new(&mut eth)
-        .ethernet_addr(ethernet_addr)
+
+    let mut sockets: [_; 1] = Default::default();
+    let mut iface = InterfaceBuilder::new(&mut eth, &mut sockets[..])
+        .hardware_addr(ethernet_addr.into())
         .ip_addrs(&mut ip_addrs[..])
         .neighbor_cache(neighbor_cache)
         .finalize();
@@ -114,9 +116,7 @@ fn main() -> ! {
         TcpSocketBuffer::new(&mut server_rx_buffer[..]),
         TcpSocketBuffer::new(&mut server_tx_buffer[..]),
     );
-    let mut sockets_storage = [None, None];
-    let mut sockets = SocketSet::new(&mut sockets_storage[..]);
-    let server_handle = sockets.add(server_socket);
+    let server_handle = iface.add_socket(server_socket);
 
     writeln!(stdout, "Ready, listening at {}", ip_addr).unwrap();
     loop {
@@ -125,9 +125,9 @@ fn main() -> ! {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
-        match iface.poll(&mut sockets, Instant::from_millis(time as i64)) {
+        match iface.poll(Instant::from_millis(time as i64)) {
             Ok(true) => {
-                let mut socket = sockets.get::<TcpSocket>(server_handle);
+                let socket = iface.get_socket::<TcpSocket>(server_handle);
                 if !socket.is_open() {
                     socket
                         .listen(80)
