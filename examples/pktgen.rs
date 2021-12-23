@@ -24,7 +24,7 @@ use stm32_eth::{
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
-use stm32_eth::{Eth, EthPins, RingEntry, TxError};
+use stm32_eth::{EthPins, RingEntry, TxError};
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
@@ -68,7 +68,7 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let mut eth = Eth::new(
+    let (mut eth_dma, mut eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
@@ -77,7 +77,7 @@ fn main() -> ! {
         eth_pins,
     )
     .unwrap();
-    eth.enable_interrupt();
+    eth_dma.enable_interrupt();
 
     // Main loop
     let mut last_stats_time = 0usize;
@@ -112,7 +112,7 @@ fn main() -> ! {
         }
 
         // Link change detection
-        let link_up = link_detected(eth.smi(&mut mdio, &mut mdc));
+        let link_up = link_detected(eth_mac.smi(&mut mdio, &mut mdc));
         if link_up != last_link_up {
             if link_up {
                 writeln!(stdout, "Ethernet: no link detected").unwrap();
@@ -130,7 +130,7 @@ fn main() -> ! {
         // handle rx packet
         {
             let mut recvd = 0usize;
-            while let Ok(pkt) = eth.recv_next() {
+            while let Ok(pkt) = eth_dma.recv_next() {
                 rx_bytes += pkt.len();
                 rx_pkts += 1;
                 pkt.free();
@@ -142,15 +142,15 @@ fn main() -> ! {
                 }
             }
         }
-        if !eth.rx_is_running() {
+        if !eth_dma.rx_is_running() {
             writeln!(stdout, "RX stopped").unwrap();
         }
 
         // fill tx queue
         const SIZE: usize = 1500;
-        if link_detected(eth.smi(&mut mdio, &mut mdc)) {
+        if link_detected(eth_mac.smi(&mut mdio, &mut mdc)) {
             'egress: loop {
-                let r = eth.send(SIZE, |buf| {
+                let r = eth_dma.send(SIZE, |buf| {
                     buf[0..6].copy_from_slice(&DST_MAC);
                     buf[6..12].copy_from_slice(&SRC_MAC);
                     buf[12..14].copy_from_slice(&ETH_TYPE);

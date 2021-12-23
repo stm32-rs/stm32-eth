@@ -62,165 +62,193 @@ use self::consts::*;
 #[derive(Debug)]
 pub struct WrongClock;
 
-/// Ethernet driver for *STM32* chips.
-pub struct Eth<'rx, 'tx> {
-    eth_mac: ETHERNET_MAC,
+/// Ethernet DMA.
+pub struct EthernetDMA<'rx, 'tx> {
     eth_dma: ETHERNET_DMA,
     rx_ring: RxRing<'rx>,
     tx_ring: TxRing<'tx>,
 }
+/// Ethernet media access control (MAC).
+pub struct EthernetMAC {
+    eth_mac: ETHERNET_MAC,
+}
 
-impl<'rx, 'tx> Eth<'rx, 'tx> {
-    /// Initialize and start tx and rx DMA engines.
-    ///
-    /// Make sure that the buffers reside in a memory region that is
-    /// accessible by the peripheral. Core-Coupled Memory (CCM) is
-    /// usually not accessible. HCLK must be at least 25MHz.
-    ///
-    /// Uses an interrupt free critical section to turn on the ethernet clock
-    /// for STM32F7xx.
-    ///
-    /// Other than that, initializes and starts the Ethernet hardware
-    /// so that you can [`send()`](#method.send) and
-    /// [`recv_next()`](#method.recv_next).
-    pub fn new<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
-        eth_mac: ETHERNET_MAC,
-        eth_dma: ETHERNET_DMA,
-        rx_buffer: &'rx mut [RxRingEntry],
-        tx_buffer: &'tx mut [TxRingEntry],
-        clocks: Clocks,
-        pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
-    ) -> Result<Self, WrongClock>
-    where
-        REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
-        CRS: RmiiCrsDv + AlternateVeryHighSpeed,
-        TXEN: RmiiTxEN + AlternateVeryHighSpeed,
-        TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
-        TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
-        RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
-        RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
-    {
-        setup::setup();
-        pins.setup_pins();
-        let mut eth = Eth {
-            eth_mac,
-            eth_dma,
-            rx_ring: RxRing::new(rx_buffer),
-            tx_ring: TxRing::new(tx_buffer),
-        };
-        eth.init(clocks)?;
-        eth.rx_ring.start(&eth.eth_dma);
-        eth.tx_ring.start(&eth.eth_dma);
-        Ok(eth)
-    }
+/// Create and initialise the ethernet driver.
+///
+/// Initialize and start tx and rx DMA engines.
+/// Sets up the peripheral clocks and GPIO configuration,
+/// and configures the ETH MAC and DMA peripherals.
+/// Automatically sets slew rate to VeryHigh.
+/// If you wish to use another configuration, please see
+/// [new_unchecked](new_unchecked).
+///
+/// This method does not initialise the external PHY. However it does return an
+/// [EthernetMAC](EthernetMAC) which implements the
+/// [StationManagement](smi::StationManagement) trait. This can be used to
+/// communicate with the external PHY.
+///
+/// # Note
+/// - Make sure that the buffers reside in a memory region that is
+/// accessible by the peripheral. Core-Coupled Memory (CCM) is
+/// usually not accessible.
+/// - HCLK must be at least 25 MHz.
+pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
+    eth_mac: ETHERNET_MAC,
+    eth_dma: ETHERNET_DMA,
+    rx_buffer: &'rx mut [RxRingEntry],
+    tx_buffer: &'tx mut [TxRingEntry],
+    clocks: Clocks,
+    pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock>
+where
+    REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
+    CRS: RmiiCrsDv + AlternateVeryHighSpeed,
+    TXEN: RmiiTxEN + AlternateVeryHighSpeed,
+    TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
+    TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
+    RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
+    RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
+{
+    pins.setup_pins();
+    unsafe { new_unchecked(eth_mac, eth_dma, rx_buffer, tx_buffer, clocks) }
+}
 
-    fn init(&mut self, clocks: Clocks) -> Result<(), WrongClock> {
-        let clock_range = match clocks.hclk().0 {
-            0..=24_999_999 => return Err(WrongClock),
-            25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
-            35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
-            60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
-            100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
-            _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
-        };
-        self.reset_dma_and_wait();
+/// Create and initialise the ethernet driver (without GPIO configuration and validation).
+///
+/// This method does not initialise the external PHY. However it does return an
+/// [EthernetMAC](EthernetMAC) which implements the
+/// [StationManagement](smi::StationManagement) trait. This can be used to
+/// communicate with the external PHY.
+///
+/// # Note
+/// - Make sure that the buffers reside in a memory region that is
+/// accessible by the peripheral. Core-Coupled Memory (CCM) is
+/// usually not accessible.
+/// - HCLK must be at least 25MHz.
+pub unsafe fn new_unchecked<'rx, 'tx>(
+    eth_mac: ETHERNET_MAC,
+    eth_dma: ETHERNET_DMA,
+    rx_buffer: &'rx mut [RxRingEntry],
+    tx_buffer: &'tx mut [TxRingEntry],
+    clocks: Clocks,
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
+    setup::setup();
 
-        // set clock range in MAC MII address register
-        self.eth_mac
-            .macmiiar
-            .modify(|_, w| unsafe { w.cr().bits(clock_range) });
+    let clock_range = match clocks.hclk().0 {
+        0..=24_999_999 => return Err(WrongClock),
+        25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
+        35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
+        60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
+        100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
+        _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
+    };
 
-        // Configuration Register
-        self.eth_mac.maccr.modify(|_, w| {
-            // CRC stripping for Type frames
-            w.cstf()
-                .set_bit()
-                // Fast Ethernet speed
-                .fes()
-                .set_bit()
-                // Duplex mode
-                .dm()
-                .set_bit()
-                // Automatic pad/CRC stripping
-                .apcs()
-                .set_bit()
-                // Retry disable in half-duplex mode
-                .rd()
-                .set_bit()
-                // Receiver enable
-                .re()
-                .set_bit()
-                // Transmitter enable
-                .te()
-                .set_bit()
-        });
-        // frame filter register
-        self.eth_mac.macffr.modify(|_, w| {
-            // Receive All
-            w.ra()
-                .set_bit()
-                // Promiscuous mode
-                .pm()
-                .set_bit()
-        });
-        // Flow Control Register
-        self.eth_mac.macfcr.modify(|_, w| {
-            // Pause time
-            w.pt().bits(0x100)
-        });
-        // operation mode register
-        self.eth_dma.dmaomr.modify(|_, w| {
-            // Dropping of TCP/IP checksum error frames disable
-            w.dtcefd()
-                .set_bit()
-                // Receive store and forward
-                .rsf()
-                .set_bit()
-                // Disable flushing of received frames
-                .dfrf()
-                .set_bit()
-                // Transmit store and forward
-                .tsf()
-                .set_bit()
-                // Forward error frames
-                .fef()
-                .set_bit()
-                // Operate on second frame
-                .osf()
-                .set_bit()
-        });
-        // bus mode register
-        self.eth_dma.dmabmr.modify(|_, w| unsafe {
-            // Address-aligned beats
-            w.aab()
-                .set_bit()
-                // Fixed burst
-                .fb()
-                .set_bit()
-                // Rx DMA PBL
-                .rdp()
-                .bits(32)
-                // Programmable burst length
-                .pbl()
-                .bits(32)
-                // Rx Tx priority ratio 2:1
-                .pm()
-                .bits(0b01)
-                // Use separate PBL
-                .usp()
-                .set_bit()
-        });
-        Ok(())
-    }
+    // reset DMA bus mode register
+    eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
 
-    /// reset DMA bus mode register
-    fn reset_dma_and_wait(&self) {
-        self.eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
+    // Wait until done
+    while eth_dma.dmabmr.read().sr().bit_is_set() {}
 
-        // Wait until done
-        while self.eth_dma.dmabmr.read().sr().bit_is_set() {}
-    }
+    // set clock range in MAC MII address register
+    eth_mac
+        .macmiiar
+        .modify(|_, w| unsafe { w.cr().bits(clock_range) });
 
+    // Configuration Register
+    eth_mac.maccr.modify(|_, w| {
+        // CRC stripping for Type frames
+        w.cstf()
+            .set_bit()
+            // Fast Ethernet speed
+            .fes()
+            .set_bit()
+            // Duplex mode
+            .dm()
+            .set_bit()
+            // Automatic pad/CRC stripping
+            .apcs()
+            .set_bit()
+            // Retry disable in half-duplex mode
+            .rd()
+            .set_bit()
+            // Receiver enable
+            .re()
+            .set_bit()
+            // Transmitter enable
+            .te()
+            .set_bit()
+    });
+    // frame filter register
+    eth_mac.macffr.modify(|_, w| {
+        // Receive All
+        w.ra()
+            .set_bit()
+            // Promiscuous mode
+            .pm()
+            .set_bit()
+    });
+    // Flow Control Register
+    eth_mac.macfcr.modify(|_, w| {
+        // Pause time
+        w.pt().bits(0x100)
+    });
+    // operation mode register
+    eth_dma.dmaomr.modify(|_, w| {
+        // Dropping of TCP/IP checksum error frames disable
+        w.dtcefd()
+            .set_bit()
+            // Receive store and forward
+            .rsf()
+            .set_bit()
+            // Disable flushing of received frames
+            .dfrf()
+            .set_bit()
+            // Transmit store and forward
+            .tsf()
+            .set_bit()
+            // Forward error frames
+            .fef()
+            .set_bit()
+            // Operate on second frame
+            .osf()
+            .set_bit()
+    });
+    // bus mode register
+    eth_dma.dmabmr.modify(|_, w| unsafe {
+        // Address-aligned beats
+        w.aab()
+            .set_bit()
+            // Fixed burst
+            .fb()
+            .set_bit()
+            // Rx DMA PBL
+            .rdp()
+            .bits(32)
+            // Programmable burst length
+            .pbl()
+            .bits(32)
+            // Rx Tx priority ratio 2:1
+            .pm()
+            .bits(0b01)
+            // Use separate PBL
+            .usp()
+            .set_bit()
+    });
+
+    let mut dma = EthernetDMA {
+        eth_dma,
+        rx_ring: RxRing::new(rx_buffer),
+        tx_ring: TxRing::new(tx_buffer),
+    };
+    let mac = EthernetMAC { eth_mac };
+
+    dma.rx_ring.start(&dma.eth_dma);
+    dma.tx_ring.start(&dma.eth_dma);
+
+    Ok((dma, mac))
+}
+
+impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// Enable RX and TX interrupts
     ///
     /// In your handler you must call
@@ -281,8 +309,10 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         self.tx_ring.demand_poll(&self.eth_dma);
         result
     }
+}
 
-    #[cfg(feature = "smi")]
+#[cfg(feature = "smi")]
+impl EthernetMAC {
     /// Borrow access to the MAC's SMI.
     ///
     /// Allows for controlling and monitoring any PHYs that may be accessible via the MDIO/MDC
@@ -304,11 +334,11 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
 }
 
 /// Call in interrupt handler to clear interrupt reason, when
-/// [`enable_interrupt()`](struct.Eth.html#method.enable_interrupt).
+/// [`enable_interrupt()`](struct.EthernetDMA.html#method.enable_interrupt).
 ///
 /// There are two ways to call this:
 ///
-/// * Via the [`Eth`](struct.Eth.html) driver instance that your interrupt handler has access to.
+/// * Via the [`EthernetDMA`](struct.EthernetDMA.html) driver instance that your interrupt handler has access to.
 /// * By unsafely getting `Peripherals`.
 ///
 /// TODO: could return interrupt reason

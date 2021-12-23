@@ -30,7 +30,7 @@ use smoltcp::wire::{
     ArpOperation, ArpPacket, ArpRepr, EthernetAddress, EthernetFrame, EthernetProtocol,
     EthernetRepr, Ipv4Address,
 };
-use stm32_eth::{Eth, EthPins, RingEntry, TxError};
+use stm32_eth::{EthPins, RingEntry, TxError};
 
 const PHY_REG_BSR: u8 = 0x01;
 const PHY_REG_BSR_UP: u16 = 1 << 2;
@@ -75,7 +75,7 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let mut eth = Eth::new(
+    let (mut eth_dma, mut eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
@@ -84,12 +84,12 @@ fn main() -> ! {
         eth_pins,
     )
     .unwrap();
-    eth.enable_interrupt();
+    eth_dma.enable_interrupt();
 
     let mut last_link_up = false;
 
     loop {
-        let link_up = link_detected(eth.smi(&mut mdio, &mut mdc));
+        let link_up = link_detected(eth_mac.smi(&mut mdio, &mut mdc));
 
         if link_up != last_link_up {
             if link_up {
@@ -128,7 +128,7 @@ fn main() -> ! {
             header.emit(&mut frame);
             frame.payload_mut().copy_from_slice(&packet.into_inner());
 
-            let r = eth.send(SIZE, |buf| {
+            let r = eth_dma.send(SIZE, |buf| {
                 buf[0..SIZE].copy_from_slice(&frame.into_inner());
             });
 

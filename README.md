@@ -37,7 +37,7 @@ use stm32_eth::{
 };
 
 
-use stm32_eth::{Eth, RingEntry};
+use stm32_eth::{RingEntry};
 
 fn main() {
     let p = Peripherals::take().unwrap();
@@ -65,7 +65,7 @@ fn main() {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let mut eth = Eth::new(
+    let (mut eth_dma, _eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
@@ -74,13 +74,13 @@ fn main() {
         eth_pins,
     )
     .unwrap();
-    eth.enable_interrupt();
+    eth_dma.enable_interrupt();
 
     if let Ok(pkt) = eth.recv_next() {
         // handle received pkt
     }
 
-    eth.send(size, |buf| {
+    eth_dma.send(size, |buf| {
         // write up to `size` bytes into buf before it is being sent
     }).expect("send");
 }
