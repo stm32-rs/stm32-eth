@@ -15,7 +15,7 @@ travis-ci = { repository = "astro/stm32-eth", branch = "master" }
 maintenance = { status = "experimental" }
 
 [package.metadata.docs.rs]
-features = [ "smi", "smoltcp-phy", "stm32f429" ]
+features = [ "smi", "smoltcp-phy", "stm32f429", "smoltcp/socket-tcp" ]
 
 [dependencies]
 volatile-register = "0.2"
