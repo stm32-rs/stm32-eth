@@ -15,7 +15,7 @@ pub use stm32f4xx_hal as hal;
 pub use stm32f4xx_hal::stm32;
 
 use hal::rcc::Clocks;
-use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
+use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, NVIC};
 
 mod ring;
 #[cfg(feature = "smi")]
@@ -66,6 +66,7 @@ pub struct WrongClock;
 pub struct Eth<'rx, 'tx> {
     eth_mac: ETHERNET_MAC,
     eth_dma: ETHERNET_DMA,
+    eth_mmc: ETHERNET_MMC,
     rx_ring: RxRing<'rx>,
     tx_ring: TxRing<'tx>,
 }
@@ -86,6 +87,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     pub fn new<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
         eth_mac: ETHERNET_MAC,
         eth_dma: ETHERNET_DMA,
+        eth_mmc: ETHERNET_MMC,
         rx_buffer: &'rx mut [RxRingEntry],
         tx_buffer: &'tx mut [TxRingEntry],
         clocks: Clocks,
@@ -105,6 +107,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         let mut eth = Eth {
             eth_mac,
             eth_dma,
+            eth_mmc,
             rx_ring: RxRing::new(rx_buffer),
             tx_ring: TxRing::new(tx_buffer),
         };
@@ -189,6 +192,21 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
                 .osf()
                 .set_bit()
         });
+        // disable all MMC RX interrupts
+        self.eth_mmc
+            .mmcrimr
+            .write(|w| w.rgufm().set_bit().rfaem().set_bit().rfcem().set_bit());
+        // disable all MMC TX interrupts
+        self.eth_mmc
+            .mmctimr
+            .write(|w| w.tgfm().set_bit().tgfmscm().set_bit().tgfscm().set_bit());
+        // fix incorrect TGFM bit position until https://github.com/stm32-rs/stm32-rs/pull/689
+        // is released and used by HALs.
+        unsafe {
+            self.eth_mmc
+                .mmctimr
+                .modify(|r, w| w.bits(r.bits() | (1 << 21)))
+        };
         // bus mode register
         self.eth_dma.dmabmr.modify(|_, w| unsafe {
             // Address-aligned beats
