@@ -18,20 +18,20 @@ maintenance = { status = "experimental" }
 features = [ "smoltcp-phy", "stm32f429" ]
 
 [dependencies]
-volatile-register = "0.2"
-aligned = "0.3"
-stm32f1xx-hal = {version = "0.7.0", optional = true}
-stm32f7xx-hal = {version = "0.2.0", optional = true}
-stm32f4xx-hal = {version = "0.8.3", optional = true}
-cortex-m = "0.6.2"
-log = { version = "0.4", optional = true }
+volatile-register = "0.2.1"
+aligned = "0.4.0"
+stm32f1xx-hal = { version = "0.9.0", optional = true }
+stm32f7xx-hal = { version = "0.6.0", optional = true }
+stm32f4xx-hal = { version = "0.12.0", optional = true }
+cortex-m = "0.7.4"
+log = { version = "0.4.14", optional = true }
 
 [dependencies.smoltcp]
-version = "0.7.0"
+version = "0.8.0"
 # git = "https://github.com/smoltcp-rs/smoltcp"
 # branch = "master"
 default-features = false
-features = ["ethernet", "proto-ipv4"]
+features = ["medium-ethernet", "proto-ipv4"]
 optional = true
 
 [features]
@@ -62,13 +62,13 @@ stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 smoltcp-phy = ["smoltcp"]
 
 [dev-dependencies]
-cortex-m = "0.6.2"
-cortex-m-rt = "0.6"
-panic-itm = "0.4"
-panic-rtt-target = { version = "0.1", features = ["cortex-m"] }
-rtt-target = { version = "0.2.0", features = ["cortex-m"] }
-cortex-m-semihosting = "0.3.5"
-stm32f1xx-hal = {version = "0.6.1", features = ["rt"] }
+cortex-m = "0.7.4"
+cortex-m-rt = "0.7.1"
+panic-itm = "0.4.2"
+panic-rtt-target = { version = "0.1.2", features = ["cortex-m"] }
+rtt-target = { version = "0.3.1", features = ["cortex-m"] }
+cortex-m-semihosting = "0.3.7"
+stm32f1xx-hal = { version = "0.9.0", features = ["rt"] }
 #stm32f4xx-hal = {version = "0.8.3", features = ["rt"] }
 
 [[example]]

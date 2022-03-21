@@ -140,7 +140,6 @@ pub(crate) fn setup() {
             while rcc.ahbenr.read().dma2en().is_disabled() {}
         }
     });
-
 }
 
 /// RMII Reference Clock.
@@ -239,7 +238,10 @@ macro_rules! impl_pins {
     };
 }
 
-#[cfg(all(feature = "device-selected", any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal")))]
+#[cfg(all(
+    feature = "device-selected",
+    any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal")
+))]
 impl_pins!(
     RmiiRefClk: [
         PA1<Input<Floating>>,
@@ -276,9 +278,7 @@ impl_pins!(
 #[cfg(feature = "stm32f1xx-hal")]
 mod stm32f1 {
     use super::*;
-    use stm32f1xx_hal::gpio::{
-        gpioa, gpiob, gpioc, gpiod, Alternate, Floating, Input, PushPull,
-    };
+    use stm32f1xx_hal::gpio::{gpioa, gpiob, gpioc, gpiod, Alternate, Floating, Input, PushPull};
 
     // STM32F1xx's require access to the CRL/CRH registers to change pin mode. As a result, we
     // require that pins are already in the necessary mode before constructing `EthPins` as it

@@ -234,9 +234,7 @@ impl<'a> RxRing<'a> {
         // Register RxDescriptor
         eth_dma.dmardlar.write(|w| {
             // Note: unsafe block required for `stm32f107`.
-            unsafe {
-                w.srl().bits(ring_ptr as u32)
-            }
+            unsafe { w.srl().bits(ring_ptr as u32) }
         });
 
         // We already have fences in `set_owned`, which is called in `setup`

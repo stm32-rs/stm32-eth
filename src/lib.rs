@@ -137,7 +137,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
     }
 
     fn init(&mut self, clocks: Clocks) -> Result<(), WrongClock> {
-        let clock_range = match clocks.hclk().0 {
+        let clock_range = match clocks.hclk().to_Hz() {
             0..=24_999_999 => return Err(WrongClock),
             25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
             35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
