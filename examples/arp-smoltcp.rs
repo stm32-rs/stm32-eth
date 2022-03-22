@@ -12,23 +12,22 @@ extern crate panic_itm;
 
 use core::cell::RefCell;
 use core::default::Default;
-use cortex_m_rt::{entry, exception};
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use stm32_eth::{
-    hal::gpio::{GpioExt, Speed},
-    hal::rcc::RccExt,
-    hal::time::U32Ext,
-    smi,
-    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
-};
-
+use cortex_m_rt::{entry, exception};
 use cortex_m_semihosting::hprintln;
-
+use fugit::RateExtU32;
 use smoltcp::wire::{
     ArpOperation, ArpPacket, ArpRepr, EthernetAddress, EthernetFrame, EthernetProtocol,
     EthernetRepr, Ipv4Address,
+};
+use stm32_eth::{
+    hal::gpio::{GpioExt, Speed},
+    hal::rcc::RccExt,
+    // hal::time::U32Ext,
+    smi,
+    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 use stm32_eth::{Eth, EthPins, RingEntry, TxError};
 
@@ -47,7 +46,7 @@ fn main() -> ! {
 
     let rcc = p.RCC.constrain();
     // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
+    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
 
     setup_systick(&mut cp.SYST);
 

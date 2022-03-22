@@ -8,7 +8,6 @@ use cortex_m_rt::{entry, exception};
 use stm32_eth::{
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
-    hal::time::U32Ext,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
@@ -18,6 +17,7 @@ use cortex_m::interrupt::Mutex;
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 
+use fugit::RateExtU32;
 use log::{Level, LevelFilter, Metadata, Record};
 use smoltcp::iface::{InterfaceBuilder, NeighborCache};
 use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
@@ -63,7 +63,7 @@ fn main() -> ! {
 
     let rcc = p.RCC.constrain();
     // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
+    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
 
     setup_systick(&mut cp.SYST);
 

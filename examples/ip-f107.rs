@@ -3,30 +3,49 @@
 #![no_std]
 #![no_main]
 
-use panic_rtt_target as _;
+extern crate panic_itm;
 
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
 use stm32_eth::{
+    hal::flash::FlashExt,
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
-    RxDescriptor, TxDescriptor,
 };
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
 
 use core::fmt::Write;
+use cortex_m_semihosting::hio;
 
-use smoltcp::iface::{EthernetInterfaceBuilder, NeighborCache};
-use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
+use fugit::RateExtU32;
+use log::{Level, LevelFilter, Metadata, Record};
+use smoltcp::iface::{InterfaceBuilder, NeighborCache};
+use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-use stm32_eth::{Eth, EthPins, PhyAddress, RingEntry};
 
-use rtt_target::{rprintln, rtt_init_print};
-use stm32f1xx_hal::{flash::FlashExt, prelude::*};
+use stm32_eth::{Eth, EthPins, RingEntry};
+
+static mut LOGGER: HioLogger = HioLogger {};
+
+struct HioLogger {}
+
+impl log::Log for HioLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Trace
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            let mut stdout = hio::hstdout().unwrap();
+            writeln!(stdout, "{} - {}", record.level(), record.args()).unwrap();
+        }
+    }
+    fn flush(&self) {}
+}
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
@@ -35,91 +54,39 @@ static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 #[entry]
 fn main() -> ! {
-    rtt_init_print!();
+    unsafe {
+        log::set_logger(&LOGGER).unwrap();
+    }
+    log::set_max_level(LevelFilter::Info);
 
-    let p = stm32f1xx_hal::stm32::Peripherals::take().unwrap();
+    let mut stdout = hio::hstdout().unwrap();
+
+    let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
     let mut flash = p.FLASH.constrain();
 
+    let rcc = p.RCC.constrain();
     // HCLK must be at least 25MHz to use the ethernet peripheral
-    rprintln!("Setting up clocks");
-
-    // Code below handle situation when ethernet controller has its own clock
-
-    // let mut rcc = p.RCC.constrain();
-    // let clocks = rcc
-    //     .cfgr
-    //     .use_hse(8.mhz())
-    //     .sysclk(72.mhz())
-    //     .hclk(72.mhz())
-    //     .pclk1(36.mhz())
-    //     .freeze(&mut flash.acr);
-    ///////////////////////////////////////////////////////////////////////////////
-
-    // This case handles case when ethernet controller clock is connected to MCO pin of STM32F107
-    // MCU has connected 25 MHz oscillator to XTAL
-    // Prescaller valuses (see clock diagram for STM32F107)
-    // PREDIV2 = /5
-    // PLL2MUL = x8
-    // PREDIV1 = /5 (We have 8 Mhz for 'Clock from PREDIV1')
-    // PLL3MUL = x10
-    // PREDIV1SRC = PPL2
-    let rcc = p.RCC;
-    rcc.cfgr2.write(|w| {
-        w.prediv2()
-            .div5()
-            .pll2mul()
-            .mul8()
-            .prediv1src()
-            .pll2()
-            .prediv1()
-            .div5()
-            .pll3mul()
-            .mul10()
-    });
-
-    // enable HSE and wait for it to be ready
-    rcc.cr.modify(|_, w| w.hseon().set_bit());
-    while rcc.cr.read().hserdy().bit_is_clear() {}
-
-    // enable PLL2 and wait until ready
-    rcc.cr.modify(|_, w| w.pll2on().set_bit());
-    while rcc.cr.read().pll2rdy().bit_is_clear() {}
-
-    // enable PLL3 and wait until ready
-    rcc.cr.modify(|_, w| w.pll3on().set_bit());
-    while rcc.cr.read().pll3rdy().bit_is_clear() {}
-
-    // Get PLL3 clock on PA8 pin (MCO)
-    rcc.cfgr.modify(|_, w| w.mco().pll3ethernet());
-
-    let mut rcc = rcc.constrain();
-    let acr = &mut flash.acr;
-
     let clocks = rcc
         .cfgr
-        .use_hse(8.mhz()) // HSE (Clock from PREDIV1), PLL configuration PREDIV2/PLL2MUL changes 25Mhz to 8Mhz
-        .sysclk(72.mhz())
-        .pclk1(36.mhz())
-        .freeze(acr);
-    ///////////////////////////////////////////////////////////////////////////////
+        .sysclk(32.MHz())
+        .hclk(32.MHz())
+        .freeze(&mut flash.acr);
 
-    rprintln!("Setting up systick");
     setup_systick(&mut cp.SYST);
 
-    //writeln!(stdout, "Enabling ethernet...").unwrap();
-    let mut gpioa = p.GPIOA.split(&mut rcc.apb2);
-    let mut gpiob = p.GPIOB.split(&mut rcc.apb2);
-    let mut gpioc = p.GPIOC.split(&mut rcc.apb2);
+    writeln!(stdout, "Enabling ethernet...").unwrap();
+
+    let mut gpioa = p.GPIOA.split();
+    let mut gpiob = p.GPIOB.split();
+    let mut gpioc = p.GPIOC.split();
 
     // PLL3CLK goes to MCO (Main Clock Output) (PA8)
     let _mco = gpioa.pa8.into_alternate_push_pull(&mut gpioa.crh);
 
     let ref_clk = gpioa.pa1.into_floating_input(&mut gpioa.crl);
-    let md_io = gpioa.pa2.into_alternate_push_pull(&mut gpioa.crl);
     let crs = gpioa.pa7.into_floating_input(&mut gpioa.crl);
-    let md_clk = gpioc.pc1.into_alternate_push_pull(&mut gpioc.crl);
     let tx_en = gpiob.pb11.into_alternate_push_pull(&mut gpiob.crh);
     let tx_d0 = gpiob.pb12.into_alternate_push_pull(&mut gpiob.crh);
     let tx_d1 = gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh);
@@ -128,8 +95,6 @@ fn main() -> ! {
 
     let eth_pins = EthPins {
         ref_clk,
-        md_io,
-        md_clk,
         crs,
         tx_en,
         tx_d0,
@@ -138,42 +103,29 @@ fn main() -> ! {
         rx_d1,
     };
 
-    rprintln!("Constructing `Eth`");
-    let mut rx_ring: [RingEntry<_>; 8] = [
-        RingEntry::<RxDescriptor>::new(),
-        RingEntry::<RxDescriptor>::new(),
-        RingEntry::<RxDescriptor>::new(),
-        RingEntry::<RxDescriptor>::new(),
-        RingEntry::<RxDescriptor>::new(),
-        RingEntry::<RxDescriptor>::new(),
-        RingEntry::<RxDescriptor>::new(),
-        RingEntry::<RxDescriptor>::new(),
-    ];
-    let mut tx_ring: [RingEntry<_>; 2] = [
-        RingEntry::<TxDescriptor>::new(),
-        RingEntry::<TxDescriptor>::new(),
-    ];
+    let mut rx_ring: [RingEntry<_>; 8] = Default::default();
+    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
     let mut eth = Eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
-        PhyAddress::_0,
         clocks,
         eth_pins,
     )
     .unwrap();
     eth.enable_interrupt();
 
-    rprintln!("Setting up TCP/IP");
-    let local_addr = Ipv4Address::new(10, 101, 0, 1);
-    let ip_addr = IpCidr::new(IpAddress::from(local_addr), 16);
+    let local_addr = Ipv4Address::new(10, 0, 0, 1);
+    let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
     let mut ip_addrs = [ip_addr];
     let mut neighbor_storage = [None; 16];
     let neighbor_cache = NeighborCache::new(&mut neighbor_storage[..]);
     let ethernet_addr = EthernetAddress(SRC_MAC);
-    let mut iface = EthernetInterfaceBuilder::new(&mut eth)
-        .ethernet_addr(ethernet_addr)
+
+    let mut sockets: [_; 1] = Default::default();
+    let mut iface = InterfaceBuilder::new(&mut eth, &mut sockets[..])
+        .hardware_addr(ethernet_addr.into())
         .ip_addrs(&mut ip_addrs[..])
         .neighbor_cache(neighbor_cache)
         .finalize();
@@ -184,24 +136,23 @@ fn main() -> ! {
         TcpSocketBuffer::new(&mut server_rx_buffer[..]),
         TcpSocketBuffer::new(&mut server_tx_buffer[..]),
     );
-    let mut sockets_storage = [None, None];
-    let mut sockets = SocketSet::new(&mut sockets_storage[..]);
-    let server_handle = sockets.add(server_socket);
+    let server_handle = iface.add_socket(server_socket);
 
-    rprintln!("Ready, listening at {}", ip_addr);
+    writeln!(stdout, "Ready, listening at {}", ip_addr).unwrap();
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
-        match iface.poll(&mut sockets, Instant::from_millis(time as i64)) {
+        match iface.poll(Instant::from_millis(time as i64)) {
             Ok(true) => {
-                let mut socket = sockets.get::<TcpSocket>(server_handle);
+                let socket = iface.get_socket::<TcpSocket>(server_handle);
                 if !socket.is_open() {
                     socket
                         .listen(80)
-                        .unwrap_or_else(|e| rprintln!("TCP listen error: {:?}", e));
+                        .or_else(|e| writeln!(stdout, "TCP listen error: {:?}", e))
+                        .unwrap();
                 }
 
                 if socket.can_send() {
@@ -209,7 +160,8 @@ fn main() -> ! {
                         .map(|_| {
                             socket.close();
                         })
-                        .unwrap_or_else(|e| rprintln!("TCP send error: {:?}", e));
+                        .or_else(|e| writeln!(stdout, "TCP send error: {:?}", e))
+                        .unwrap();
                 }
             }
             Ok(false) => {
@@ -217,15 +169,15 @@ fn main() -> ! {
                 cortex_m::interrupt::free(|cs| {
                     let eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
                     if !*eth_pending {
-                        // Awaken by interrupt
                         asm::wfi();
+                        // Awaken by interrupt
                     }
                 });
             }
             Err(e) =>
             // Ignore malformed packets
             {
-                rprintln!("Error: {:?}", e);
+                writeln!(stdout, "Error: {:?}", e).unwrap()
             }
         }
     }
