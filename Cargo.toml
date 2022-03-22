@@ -4,7 +4,7 @@ name = "stm32-eth"
 description = "Embedded Rust Ethernet driver for the STM32 MCU series"
 license = "Apache-2.0"
 authors = ["Astro <astro@spaceboyz.net>"]
-version = "0.2.0"
+version = "0.3.0"
 keywords = ["ethernet", "eth", "stm32", "stm32f4", "stm32f7"]
 repository = "https://github.com/stm32-rs/stm32-eth"
 documentation = "https://docs.rs/stm32-eth/"
@@ -18,16 +18,16 @@ maintenance = { status = "experimental" }
 features = ["smi", "smoltcp-phy", "stm32f429", "smoltcp/socket-tcp"]
 
 [dependencies]
-volatile-register = "0.2.1"
-aligned = "0.4.0"
+volatile-register = "0.2"
+aligned = "0.4"
 stm32f7xx-hal = { git = "https://github.com/stm32-rs/stm32f7xx-hal", rev = "7099b07", optional = true }
-stm32f4xx-hal = { version = "0.12.0", optional = true }
-stm32f1xx-hal = { version = "0.9.0", optional = true }
-cortex-m = "0.7.4"
-log = { version = "0.4.15", optional = true }
+stm32f4xx-hal = { version = "0.12", optional = true }
+stm32f1xx-hal = { version = "0.9", optional = true }
+cortex-m = "0.7"
+log = { version = "0.4", optional = true }
 
 [dependencies.smoltcp]
-version = "0.8.0"
+version = "0.8"
 default-features = false
 features = ["medium-ethernet", "proto-ipv4"]
 optional = true
@@ -61,11 +61,11 @@ stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 smoltcp-phy = ["smoltcp"]
 
 [dev-dependencies]
-cortex-m = "0.7.4"
-cortex-m-rt = "0.7.1"
-panic-itm = "0.4.2"
-cortex-m-semihosting = "0.3.7"
-fugit = "0.3.5"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+panic-itm = "0.4"
+cortex-m-semihosting = "0.3"
+fugit = "0.3"
 
 [[example]]
 name = "pktgen"
