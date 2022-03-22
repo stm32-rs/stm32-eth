@@ -4,6 +4,7 @@
 
 ## Supported microcontrollers
 
+* STM32F107
 * STM32F4xx
 * STM32F7xx
 
