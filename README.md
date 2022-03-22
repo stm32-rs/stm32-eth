@@ -22,14 +22,14 @@ cargo build --example="ip-f107" --features="stm32f107 smoltcp-phy log smoltcp/so
 Add to the `[dependencies]` section in your `Cargo.toml`:
 
 ```rust
-stm32f4xx-hal = { version = "0.8.3", features = ["stm32f429"] }
+stm32f4xx-hal = { version = "0.10.1", features = ["stm32f429"] }
 stm32-eth = { version = "0.2.0", features = ["stm32f429"] }
 ```
 
 or
 
 ```rust
-stm32f7xx-hal = { version = "0.2.0", features = ["stm32f767"] }
+stm32f7xx-hal = { version = "0.6.0", features = ["stm32f767"] }
 stm32-eth = { version = "0.2.0", features = ["stm32f767"]}
 ```
 
@@ -76,7 +76,6 @@ fn main() {
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
-        PhyAddress::_0,
         clocks,
         eth_pins,
     )

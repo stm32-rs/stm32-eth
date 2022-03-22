@@ -2,29 +2,29 @@
 use stm32f4xx_hal::{
     bb,
     gpio::{
-        gpioa::{PA1, PA2, PA7},
+        gpioa::{PA1, PA7},
         gpiob::{PB11, PB12, PB13},
-        gpioc::{PC1, PC4, PC5},
+        gpioc::{PC4, PC5},
         gpiog::{PG11, PG13, PG14},
         Floating, Input,
         Speed::VeryHigh,
     },
-    stm32::{RCC, SYSCFG},
+    pac::{RCC, SYSCFG},
 };
 
 #[cfg(feature = "stm32f7xx-hal")]
 use cortex_m::interrupt;
 #[cfg(feature = "stm32f7xx-hal")]
 use stm32f7xx_hal::{
-    device::{RCC, SYSCFG},
     gpio::{
-        gpioa::{PA1, PA2, PA7},
+        gpioa::{PA1, PA7},
         gpiob::{PB11, PB12, PB13},
-        gpioc::{PC1, PC4, PC5},
+        gpioc::{PC4, PC5},
         gpiog::{PG11, PG13, PG14},
         Floating, Input,
         Speed::VeryHigh,
     },
+    pac::{RCC, SYSCFG},
 };
 
 // Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
@@ -145,12 +145,6 @@ pub(crate) fn setup() {
 /// RMII Reference Clock.
 pub unsafe trait RmiiRefClk {}
 
-/// RMII MDIO.
-pub unsafe trait MDIO {}
-
-/// RMII MDC.
-pub unsafe trait MDC {}
-
 /// RMII RX Data Valid.
 pub unsafe trait RmiiCrsDv {}
 
@@ -175,10 +169,8 @@ pub trait AlternateVeryHighSpeed {
     fn into_af11_very_high_speed(self);
 }
 
-pub struct EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
+pub struct EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
     pub ref_clk: REFCLK,
-    pub md_io: IO,
-    pub md_clk: CLK,
     pub crs: CRS,
     pub tx_en: TXEN,
     pub tx_d0: TXD0,
@@ -187,12 +179,9 @@ pub struct EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
     pub rx_d1: RXD1,
 }
 
-impl<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
-    EthPins<REFCLK, IO, CLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
+impl<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
-    IO: MDIO + AlternateVeryHighSpeed,
-    CLK: MDC + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
     TXEN: RmiiTxEN + AlternateVeryHighSpeed,
     TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
@@ -210,8 +199,6 @@ where
     /// anywhere else by accident.
     pub fn setup_pins(self) {
         self.ref_clk.into_af11_very_high_speed();
-        self.md_io.into_af11_very_high_speed();
-        self.md_clk.into_af11_very_high_speed();
         self.crs.into_af11_very_high_speed();
         self.tx_en.into_af11_very_high_speed();
         self.tx_d0.into_af11_very_high_speed();
@@ -230,7 +217,7 @@ macro_rules! impl_pins {
 
                 impl AlternateVeryHighSpeed for $pin {
                     fn into_af11_very_high_speed(self) {
-                        self.into_alternate_af11().set_speed(VeryHigh);
+                        self.into_alternate::<11>().set_speed(VeryHigh);
                     }
                 }
             )+
@@ -245,12 +232,6 @@ macro_rules! impl_pins {
 impl_pins!(
     RmiiRefClk: [
         PA1<Input<Floating>>,
-    ],
-    MDIO: [
-        PA2<Input<Floating>>,
-    ],
-    MDC: [
-        PC1<Input<Floating>>,
     ],
     RmiiCrsDv: [
         PA7<Input<Floating>>,
@@ -298,8 +279,6 @@ mod stm32f1 {
     type PD10 = gpiod::PD10<Input<Floating>>;
 
     unsafe impl RmiiRefClk for PA1 {}
-    unsafe impl MDIO for PA2 {}
-    unsafe impl MDC for PC1 {}
     unsafe impl RmiiCrsDv for PA7 {}
     unsafe impl RmiiCrsDv for PD8 {}
     unsafe impl RmiiTxEN for PB11 {}
