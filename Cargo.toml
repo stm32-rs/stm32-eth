@@ -15,7 +15,7 @@ travis-ci = { repository = "astro/stm32-eth", branch = "master" }
 maintenance = { status = "experimental" }
 
 [package.metadata.docs.rs]
-features = [ "smi", "smoltcp-phy", "stm32f429", "smoltcp/socket-tcp" ]
+features = ["smi", "smoltcp-phy", "stm32f429", "smoltcp/socket-tcp"]
 
 [dependencies]
 volatile-register = "0.2.1"
@@ -24,7 +24,7 @@ stm32f7xx-hal = { git = "https://github.com/stm32-rs/stm32f7xx-hal", rev = "7099
 stm32f4xx-hal = { version = "0.12.0", optional = true }
 stm32f1xx-hal = { version = "0.9.0", optional = true }
 cortex-m = "0.7.4"
-log = { version = "0.4.14", optional = true }
+log = { version = "0.4.15", optional = true }
 
 [dependencies.smoltcp]
 version = "0.8.0"
@@ -66,7 +66,7 @@ cortex-m-rt = "0.7.1"
 panic-itm = "0.4.2"
 cortex-m-semihosting = "0.3.7"
 stm32f4xx-hal = { version = "0.12.0", features = ["rt"] }
-stm32f1xx-hal = { version = "0.9.0", features = ["rt"] }
+# stm32f1xx-hal = { version = "0.9.0", features = ["rt"] }
 
 [[example]]
 name = "pktgen"
@@ -79,9 +79,10 @@ required-features = [
     "smoltcp/log", "smoltcp/verbose"
 ]
 
-[[example]]
-name = "ip-f107"
-required-features = ["stm32f107", "smoltcp-phy", "log", "smoltcp/socket-tcp"]
+# [[example]]
+# name = "ip-f107"
+# required-features = ["stm32f107", "smi", "smoltcp-phy", "smoltcp/socket-tcp"]
+
 [[example]]
 name = "arp"
 required-features = ["stm32f407", "smi"]

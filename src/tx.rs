@@ -263,7 +263,7 @@ impl<'a> TxRing<'a> {
 
     /// Is the Tx DMA engine running?
     pub fn is_running(&self, eth_dma: &ETHERNET_DMA) -> bool {
-        self.running_state(&eth_dma).is_running()
+        self.running_state(eth_dma).is_running()
     }
 
     fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {

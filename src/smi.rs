@@ -1,7 +1,4 @@
-#[cfg(feature = "stm32f4xx-hal")]
-use stm32f4xx_hal::stm32;
-#[cfg(feature = "stm32f7xx-hal")]
-use stm32f7xx_hal::pac as stm32;
+use crate::stm32;
 
 use stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
 
@@ -107,15 +104,30 @@ where
     }
 }
 
-#[cfg(feature = "device-selected")]
+#[cfg(feature = "stm32f4xx-hal")]
 mod pin_impls {
-    #[cfg(feature = "stm32f4xx-hal")]
-    use stm32f4xx_hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, AF11};
-    #[cfg(feature = "stm32f1xx-hal")]
-    use stm32f7xx_hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, AF11};
-    #[cfg(feature = "stm32f7xx-hal")]
-    use stm32f7xx_hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, AF11};
+    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, PushPull};
+
+    const AF11: u8 = 11;
+
+    unsafe impl super::MdioPin for PA2<Alternate<PushPull, AF11>> {}
+    unsafe impl super::MdcPin for PC1<Alternate<PushPull, AF11>> {}
+}
+
+#[cfg(feature = "stm32f7xx-hal")]
+mod pin_impls {
+    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate};
+
+    const AF11: u8 = 11;
 
     unsafe impl super::MdioPin for PA2<Alternate<AF11>> {}
     unsafe impl super::MdcPin for PC1<Alternate<AF11>> {}
+}
+
+#[cfg(feature = "stm32f1xx-hal")]
+mod pin_impls {
+    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, PushPull};
+
+    unsafe impl super::MdioPin for PA2<Alternate<PushPull>> {}
+    unsafe impl super::MdcPin for PC1<Alternate<PushPull>> {}
 }
