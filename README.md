@@ -15,7 +15,7 @@ Please send pull requests.
 ```bash
 cargo build --example="pktgen" --features="stm32f429"
 cargo build --example="ip" --features="stm32f429 smoltcp-phy log smoltcp/socket-tcp smoltcp/socket-icmp smoltcp/log smoltcp/verbose"
-cargo build --example="ip-f107" --features="stm32f107 smoltcp-phy log smoltcp/socket-tcp smoltcp/socket-icmp" --release
+cargo build --example="ip-f107" --features="stm32f107 smoltcp-phy log smoltcp/socket-tcp smoltcp/socket-icmp smoltcp/log smoltcp/verbose"
 ```
 
 ## Usage

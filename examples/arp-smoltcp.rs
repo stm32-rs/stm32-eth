@@ -25,7 +25,6 @@ use smoltcp::wire::{
 use stm32_eth::{
     hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
-    // hal::time::U32Ext,
     smi,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };

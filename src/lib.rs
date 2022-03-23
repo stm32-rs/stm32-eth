@@ -177,10 +177,7 @@ impl<'rx, 'tx> Eth<'rx, 'tx> {
         // Flow Control Register
         self.eth_mac.macfcr.modify(|_, w| {
             // Pause time
-            #[allow(unused_unsafe)]
-            unsafe {
-                w.pt().bits(0x100)
-            }
+            w.pt().bits(0x100)
         });
 
         // operation mode register
