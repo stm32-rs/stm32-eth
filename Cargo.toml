@@ -20,8 +20,8 @@ features = ["smi", "smoltcp-phy", "stm32f429", "smoltcp/socket-tcp"]
 [dependencies]
 volatile-register = "0.2"
 aligned = "0.4"
-stm32f7xx-hal = { git = "https://github.com/stm32-rs/stm32f7xx-hal", rev = "d632a5c", optional = true }
-stm32f4xx-hal = { version = "0.10", optional = true }
+stm32f7xx-hal = { git = "https://github.com/stm32-rs/stm32f7xx-hal", rev = "9503b8df0e983f04c00f4e503c44da7438355250", optional = true }
+stm32f4xx-hal = { version = "0.13", optional = true }
 stm32f1xx-hal = { version = "0.9", optional = true }
 cortex-m = "0.7"
 log = { version = "0.4", optional = true }

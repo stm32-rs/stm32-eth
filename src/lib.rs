@@ -143,10 +143,6 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
 ) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
     setup::setup();
 
-    #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
-    let clock_frequency = clocks.hclk().0;
-
-    #[cfg(feature = "stm32f1xx-hal")]
     let clock_frequency = clocks.hclk().to_Hz();
 
     let clock_range = match clock_frequency {

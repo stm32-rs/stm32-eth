@@ -6,7 +6,7 @@ use stm32f4xx_hal::{
         gpiob::{PB11, PB12, PB13},
         gpioc::{PC4, PC5},
         gpiog::{PG11, PG13, PG14},
-        Floating, Input,
+        Input,
         Speed::VeryHigh,
     },
     pac::{RCC, SYSCFG},
@@ -21,7 +21,7 @@ use stm32f7xx_hal::{
         gpiob::{PB11, PB12, PB13},
         gpioc::{PC4, PC5},
         gpiog::{PG11, PG13, PG14},
-        Floating, Input,
+        Input,
         Speed::VeryHigh,
     },
     pac::{RCC, SYSCFG},
@@ -231,28 +231,28 @@ macro_rules! impl_pins {
 ))]
 impl_pins!(
     RmiiRefClk: [
-        PA1<Input<Floating>>,
+        PA1<Input>,
     ],
     RmiiCrsDv: [
-        PA7<Input<Floating>>,
+        PA7<Input>,
     ],
     RmiiTxEN: [
-        PB11<Input<Floating>>,
-        PG11<Input<Floating>>,
+        PB11<Input>,
+        PG11<Input>,
     ],
     RmiiTxD0: [
-        PB12<Input<Floating>>,
-        PG13<Input<Floating>>,
+        PB12<Input>,
+        PG13<Input>,
     ],
     RmiiTxD1: [
-        PB13<Input<Floating>>,
-        PG14<Input<Floating>>,
+        PB13<Input>,
+        PG14<Input>,
     ],
     RmiiRxD0: [
-        PC4<Input<Floating>>,
+        PC4<Input>,
     ],
     RmiiRxD1: [
-        PC5<Input<Floating>>,
+        PC5<Input>,
     ],
 );
 
