@@ -27,7 +27,7 @@ use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use stm32_eth::{Eth, EthPins, RingEntry};
+use stm32_eth::{EthPins, RingEntry};
 
 static mut LOGGER: HioLogger = HioLogger {};
 
@@ -105,8 +105,9 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
-    let mut eth = Eth::new(
+    let (mut eth_dma, _eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
+        p.ETHERNET_MMC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
@@ -114,7 +115,7 @@ fn main() -> ! {
         eth_pins,
     )
     .unwrap();
-    eth.enable_interrupt();
+    eth_dma.enable_interrupt();
 
     let local_addr = Ipv4Address::new(10, 0, 0, 1);
     let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
@@ -124,7 +125,7 @@ fn main() -> ! {
     let ethernet_addr = EthernetAddress(SRC_MAC);
 
     let mut sockets: [_; 1] = Default::default();
-    let mut iface = InterfaceBuilder::new(&mut eth, &mut sockets[..])
+    let mut iface = InterfaceBuilder::new(&mut eth_dma, &mut sockets[..])
         .hardware_addr(ethernet_addr.into())
         .ip_addrs(&mut ip_addrs[..])
         .neighbor_cache(neighbor_cache)

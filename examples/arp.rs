@@ -63,8 +63,10 @@ fn main() -> ! {
         rx_d1: gpioc.pc5,
     };
 
-    let mut mdio = gpioa.pa2.into_alternate().set_speed(Speed::VeryHigh);
-    let mut mdc = gpioc.pc1.into_alternate().set_speed(Speed::VeryHigh);
+    let mut mdio = gpioa.pa2.into_alternate();
+    mdio.set_speed(Speed::VeryHigh);
+    let mut mdc = gpioc.pc1.into_alternate();
+    mdc.set_speed(Speed::VeryHigh);
 
     // ETH_PHY_RESET(RST#) PB2 Chip Reset (active-low)
     let _eth_reset = gpiob.pb2.into_push_pull_output().set_high();

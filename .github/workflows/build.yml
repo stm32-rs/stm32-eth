@@ -136,13 +136,6 @@ jobs:
           use-cross: false
           command: build
           args: --target=${{ matrix.target }} --example ip-f107 --features stm32f107,smoltcp-phy,log,smoltcp/socket-tcp,smoltcp/socket-icmp,smoltcp/log,smoltcp/verbose 
-      
-      - name: cargo build f1
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: false
-          command: build
-          args: --target=${{ matrix.target }} --features ${{ matrix.feaures }} 
 
   # Refs: https://github.com/rust-lang/crater/blob/9ab6f9697c901c4a44025cf0a39b73ad5b37d198/.github/workflows/bors.yml#L125-L149
   #

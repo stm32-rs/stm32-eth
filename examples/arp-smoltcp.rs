@@ -28,14 +28,7 @@ use stm32_eth::{
     smi,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
-
-use cortex_m_semihosting::hprintln;
-
-use smoltcp::wire::{
-    ArpOperation, ArpPacket, ArpRepr, EthernetAddress, EthernetFrame, EthernetProtocol,
-    EthernetRepr, Ipv4Address,
-};
-use stm32_eth::{Eth, EthPins, RingEntry, TxError};
+use stm32_eth::{EthPins, RingEntry, TxError};
 
 const PHY_REG_BSR: u8 = 0x01;
 const PHY_REG_BSR_UP: u16 = 1 << 2;
@@ -72,8 +65,10 @@ fn main() -> ! {
         rx_d1: gpioc.pc5,
     };
 
-    let mut mdio = gpioa.pa2.into_alternate().set_speed(Speed::VeryHigh);
-    let mut mdc = gpioc.pc1.into_alternate().set_speed(Speed::VeryHigh);
+    let mut mdio = gpioa.pa2.into_alternate();
+    mdio.set_speed(Speed::VeryHigh);
+    let mut mdc = gpioc.pc1.into_alternate();
+    mdc.set_speed(Speed::VeryHigh);
 
     // ETH_PHY_RESET(RST#) PB2 Chip Reset (active-low)
     let _eth_reset = gpiob.pb2.into_push_pull_output().set_high();
