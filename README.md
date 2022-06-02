@@ -4,31 +4,38 @@
 
 ## Supported microcontrollers
 
+* STM32F107
 * STM32F4xx
 * STM32F7xx
 
 Please send pull requests.
 
 ## Building Examples
-```
+
+```bash
 cargo build --example="pktgen" --features="stm32f429"
 cargo build --example="ip" --features="stm32f429 smoltcp-phy log smoltcp/socket-tcp smoltcp/socket-icmp smoltcp/log smoltcp/verbose"
+cargo build --example="ip-f107" --features="stm32f107 smoltcp-phy log smoltcp/socket-tcp smoltcp/socket-icmp smoltcp/log smoltcp/verbose"
 ```
 
 ## Usage
 
 Add to the `[dependencies]` section in your `Cargo.toml`:
+
 ```rust
 stm32f4xx-hal = { version = "0.10.1", features = ["stm32f429"] }
 stm32-eth = { version = "0.2.0", features = ["stm32f429"] }
 ```
+
 or
+
 ```rust
 stm32f7xx-hal = { version = "0.6.0", features = ["stm32f767"] }
 stm32-eth = { version = "0.2.0", features = ["stm32f767"]}
 ```
 
 In `src/main.rs` add:
+
 ```rust
 use stm32_eth::{
     hal::gpio::GpioExt,

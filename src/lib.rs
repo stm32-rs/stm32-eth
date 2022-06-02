@@ -12,7 +12,14 @@ pub use stm32f7xx_hal::pac as stm32;
 pub use stm32f4xx_hal as hal;
 /// Re-export
 #[cfg(feature = "stm32f4xx-hal")]
-pub use stm32f4xx_hal::stm32;
+pub use stm32f4xx_hal::pac as stm32;
+
+/// Re-export
+#[cfg(feature = "stm32f1xx-hal")]
+pub use stm32f1xx_hal as hal;
+/// Re-export
+#[cfg(feature = "stm32f1xx-hal")]
+pub use stm32f1xx_hal::pac as stm32;
 
 use hal::rcc::Clocks;
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, NVIC};
@@ -136,7 +143,13 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
 ) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
     setup::setup();
 
-    let clock_range = match clocks.hclk().0 {
+    #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
+    let clock_frequency = clocks.hclk().0;
+
+    #[cfg(feature = "stm32f1xx-hal")]
+    let clock_frequency = clocks.hclk().to_Hz();
+
+    let clock_range = match clock_frequency {
         0..=24_999_999 => return Err(WrongClock),
         25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
         35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
@@ -156,11 +169,12 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
 
     // Configuration Register
     eth_mac.maccr.modify(|_, w| {
-        // CRC stripping for Type frames
-        w.cstf()
-            .set_bit()
-            // Fast Ethernet speed
-            .fes()
+        // CRC stripping for Type frames. STM32F1xx do not have this bit.
+        #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
+        let w = w.cstf().set_bit();
+
+        // Fast Ethernet speed
+        w.fes()
             .set_bit()
             // Duplex mode
             .dm()

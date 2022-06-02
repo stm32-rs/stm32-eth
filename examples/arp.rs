@@ -16,10 +16,10 @@ use cortex_m_rt::{entry, exception};
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
+use fugit::RateExtU32;
 use stm32_eth::{
     hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
-    hal::time::U32Ext,
     smi,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
@@ -43,7 +43,7 @@ fn main() -> ! {
 
     let rcc = p.RCC.constrain();
     // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
+    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
 
     setup_systick(&mut cp.SYST);
 

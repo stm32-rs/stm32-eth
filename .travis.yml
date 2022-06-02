@@ -2,6 +2,8 @@ language: rust
 matrix:
   include:
     - rust: nightly
+      env: FEATURES='stm32f107'
+    - rust: nightly
       env: FEATURES='stm32f407'
     - rust: nightly
       env: FEATURES='stm32f417'
@@ -39,6 +41,6 @@ matrix:
       env: FEATURES='stm32f778'
     - rust: nightly
       env: FEATURES='stm32f779'
-      
+
 script:
   - "cargo build --target=`uname -m`-unknown-linux-gnu --no-default-features --features \"$FEATURES\""

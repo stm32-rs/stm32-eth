@@ -9,7 +9,7 @@ use stm32f4xx_hal::{
         Floating, Input,
         Speed::VeryHigh,
     },
-    stm32::{RCC, SYSCFG},
+    pac::{RCC, SYSCFG},
 };
 
 #[cfg(feature = "stm32f7xx-hal")]
@@ -93,6 +93,53 @@ pub(crate) fn setup() {
         rcc.ahb1rstr.modify(|_, w| w.ethmacrst().set_bit());
         rcc.ahb1rstr.modify(|_, w| w.ethmacrst().clear_bit());
     });
+
+    #[cfg(feature = "stm32f1xx-hal")]
+    cortex_m::interrupt::free(|_| unsafe {
+        let afio = &*crate::stm32::AFIO::ptr();
+        let rcc = &*crate::stm32::RCC::ptr();
+
+        // enable AFIO clock
+        rcc.apb2enr.modify(|_, w| w.afioen().set_bit());
+
+        if rcc.ahbenr.read().ethmacen().bit_is_set() {
+            // ethernet controller must be disabled when configuring mapr
+            rcc.ahbenr.modify(|_, w| w.ethmacen().clear_bit());
+        }
+
+        // select MII or RMII mode
+        // 0 = MII, 1 = RMII
+        afio.mapr.modify(|_, w| w.mii_rmii_sel().set_bit());
+
+        // enable ethernet clocks
+        rcc.ahbenr.modify(|_, w| {
+            w.ethmacen()
+                .set_bit()
+                .ethmactxen()
+                .set_bit()
+                .ethmacrxen()
+                .set_bit()
+        });
+
+        // Reset pulse.
+        rcc.ahbrstr.modify(|_, w| w.ethmacrst().set_bit());
+        rcc.ahbrstr.modify(|_, w| w.ethmacrst().clear_bit());
+
+        // Workaround for the issue mentioned in the Errata (2.20.11) related to wfi:
+        //
+        // "
+        // If a WFI/WFE instruction is executed to put the system in sleep mode while the Ethernet
+        // MAC master clock on the AHB bus matrix is ON and all remaining masters clocks are OFF,
+        // the Ethernet DMA is unable to perform any AHB master accesses during sleep mode.
+        //
+        // Workaround: Enable DMA1 or DMA2 clocks in the RCC_AHBENR register before executing the
+        // WFI/WFE instruction.
+        // "
+        if rcc.ahbenr.read().dma1en().is_disabled() && rcc.ahbenr.read().dma2en().is_disabled() {
+            rcc.ahbenr.modify(|_, w| w.dma2en().enabled());
+            while rcc.ahbenr.read().dma2en().is_disabled() {}
+        }
+    });
 }
 
 /// RMII Reference Clock.
@@ -161,6 +208,7 @@ where
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! impl_pins {
     ( $($traity:ident: [$($pin:ty,)+],)+ ) => {
         $(
@@ -177,7 +225,10 @@ macro_rules! impl_pins {
     };
 }
 
-#[cfg(feature = "device-selected")]
+#[cfg(all(
+    feature = "device-selected",
+    any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal")
+))]
 impl_pins!(
     RmiiRefClk: [
         PA1<Input<Floating>>,
@@ -204,3 +255,49 @@ impl_pins!(
         PC5<Input<Floating>>,
     ],
 );
+
+#[cfg(feature = "stm32f1xx-hal")]
+mod stm32f1 {
+    use super::*;
+    use stm32f1xx_hal::gpio::{gpioa, gpiob, gpioc, gpiod, Alternate, Floating, Input, PushPull};
+
+    // STM32F1xx's require access to the CRL/CRH registers to change pin mode. As a result, we
+    // require that pins are already in the necessary mode before constructing `EthPins` as it
+    // would be inconvenient to pass CRL and CRH through to the `AlternateVeryHighSpeed` callsite.
+
+    type PA1 = gpioa::PA1<Input<Floating>>;
+    type PA2 = gpioa::PA2<Alternate<PushPull>>;
+    type PA7 = gpioa::PA7<Input<Floating>>;
+    type PB11 = gpiob::PB11<Alternate<PushPull>>;
+    type PB12 = gpiob::PB12<Alternate<PushPull>>;
+    type PB13 = gpiob::PB13<Alternate<PushPull>>;
+    type PC1 = gpioc::PC1<Alternate<PushPull>>;
+    type PC4 = gpioc::PC4<Input<Floating>>;
+    type PC5 = gpioc::PC5<Input<Floating>>;
+    type PD8 = gpiod::PD8<Input<Floating>>;
+    type PD9 = gpiod::PD9<Input<Floating>>;
+    type PD10 = gpiod::PD10<Input<Floating>>;
+
+    unsafe impl RmiiRefClk for PA1 {}
+    unsafe impl RmiiCrsDv for PA7 {}
+    unsafe impl RmiiCrsDv for PD8 {}
+    unsafe impl RmiiTxEN for PB11 {}
+    unsafe impl RmiiTxD0 for PB12 {}
+    unsafe impl RmiiTxD1 for PB13 {}
+    unsafe impl RmiiRxD0 for PC4 {}
+    unsafe impl RmiiRxD0 for PD9 {}
+    unsafe impl RmiiRxD1 for PC5 {}
+    unsafe impl RmiiRxD1 for PD10 {}
+
+    macro_rules! impl_alt_very_high_speed {
+        ($($PIN:ident),*) => {
+            $(
+                impl AlternateVeryHighSpeed for $PIN {
+                    fn into_af11_very_high_speed(self) {}
+                }
+            )*
+        }
+    }
+
+    impl_alt_very_high_speed!(PA1, PA2, PA7, PB11, PB12, PB13, PC1, PC4, PC5, PD8, PD9, PD10);
+}
