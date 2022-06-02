@@ -63,8 +63,10 @@ fn main() -> ! {
         rx_d1: gpioc.pc5,
     };
 
-    let mut mdio = gpioa.pa2.into_alternate().set_speed(Speed::VeryHigh);
-    let mut mdc = gpioc.pc1.into_alternate().set_speed(Speed::VeryHigh);
+    let mut mdio = gpioa.pa2.into_alternate();
+    mdio.set_speed(Speed::VeryHigh);
+    let mut mdc = gpioc.pc1.into_alternate();
+    mdc.set_speed(Speed::VeryHigh);
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();

@@ -106,12 +106,12 @@ where
 
 #[cfg(feature = "stm32f4xx-hal")]
 mod pin_impls {
-    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, PushPull};
+    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate};
 
     const AF11: u8 = 11;
 
-    unsafe impl super::MdioPin for PA2<Alternate<PushPull, AF11>> {}
-    unsafe impl super::MdcPin for PC1<Alternate<PushPull, AF11>> {}
+    unsafe impl super::MdioPin for PA2<Alternate<AF11>> {}
+    unsafe impl super::MdcPin for PC1<Alternate<AF11>> {}
 }
 
 #[cfg(feature = "stm32f7xx-hal")]
