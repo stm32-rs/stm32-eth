@@ -15,7 +15,7 @@ pub use stm32f4xx_hal as hal;
 pub use stm32f4xx_hal::stm32;
 
 use hal::rcc::Clocks;
-use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, NVIC};
+use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, NVIC};
 
 mod ring;
 #[cfg(feature = "smi")]
@@ -94,6 +94,7 @@ pub struct EthernetMAC {
 /// - HCLK must be at least 25 MHz.
 pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     eth_mac: ETHERNET_MAC,
+    eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
@@ -110,7 +111,7 @@ where
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
 {
     pins.setup_pins();
-    unsafe { new_unchecked(eth_mac, eth_dma, rx_buffer, tx_buffer, clocks) }
+    unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
 }
 
 /// Create and initialise the ethernet driver (without GPIO configuration and validation).
@@ -127,6 +128,7 @@ where
 /// - HCLK must be at least 25MHz.
 pub unsafe fn new_unchecked<'rx, 'tx>(
     eth_mac: ETHERNET_MAC,
+    eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
@@ -150,9 +152,7 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     while eth_dma.dmabmr.read().sr().bit_is_set() {}
 
     // set clock range in MAC MII address register
-    eth_mac
-        .macmiiar
-        .modify(|_, w| unsafe { w.cr().bits(clock_range) });
+    eth_mac.macmiiar.modify(|_, w| w.cr().bits(clock_range));
 
     // Configuration Register
     eth_mac.maccr.modify(|_, w| {
@@ -213,8 +213,21 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
             .osf()
             .set_bit()
     });
+
+    // disable all MMC RX interrupts
+    eth_mmc
+        .mmcrimr
+        .write(|w| w.rgufm().set_bit().rfaem().set_bit().rfcem().set_bit());
+    // disable all MMC TX interrupts
+    eth_mmc
+        .mmctimr
+        .write(|w| w.tgfm().set_bit().tgfmscm().set_bit().tgfscm().set_bit());
+    // fix incorrect TGFM bit position until https://github.com/stm32-rs/stm32-rs/pull/689
+    // is released and used by HALs.
+    eth_mmc.mmctimr.modify(|r, w| w.bits(r.bits() | (1 << 21)));
+
     // bus mode register
-    eth_dma.dmabmr.modify(|_, w| unsafe {
+    eth_dma.dmabmr.modify(|_, w|
         // Address-aligned beats
         w.aab()
             .set_bit()
@@ -232,8 +245,7 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
             .bits(0b01)
             // Use separate PBL
             .usp()
-            .set_bit()
-    });
+            .set_bit());
 
     let mut dma = EthernetDMA {
         eth_dma,
