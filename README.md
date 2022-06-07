@@ -20,38 +20,34 @@ cargo build --example="ip-f107" --features="stm32f107 smoltcp-phy log smoltcp/so
 
 ## Usage
 
-Add to the `[dependencies]` section in your `Cargo.toml`:
+Add one of the following to the `[dependencies]` section in your `Cargo.toml` (with the correct MCU specified):
 
-```rust
-stm32f4xx-hal = { version = "0.10.1", features = ["stm32f429"] }
-stm32-eth = { version = "0.2.0", features = ["stm32f429"] }
+```toml
+stm32-eth = { version = "0.3.0", features = ["stm32f429"] } # For stm32f4xx-like MCUs
+stm32-eth = { version = "0.3.0", features = ["stm32f767"] } # For stm32f7xx-like MCUs
+stm32-eth = { version = "0.3.0", features = ["stm32f107"] } # For stm32f107
 ```
 
-or
-
-```rust
-stm32f7xx-hal = { version = "0.6.0", features = ["stm32f767"] }
-stm32-eth = { version = "0.2.0", features = ["stm32f767"]}
-```
+`stm32_eth` re-exports the underlying HAL as `stm32_eth::hal`.
 
 In `src/main.rs` add:
 
-```rust
+```rust,no_run
 use stm32_eth::{
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::Peripherals,
+    RingEntry,
+    EthPins,
 };
-
-
-use stm32_eth::{RingEntry};
+use fugit::RateExtU32;
 
 fn main() {
     let p = Peripherals::take().unwrap();
 
     let rcc = p.RCC.constrain();
     // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
+    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
 
     let gpioa = p.GPIOA.split();
     let gpiob = p.GPIOB.split();
@@ -60,8 +56,6 @@ fn main() {
 
     let eth_pins = EthPins {
         ref_clk: gpioa.pa1,
-        md_io: gpioa.pa2,
-        md_clk: gpioc.pc1,
         crs: gpioa.pa7,
         tx_en: gpiog.pg11,
         tx_d0: gpiog.pg13,
@@ -74,6 +68,7 @@ fn main() {
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
     let (mut eth_dma, _eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
+        p.ETHERNET_MMC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
@@ -83,10 +78,11 @@ fn main() {
     .unwrap();
     eth_dma.enable_interrupt();
 
-    if let Ok(pkt) = eth.recv_next() {
+    if let Ok(pkt) = eth_dma.recv_next() {
         // handle received pkt
     }
 
+    let size = 42;
     eth_dma.send(size, |buf| {
         // write up to `size` bytes into buf before it is being sent
     }).expect("send");

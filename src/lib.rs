@@ -369,3 +369,17 @@ pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
         .dmasr
         .write(|w| w.nis().set_bit().rs().set_bit().ts().set_bit());
 }
+
+/// This block ensures that README.md is checked when `cargo test` is run.
+///
+/// Taken from https://github.com/rp-rs/pio-rs/blob/b52d3ba9c031ffa72bdd6f16b5fa8c0c04f0e2e0/src/lib.rs#L963
+#[cfg(doctest)]
+mod test_readme {
+    macro_rules! external_doc_test {
+        ($x:expr) => {
+            #[doc = $x]
+            extern "C" {}
+        };
+    }
+    external_doc_test!(include_str!("../README.md"));
+}
