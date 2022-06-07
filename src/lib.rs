@@ -99,6 +99,8 @@ pub struct EthernetMAC {
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
+/// - The pin speed for `stm32f107` is currenctly implicitly set to the required 50 MHz speed by the HAL.
+///   However, we can not guarantee this expicitly so double-check before using.
 pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
