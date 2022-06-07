@@ -82,9 +82,6 @@ fn main() -> ! {
     let mut gpiob = p.GPIOB.split();
     let mut gpioc = p.GPIOC.split();
 
-    // PLL3CLK goes to MCO (Main Clock Output) (PA8)
-    let _mco = gpioa.pa8.into_alternate_push_pull(&mut gpioa.crh);
-
     let ref_clk = gpioa.pa1.into_floating_input(&mut gpioa.crl);
     let crs = gpioa.pa7.into_floating_input(&mut gpioa.crl);
     let tx_en = gpiob.pb11.into_alternate_push_pull(&mut gpiob.crh);
