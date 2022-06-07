@@ -259,7 +259,9 @@ impl_pins!(
 #[cfg(feature = "stm32f1xx-hal")]
 mod stm32f1 {
     use super::*;
-    use stm32f1xx_hal::gpio::{gpioa, gpiob, gpioc, gpiod, Alternate, Floating, Input, PushPull};
+    use stm32f1xx_hal::gpio::{
+        gpioa, gpiob, gpioc, gpiod, Alternate, Floating, IOPinSpeed, Input, OutputSpeed, PushPull,
+    };
 
     // STM32F1xx's require access to the CRL/CRH registers to change pin mode. As a result, we
     // require that pins are already in the necessary mode before constructing `EthPins` as it
@@ -293,7 +295,15 @@ mod stm32f1 {
         ($($PIN:ident),*) => {
             $(
                 impl AlternateVeryHighSpeed for $PIN {
-                    fn into_af11_very_high_speed(self) {}
+                    fn into_af11_very_high_speed(self) {
+                        // SAFETY: this assumes that no other access to the GPIO
+                        // control registers is being performed at the same time.
+                        //
+                        // With the current API, this is the best we can do.
+                        let acrl: &mut _ = &mut unsafe { core::mem::transmute(()) };
+                        let mut pin = self.into_alternate_push_pull(acrl);
+                        pin.set_speed(acrl, IOPinSpeed::Mhz50);
+                    }
                 }
             )*
         }
