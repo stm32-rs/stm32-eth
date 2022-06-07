@@ -25,6 +25,7 @@ stm32f4xx-hal = { version = "0.13", optional = true }
 stm32f1xx-hal = { version = "0.9", optional = true }
 cortex-m = "0.7"
 log = { version = "0.4", optional = true }
+defmt = { version = "0.3", optional = true }
 
 [dependencies.smoltcp]
 version = "0.8"

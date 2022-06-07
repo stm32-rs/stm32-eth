@@ -24,6 +24,8 @@ const RXDESC_0_OWN: u32 = 1 << 31;
 const RXDESC_0_FS: u32 = 1 << 9;
 /// Last descriptor
 const RXDESC_0_LS: u32 = 1 << 8;
+/// RX timestamp
+const RXDESC_0_TIMESTAMP: u32 = 1 << 7;
 /// Error summary
 const RXDESC_0_ES: u32 = 1 << 15;
 /// Frame length
@@ -93,6 +95,15 @@ impl RxDescriptor {
         (self.desc.read(0) & RXDESC_0_LS) == RXDESC_0_LS
     }
 
+    /// Get PTP timestamps if available
+    fn get_timestamp(&self) -> Option<(u32, u32)> {
+        if self.desc.read(0) & RXDESC_0_TIMESTAMP == RXDESC_0_TIMESTAMP && self.is_last() {
+            Some((self.desc.read(7), self.desc.read(6)))
+        } else {
+            None
+        }
+    }
+
     fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
         unsafe {
             self.desc.write(2, buffer as u32);
@@ -153,6 +164,12 @@ impl RxRingEntry {
 
             // "Subsequent reads and writes cannot be moved ahead of preceding reads."
             atomic::compiler_fence(Ordering::Acquire);
+
+            if let Some(ts) = self.desc().get_timestamp() {
+                // TODO: Do something with timestamp
+                #[cfg(feature = "defmt")]
+                defmt::info!("Got PTP timestamp: {}", ts);
+            }
 
             // TODO: obtain ethernet frame type (RDESC_1_FT)
             let pkt = RxPacket {

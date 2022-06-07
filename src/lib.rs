@@ -22,7 +22,7 @@ pub use stm32f1xx_hal as hal;
 pub use stm32f1xx_hal::pac as stm32;
 
 use hal::rcc::Clocks;
-use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, NVIC};
+use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, ETHERNET_PTP, NVIC};
 
 mod ring;
 #[cfg(feature = "smi")]
@@ -103,6 +103,7 @@ pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
+    eth_ptp: ETHERNET_PTP,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
@@ -118,7 +119,11 @@ where
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
 {
     pins.setup_pins();
-    unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
+    unsafe {
+        new_unchecked(
+            eth_mac, eth_mmc, eth_dma, eth_ptp, rx_buffer, tx_buffer, clocks,
+        )
+    }
 }
 
 /// Create and initialise the ethernet driver (without GPIO configuration and validation).
@@ -137,6 +142,7 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
+    eth_ptp: ETHERNET_PTP,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
@@ -159,6 +165,29 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
 
     // Wait until done
     while eth_dma.dmabmr.read().sr().bit_is_set() {}
+
+    // Setup PTP timestamping
+
+    eth_ptp.ptptscr.write(|w| {
+        w.tse()
+            .set_bit()
+            .tsfcu()
+            .set_bit()
+            .tsssr()
+            .set_bit()
+            .tssarfe()
+            .set_bit()
+    });
+
+    // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
+    eth_ptp.ptpssir.write(|w| w.stssi().bits(20));
+    eth_ptp.ptptsar.write(|w| w.tsa().bits(1 << 31));
+    eth_ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
+    while eth_ptp.ptptscr.read().ttsaru().bit_is_set() {}
+
+    // Initialise timestamp
+    eth_ptp.ptptscr.modify(|_, w| w.tssti().set_bit());
+    while eth_ptp.ptptscr.read().tssti().bit_is_set() {}
 
     // set clock range in MAC MII address register
     eth_mac.macmiiar.modify(|_, w| w.cr().bits(clock_range));
@@ -235,9 +264,6 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     eth_mmc
         .mmctimr
         .write(|w| w.tgfm().set_bit().tgfmscm().set_bit().tgfscm().set_bit());
-    // fix incorrect TGFM bit position until https://github.com/stm32-rs/stm32-rs/pull/689
-    // is released and used by HALs.
-    eth_mmc.mmctimr.modify(|r, w| w.bits(r.bits() | (1 << 21)));
 
     // bus mode register
     eth_dma.dmabmr.modify(|_, w| {
@@ -306,9 +332,19 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         }
     }
 
-    /// Calls [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html)
+    /// Call in interrupt handler to clear interrupt reason, when
+    /// [`enable_interrupt()`](struct.EthernetDMA.html#method.enable_interrupt).
+    ///
+    /// There are two ways to call this:
+    ///
+    /// * Via the [`EthernetDMA`](struct.EthernetDMA.html) driver instance that your interrupt handler has access to.
+    /// * By unsafely getting `Peripherals`.
+    ///
+    /// TODO: could return interrupt reason
     pub fn interrupt_handler(&self) {
-        eth_interrupt_handler(&self.eth_dma);
+        self.eth_dma
+            .dmasr
+            .write(|w| w.nis().set_bit().rs().set_bit().ts().set_bit());
     }
 
     /// Is Rx DMA currently running?
@@ -362,21 +398,6 @@ impl EthernetMAC {
     {
         smi::Smi::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, mdio, mdc)
     }
-}
-
-/// Call in interrupt handler to clear interrupt reason, when
-/// [`enable_interrupt()`](struct.EthernetDMA.html#method.enable_interrupt).
-///
-/// There are two ways to call this:
-///
-/// * Via the [`EthernetDMA`](struct.EthernetDMA.html) driver instance that your interrupt handler has access to.
-/// * By unsafely getting `Peripherals`.
-///
-/// TODO: could return interrupt reason
-pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
-    eth_dma
-        .dmasr
-        .write(|w| w.nis().set_bit().rs().set_bit().ts().set_bit());
 }
 
 /// This block ensures that README.md is checked when `cargo test` is run.
