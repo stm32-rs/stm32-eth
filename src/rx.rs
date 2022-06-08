@@ -169,6 +169,9 @@ impl RxRingEntry {
                 // TODO: Do something with timestamp
                 #[cfg(feature = "defmt")]
                 defmt::info!("Got PTP timestamp: {}", ts);
+            } else {
+                #[cfg(feature = "defmt")]
+                defmt::info!("No timestamp...");
             }
 
             // TODO: obtain ethernet frame type (RDESC_1_FT)
