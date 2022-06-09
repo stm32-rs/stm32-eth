@@ -1,3 +1,5 @@
+// A copy of the `ip.rs` example, but for the STM32F107.
+
 #![no_std]
 #![no_main]
 
@@ -6,6 +8,7 @@ extern crate panic_itm;
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
 use stm32_eth::{
+    hal::flash::FlashExt,
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
@@ -61,26 +64,40 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
+    let mut flash = p.FLASH.constrain();
+
     let rcc = p.RCC.constrain();
     // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
+    let clocks = rcc
+        .cfgr
+        .sysclk(32.MHz())
+        .hclk(32.MHz())
+        .freeze(&mut flash.acr);
 
     setup_systick(&mut cp.SYST);
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
-    let gpioa = p.GPIOA.split();
-    let gpiob = p.GPIOB.split();
-    let gpioc = p.GPIOC.split();
-    let gpiog = p.GPIOG.split();
+
+    let mut gpioa = p.GPIOA.split();
+    let mut gpiob = p.GPIOB.split();
+    let mut gpioc = p.GPIOC.split();
+
+    let ref_clk = gpioa.pa1.into_floating_input(&mut gpioa.crl);
+    let crs = gpioa.pa7.into_floating_input(&mut gpioa.crl);
+    let tx_en = gpiob.pb11.into_alternate_push_pull(&mut gpiob.crh);
+    let tx_d0 = gpiob.pb12.into_alternate_push_pull(&mut gpiob.crh);
+    let tx_d1 = gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh);
+    let rx_d0 = gpioc.pc4.into_floating_input(&mut gpioc.crl);
+    let rx_d1 = gpioc.pc5.into_floating_input(&mut gpioc.crl);
 
     let eth_pins = EthPins {
-        ref_clk: gpioa.pa1,
-        crs: gpioa.pa7,
-        tx_en: gpiog.pg11,
-        tx_d0: gpiog.pg13,
-        tx_d1: gpiob.pb13,
-        rx_d0: gpioc.pc4,
-        rx_d1: gpioc.pc5,
+        ref_clk,
+        crs,
+        tx_en,
+        tx_d0,
+        tx_d1,
+        rx_d0,
+        rx_d1,
     };
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();

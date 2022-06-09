@@ -12,25 +12,23 @@ extern crate panic_itm;
 
 use core::cell::RefCell;
 use core::default::Default;
-use cortex_m_rt::{entry, exception};
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use stm32_eth::{
-    hal::gpio::{GpioExt, Speed},
-    hal::rcc::RccExt,
-    hal::time::U32Ext,
-    smi,
-    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
-};
-
+use cortex_m_rt::{entry, exception};
 use cortex_m_semihosting::hprintln;
-
+use fugit::RateExtU32;
 use smoltcp::wire::{
     ArpOperation, ArpPacket, ArpRepr, EthernetAddress, EthernetFrame, EthernetProtocol,
     EthernetRepr, Ipv4Address,
 };
-use stm32_eth::{Eth, EthPins, RingEntry, TxError};
+use stm32_eth::{
+    hal::gpio::{GpioExt, Speed},
+    hal::rcc::RccExt,
+    smi,
+    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
+};
+use stm32_eth::{EthPins, RingEntry, TxError};
 
 const PHY_REG_BSR: u8 = 0x01;
 const PHY_REG_BSR_UP: u16 = 1 << 2;
@@ -47,7 +45,7 @@ fn main() -> ! {
 
     let rcc = p.RCC.constrain();
     // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.mhz()).hclk(32.mhz()).freeze();
+    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
 
     setup_systick(&mut cp.SYST);
 
@@ -67,16 +65,19 @@ fn main() -> ! {
         rx_d1: gpioc.pc5,
     };
 
-    let mut mdio = gpioa.pa2.into_alternate().set_speed(Speed::VeryHigh);
-    let mut mdc = gpioc.pc1.into_alternate().set_speed(Speed::VeryHigh);
+    let mut mdio = gpioa.pa2.into_alternate();
+    mdio.set_speed(Speed::VeryHigh);
+    let mut mdc = gpioc.pc1.into_alternate();
+    mdc.set_speed(Speed::VeryHigh);
 
     // ETH_PHY_RESET(RST#) PB2 Chip Reset (active-low)
     let _eth_reset = gpiob.pb2.into_push_pull_output().set_high();
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let mut eth = Eth::new(
+    let (mut eth_dma, mut eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
+        p.ETHERNET_MMC,
         p.ETHERNET_DMA,
         &mut rx_ring[..],
         &mut tx_ring[..],
@@ -84,12 +85,12 @@ fn main() -> ! {
         eth_pins,
     )
     .unwrap();
-    eth.enable_interrupt();
+    eth_dma.enable_interrupt();
 
     let mut last_link_up = false;
 
     loop {
-        let link_up = link_detected(eth.smi(&mut mdio, &mut mdc));
+        let link_up = link_detected(eth_mac.smi(&mut mdio, &mut mdc));
 
         if link_up != last_link_up {
             if link_up {
@@ -128,7 +129,7 @@ fn main() -> ! {
             header.emit(&mut frame);
             frame.payload_mut().copy_from_slice(&packet.into_inner());
 
-            let r = eth.send(SIZE, |buf| {
+            let r = eth_dma.send(SIZE, |buf| {
                 buf[0..SIZE].copy_from_slice(&frame.into_inner());
             });
 

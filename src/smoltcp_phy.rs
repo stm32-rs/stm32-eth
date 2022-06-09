@@ -1,11 +1,11 @@
-use crate::{rx::RxPacket, tx::TxError, Eth};
+use crate::{rx::RxPacket, tx::TxError, EthernetDMA};
 use core::intrinsics::transmute;
 use smoltcp::phy::{Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
 use smoltcp::Error;
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/m-labs/smoltcp)
-impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut Eth<'rx, 'tx> {
+impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
     type RxToken = EthRxToken<'a>;
     type TxToken = EthTxToken<'a>;
 
@@ -19,9 +19,9 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut Eth<'rx, 'tx> {
     fn receive(&mut self) -> Option<(Self::RxToken, Self::TxToken)> {
         let self_ = unsafe {
             // HACK: eliminate lifetimes
-            transmute::<&mut Eth<'rx, 'tx>, &mut Eth<'a, 'a>>(*self)
+            transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
         };
-        let eth = self_ as *mut Eth<'a, 'a>;
+        let eth = self_ as *mut EthernetDMA<'a, 'a>;
         match self_.recv_next() {
             Ok(packet) => {
                 let rx = EthRxToken { packet };
@@ -33,8 +33,10 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut Eth<'rx, 'tx> {
     }
 
     fn transmit(&mut self) -> Option<Self::TxToken> {
-        let eth =
-            unsafe { transmute::<&mut Eth<'rx, 'tx>, &mut Eth<'a, 'a>>(*self) as *mut Eth<'a, 'a> };
+        let eth = unsafe {
+            transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
+                as *mut EthernetDMA<'a, 'a>
+        };
         Some(EthTxToken { eth })
     }
 }
@@ -54,10 +56,10 @@ impl<'a> RxToken for EthRxToken<'a> {
     }
 }
 
-/// Just a reference to [`Eth`](../struct.Eth.html) for sending a
-/// packet later with [`consume()`](#method.consume)
+/// Just a reference to [`Eth`](../struct.EthernetDMA.html) for sending a
+/// packet later with [`consume()`](#method.consume).
 pub struct EthTxToken<'a> {
-    eth: *mut Eth<'a, 'a>,
+    eth: *mut EthernetDMA<'a, 'a>,
 }
 
 impl<'a> TxToken for EthTxToken<'a> {

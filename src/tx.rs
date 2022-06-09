@@ -1,9 +1,4 @@
-#[cfg(feature = "stm32f4xx-hal")]
-use stm32f4xx_hal::stm32;
-#[cfg(feature = "stm32f7xx-hal")]
-use stm32f7xx_hal::pac as stm32;
-
-use stm32::ETHERNET_DMA;
+use crate::stm32::ETHERNET_DMA;
 
 use core::{
     ops::{Deref, DerefMut},
@@ -214,6 +209,7 @@ impl<'a> TxRing<'a> {
         // Register TxDescriptor
         eth_dma
             .dmatdlar
+            // Note: unsafe block required for `stm32f107`.
             .write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
@@ -252,12 +248,22 @@ impl<'a> TxRing<'a> {
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
     pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
-        eth_dma.dmatpdr.write(|w| w.tpd().poll());
+        eth_dma.dmatpdr.write(|w| {
+            #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
+            {
+                w.tpd().poll()
+            }
+            #[cfg(feature = "stm32f1xx-hal")]
+            unsafe {
+                // TODO: There is no nice `poll` method for `stm32f107`?
+                w.tpd().bits(0)
+            }
+        });
     }
 
     /// Is the Tx DMA engine running?
     pub fn is_running(&self, eth_dma: &ETHERNET_DMA) -> bool {
-        self.running_state(&eth_dma).is_running()
+        self.running_state(eth_dma).is_running()
     }
 
     fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {

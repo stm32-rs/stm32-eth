@@ -1,0 +1,185 @@
+name: Build
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - staging
+      - trying
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Run cargo fmt --check, includes macros/
+  style:
+    name: style
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt
+
+      - name: cargo fmt --check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  # Run cargo test
+  test:
+    name: test
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+        toolchain:
+          - stable
+        features:
+          - stm32f745,smi
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Rust ${{ matrix.toolchain }} with target (${{ matrix.target }})
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: cargo test the documentation and readme
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --target=${{ matrix.target }} --features ${{ matrix.features }}
+
+
+  # Compilation
+  build:
+    name: build
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+        toolchain:
+          - stable
+        features:
+          - stm32f107,smi
+          - stm32f407,smi
+          - stm32f417,smi
+          - stm32f427,smi
+          - stm32f429,smi
+          - stm32f437,smi
+          - stm32f439,smi
+          - stm32f469,smi
+          - stm32f479,smi
+          - stm32f429,smi
+          - stm32f745,smi
+          - stm32f746,smi
+          - stm32f756,smi
+          - stm32f765,smi
+          - stm32f767,smi
+          - stm32f769,smi
+          - stm32f777,smi
+          - stm32f778,smi
+          - stm32f779,smi
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Rust ${{ matrix.toolchain }} with target (${{ matrix.target }})
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --target=${{ matrix.target }} --features ${{ matrix.features }}
+
+  # Examples
+  examples:
+    name: examples
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        target:
+          - thumbv7m-none-eabi
+        toolchain:
+          - stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Rust ${{ matrix.toolchain }} with target (${{ matrix.target }})
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: cargo build f4 example pktgen
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --target=${{ matrix.target }} --example pktgen --features stm32f429,smi
+
+      - name: cargo build f4 example ip
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --target=${{ matrix.target }} --example ip --features stm32f429,smoltcp-phy,log,smoltcp/socket-tcp,smoltcp/socket-icmp,smoltcp/log,smoltcp/verbose
+
+      - name: cargo build f4 example arp
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --target=${{ matrix.target }} --example arp --features stm32f407,smi
+
+      - name: cargo build f4 example arp-smoltcp
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --target=${{ matrix.target }} --example arp-smoltcp --features stm32f407,smi,smoltcp-phy,smoltcp/socket-icmp
+
+      - name: cargo build f1 example ip
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --target=${{ matrix.target }} --example ip-f107 --features stm32f107,smoltcp-phy,log,smoltcp/socket-tcp,smoltcp/socket-icmp,smoltcp/log,smoltcp/verbose
+
+  # Refs: https://github.com/rust-lang/crater/blob/9ab6f9697c901c4a44025cf0a39b73ad5b37d198/.github/workflows/bors.yml#L125-L149
+  #
+  # ALL THE PREVIOUS JOBS NEEDS TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
+
+  ci-success:
+    name: ci
+    if: github.event_name == 'push' && success()
+    needs:
+      - style
+      - build
+      - test
+      - examples
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Mark the job as a success
+        run: exit 0

@@ -1,7 +1,4 @@
-#[cfg(feature = "stm32f4xx-hal")]
-use stm32f4xx_hal::stm32;
-#[cfg(feature = "stm32f7xx-hal")]
-use stm32f7xx_hal::pac as stm32;
+use crate::stm32;
 
 use stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
 
@@ -55,15 +52,19 @@ where
     /// Read an SMI register
     pub fn read(&self, phy: u8, reg: u8) -> u16 {
         self.macmiiar.modify(|_, w| {
-            w.pa()
-                .bits(phy)
-                .mr()
-                .bits(reg)
-                /* Read operation MW=0 */
-                .mw()
-                .clear_bit()
-                .mb()
-                .set_bit()
+            // Note: unsafe block required for `stm32f107`.
+            #[allow(unused_unsafe)]
+            unsafe {
+                w.pa()
+                    .bits(phy)
+                    .mr()
+                    .bits(reg)
+                    /* Read operation MW=0 */
+                    .mw()
+                    .clear_bit()
+                    .mb()
+                    .set_bit()
+            }
         });
         self.wait_ready();
 
@@ -72,34 +73,61 @@ where
     }
 
     fn write_data(&self, data: u16) {
-        self.macmiidr.write(|w| w.md().bits(data));
+        self.macmiidr.write(|w| {
+            // Note: unsafe block required for `stm32f107`.
+            #[allow(unused_unsafe)]
+            unsafe {
+                w.md().bits(data)
+            }
+        });
     }
 
     /// Write an SMI register
     pub fn write(&self, phy: u8, reg: u8, data: u16) {
         self.write_data(data);
         self.macmiiar.modify(|_, w| {
-            w.pa()
-                .bits(phy)
-                .mr()
-                .bits(reg)
-                /* Write operation MW=1*/
-                .mw()
-                .set_bit()
-                .mb()
-                .set_bit()
+            // Note: unsafe block required for `stm32f107`.
+            #[allow(unused_unsafe)]
+            unsafe {
+                w.pa()
+                    .bits(phy)
+                    .mr()
+                    .bits(reg)
+                    /* Write operation MW=1*/
+                    .mw()
+                    .set_bit()
+                    .mb()
+                    .set_bit()
+            }
         });
         self.wait_ready();
     }
 }
 
-#[cfg(feature = "device-selected")]
+#[cfg(feature = "stm32f4xx-hal")]
 mod pin_impls {
-    #[cfg(feature = "stm32f4xx-hal")]
-    use stm32f4xx_hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, AF11};
-    #[cfg(feature = "stm32f7xx-hal")]
-    use stm32f7xx_hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, AF11};
+    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate};
+
+    const AF11: u8 = 11;
 
     unsafe impl super::MdioPin for PA2<Alternate<AF11>> {}
     unsafe impl super::MdcPin for PC1<Alternate<AF11>> {}
+}
+
+#[cfg(feature = "stm32f7xx-hal")]
+mod pin_impls {
+    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate};
+
+    const AF11: u8 = 11;
+
+    unsafe impl super::MdioPin for PA2<Alternate<AF11>> {}
+    unsafe impl super::MdcPin for PC1<Alternate<AF11>> {}
+}
+
+#[cfg(feature = "stm32f1xx-hal")]
+mod pin_impls {
+    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, PushPull};
+
+    unsafe impl super::MdioPin for PA2<Alternate<PushPull>> {}
+    unsafe impl super::MdcPin for PC1<Alternate<PushPull>> {}
 }

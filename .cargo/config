@@ -4,6 +4,12 @@ rustflags = [
   "-C", "link-arg=-Tlink.x",
 ]
 
+[target.thumbv7m-none-eabi]
+runner = 'gdb'
+rustflags = [
+  "-C", "link-arg=-Tlink.x",
+]
+
 [build]
 # Pick ONE of these compilation targets
 # target = "thumbv6m-none-eabi"    # Cortex-M0 and Cortex-M0+
