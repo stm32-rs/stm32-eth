@@ -296,13 +296,19 @@ mod stm32f1 {
             $(
                 impl AlternateVeryHighSpeed for $PIN {
                     fn into_af11_very_high_speed(self) {
-                        // SAFETY: this assumes that no other access to the GPIO
-                        // control registers is being performed at the same time.
-                        //
-                        // With the current API, this is the best we can do.
-                        let acrl: &mut _ = &mut unsafe { core::mem::transmute(()) };
-                        let mut pin = self.into_alternate_push_pull(acrl);
-                        pin.set_speed(acrl, IOPinSpeed::Mhz50);
+                        // Within this critical section, modifying the `CRL` register can
+                        // only be unsound if this critical section preempts other code
+                        // that is modifying the same register
+                        cortex_m::interrupt::free(|_| {
+                            // SAFETY: this is sound as long as the API of the HAL and structure of the CRL
+                            // struct does not change. In case the size of the `CRL` struct is changed, compilation
+                            // will fail as `mem::transmute` can only convert between types of the same size.
+                            //
+                            // This guards us from unsound behaviour introduced by point releases of the f1 hal
+                            let acrl: &mut _ = &mut unsafe { core::mem::transmute(()) };
+                            let mut pin = self.into_alternate_push_pull(acrl);
+                            pin.set_speed(acrl, IOPinSpeed::Mhz50);
+                        });
                     }
                 }
             )*
