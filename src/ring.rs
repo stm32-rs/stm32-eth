@@ -31,6 +31,9 @@ impl<T: Clone + RingDescriptor + Default> Default for RingEntry<T> {
 }
 
 impl RingEntry<TxDescriptor> {
+
+    pub const TX_INIT: Self = Self::new();
+
     /// Creates a RingEntry with a TxDescriptor.
     pub const fn new() -> Self {
         RingEntry {
@@ -41,6 +44,9 @@ impl RingEntry<TxDescriptor> {
 }
 
 impl RingEntry<RxDescriptor> {
+
+    pub const RX_INIT: Self = Self::new();
+
     /// Creates a RingEntry with a RxDescriptor.
     pub const fn new() -> Self {
         RingEntry {

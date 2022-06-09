@@ -1,4 +1,4 @@
-use crate::stm32::ETHERNET_DMA;
+use crate::{smoltcp_phy::EthernetPTPDMA, stm32::ETHERNET_DMA};
 
 use core::{
     ops::{Deref, DerefMut},
@@ -9,6 +9,51 @@ use crate::{
     desc::Descriptor,
     ring::{RingDescriptor, RingEntry},
 };
+
+#[derive(Clone, Copy, defmt::Format)]
+pub struct Timestamp {
+    seconds: u32,
+    nanos: u32,
+}
+
+#[derive(Clone, Copy, defmt::Format)]
+pub enum GetTimestampError {
+    AlreadyRetrieved,
+    TimestampDisabled,
+    NotYetTimestamped,
+}
+
+pub struct TxDescriptorHandle {
+    entry_num: usize,
+    ts_retrieved: bool,
+}
+
+impl TxDescriptorHandle {
+    fn new(entry_num: usize) -> Self {
+        Self {
+            entry_num,
+            ts_retrieved: false,
+        }
+    }
+
+    /// This function _must_ only be called once, and in the ethernet interrupt
+    /// immediately following the creation of this [`TxDescriptorHandle`]
+    pub fn get_timestamp<'a, 'b>(
+        &mut self,
+        dma: &EthernetPTPDMA<'a, 'b>,
+    ) -> Result<Timestamp, GetTimestampError> {
+        if self.ts_retrieved {
+            return Err(GetTimestampError::AlreadyRetrieved);
+        }
+        self.ts_retrieved = true;
+        let tx_descriptor = dma.dma.tx_ring.entries[self.entry_num].desc();
+        if let Some(ts) = tx_descriptor.timestamp() {
+            Ok(ts)
+        } else {
+            Err(GetTimestampError::TimestampDisabled)
+        }
+    }
+}
 
 /// Owned by DMA engine
 const TXDESC_0_OWN: u32 = 1 << 31;
@@ -29,6 +74,7 @@ const TXDESC_0_TER: u32 = 1 << 21;
 const TXDESC_0_TCH: u32 = 1 << 20;
 /// Error status
 const TXDESC_0_ES: u32 = 1 << 15;
+/// TX done bit
 
 const TXDESC_1_TBS_SHIFT: usize = 0;
 const TXDESC_1_TBS_MASK: u32 = 0x0fff << TXDESC_1_TBS_SHIFT;
@@ -113,6 +159,24 @@ impl TxDescriptor {
         }
     }
 
+    fn is_last(&self) -> bool {
+        self.desc.read(0) & TXDESC_0_LS == TXDESC_0_LS
+    }
+
+    /// Enable PTP timestamping
+    fn timestamp(&self) -> Option<Timestamp> {
+        if !self.is_owned()
+            && (self.desc.read(0) & TXDESC_0_TIMESTAMP) == TXDESC_0_TIMESTAMP
+            && self.is_last()
+        {
+            let seconds = self.desc.read(7);
+            let nanos = self.desc.read(6);
+            Some(Timestamp { seconds, nanos })
+        } else {
+            None
+        }
+    }
+
     /// Enable PTP timestamping
     fn set_timestamping(&mut self) {
         unsafe {
@@ -157,12 +221,16 @@ impl RingDescriptor for TxDescriptor {
 }
 
 impl TxRingEntry {
-    fn prepare_packet(&mut self, length: usize) -> Option<TxPacket> {
+    fn prepare_packet(&mut self, length: usize, timestamping: bool) -> Option<TxPacket> {
         assert!(length <= self.as_slice().len());
 
         if !self.desc().is_owned() {
             self.desc_mut().set_buffer1_len(length);
-            self.desc_mut().set_timestamping();
+
+            if timestamping {
+                self.desc_mut().set_timestamping();
+            }
+
             self.desc_mut().set_interrupt();
 
             Some(TxPacket {
@@ -255,11 +323,13 @@ impl<'a> TxRing<'a> {
     pub fn send<F: FnOnce(&mut [u8]) -> R, R>(
         &mut self,
         length: usize,
+        with_timestamp: bool,
         f: F,
-    ) -> Result<R, TxError> {
+    ) -> Result<(R, TxDescriptorHandle), TxError> {
         let entries_len = self.entries.len();
+        let entry_num = self.next_entry;
 
-        match self.entries[self.next_entry].prepare_packet(length) {
+        match self.entries[entry_num].prepare_packet(length, with_timestamp) {
             Some(mut pkt) => {
                 let r = f(pkt.deref_mut());
                 pkt.send();
@@ -268,7 +338,7 @@ impl<'a> TxRing<'a> {
                 if self.next_entry >= entries_len {
                     self.next_entry = 0;
                 }
-                Ok(r)
+                Ok((r, TxDescriptorHandle::new(entry_num)))
             }
             None => Err(TxError::WouldBlock),
         }

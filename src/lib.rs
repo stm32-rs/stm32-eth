@@ -1,5 +1,6 @@
 #![no_std]
 
+pub use smoltcp_phy::EthernetPTPDMA;
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -34,7 +35,7 @@ pub use rx::{RxDescriptor, RxError, RxRingEntry};
 use rx::{RxPacket, RxRing};
 mod tx;
 use tx::TxRing;
-pub use tx::{TxDescriptor, TxError, TxRingEntry};
+pub use tx::{TxDescriptor, TxDescriptorHandle, TxError, TxRingEntry};
 pub mod setup;
 pub use setup::EthPins;
 use setup::{
@@ -46,7 +47,7 @@ pub use smoltcp;
 #[cfg(feature = "smoltcp-phy")]
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
-pub use smoltcp_phy::{EthRxToken, EthTxToken};
+pub use smoltcp_phy::*;
 
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
@@ -78,6 +79,39 @@ pub struct EthernetDMA<'rx, 'tx> {
 /// Ethernet media access control (MAC).
 pub struct EthernetMAC {
     eth_mac: ETHERNET_MAC,
+}
+
+pub fn new_ptp<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
+    eth_mac: ETHERNET_MAC,
+    eth_mmc: ETHERNET_MMC,
+    eth_dma: ETHERNET_DMA,
+    eth_ptp: ETHERNET_PTP,
+    rx_buffer: &'rx mut [RxRingEntry],
+    tx_buffer: &'tx mut [TxRingEntry],
+    clocks: Clocks,
+    pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
+) -> Result<(EthernetPTPDMA<'rx, 'tx>, EthernetMAC), WrongClock>
+where
+    REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
+    CRS: RmiiCrsDv + AlternateVeryHighSpeed,
+    TXEN: RmiiTxEN + AlternateVeryHighSpeed,
+    TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
+    TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
+    RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
+    RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
+{
+    new(
+        eth_mac, eth_mmc, eth_dma, eth_ptp, rx_buffer, tx_buffer, clocks, pins,
+    )
+    .map(|(dma, mac)| {
+        (
+            EthernetPTPDMA {
+                dma,
+                local_address: None,
+            },
+            mac,
+        )
+    })
 }
 
 /// Create and initialise the ethernet driver.
@@ -370,9 +404,10 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     pub fn send<F: FnOnce(&mut [u8]) -> R, R>(
         &mut self,
         length: usize,
+        with_timestamp: bool,
         f: F,
-    ) -> Result<R, TxError> {
-        let result = self.tx_ring.send(length, f);
+    ) -> Result<(R, TxDescriptorHandle), TxError> {
+        let result = self.tx_ring.send(length, with_timestamp, f);
         self.tx_ring.demand_poll(&self.eth_dma);
         result
     }

@@ -11,7 +11,7 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
-        caps.max_transmission_unit = super::MTU;
+        caps.max_transmission_unit = crate::MTU;
         caps.max_burst_size = Some(1);
         caps.checksum = ChecksumCapabilities::ignored();
         caps
@@ -43,7 +43,7 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
 }
 
 pub struct EthRxToken<'a> {
-    packet: RxPacket<'a>,
+    pub(super) packet: RxPacket<'a>,
 }
 
 impl<'a> RxToken for EthRxToken<'a> {
@@ -60,7 +60,7 @@ impl<'a> RxToken for EthRxToken<'a> {
 /// Just a reference to [`Eth`](../struct.EthernetDMA.html) for sending a
 /// packet later with [`consume()`](#method.consume).
 pub struct EthTxToken<'a> {
-    eth: *mut EthernetDMA<'a, 'a>,
+    pub(super) eth: *mut EthernetDMA<'a, 'a>,
 }
 
 impl<'a> TxToken for EthTxToken<'a> {
@@ -71,9 +71,9 @@ impl<'a> TxToken for EthTxToken<'a> {
         F: FnOnce(&mut [u8]) -> Result<R, Error>,
     {
         let eth = unsafe { &mut *self.eth };
-        match eth.send(len, f) {
+        match eth.send(len, false, f) {
             Err(TxError::WouldBlock) => Err(Error::Exhausted),
-            Ok(r) => r,
+            Ok(r) => r.0,
         }
     }
 }
