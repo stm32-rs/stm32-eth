@@ -1,6 +1,7 @@
 #![no_std]
 
-pub use smoltcp_phy::EthernetPTPDMA;
+use core::num::NonZeroUsize;
+
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -35,7 +36,7 @@ pub use rx::{RxDescriptor, RxError, RxRingEntry};
 use rx::{RxPacket, RxRing};
 mod tx;
 use tx::TxRing;
-pub use tx::{TxDescriptor, TxDescriptorHandle, TxError, TxRingEntry};
+pub use tx::{TxDescriptor, TxError, TxRingEntry};
 pub mod setup;
 pub use setup::EthPins;
 use setup::{
@@ -48,6 +49,29 @@ pub use smoltcp;
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::*;
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy, Debug)]
+pub struct Timestamp {
+    pub seconds: u32,
+    pub nanos: u32,
+}
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum TimestampError {
+    NotYetTimestamped,
+    IdNotFound,
+}
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, PartialEq)]
+pub struct PacketId(pub(crate) NonZeroUsize);
+
+impl PacketId {
+    pub(crate) fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
 
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
@@ -71,47 +95,14 @@ use self::consts::*;
 pub struct WrongClock;
 
 /// Ethernet DMA.
-pub struct EthernetDMA<'rx, 'tx> {
+pub struct EthernetDMA<'rx, 'tx, const TX_SIZE: usize> {
     eth_dma: ETHERNET_DMA,
     rx_ring: RxRing<'rx>,
-    tx_ring: TxRing<'tx>,
+    tx_ring: TxRing<'tx, TX_SIZE>,
 }
 /// Ethernet media access control (MAC).
 pub struct EthernetMAC {
     eth_mac: ETHERNET_MAC,
-}
-
-pub fn new_ptp<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
-    eth_mac: ETHERNET_MAC,
-    eth_mmc: ETHERNET_MMC,
-    eth_dma: ETHERNET_DMA,
-    eth_ptp: ETHERNET_PTP,
-    rx_buffer: &'rx mut [RxRingEntry],
-    tx_buffer: &'tx mut [TxRingEntry],
-    clocks: Clocks,
-    pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
-) -> Result<(EthernetPTPDMA<'rx, 'tx>, EthernetMAC), WrongClock>
-where
-    REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
-    CRS: RmiiCrsDv + AlternateVeryHighSpeed,
-    TXEN: RmiiTxEN + AlternateVeryHighSpeed,
-    TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
-    TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
-    RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
-    RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
-{
-    new(
-        eth_mac, eth_mmc, eth_dma, eth_ptp, rx_buffer, tx_buffer, clocks, pins,
-    )
-    .map(|(dma, mac)| {
-        (
-            EthernetPTPDMA {
-                dma,
-                local_address: None,
-            },
-            mac,
-        )
-    })
 }
 
 /// Create and initialise the ethernet driver.
@@ -133,7 +124,7 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
-pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
+pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, const TX_SIZE: usize>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
@@ -142,7 +133,7 @@ pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock>
+) -> Result<(EthernetDMA<'rx, 'tx, TX_SIZE>, EthernetMAC), WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
@@ -172,7 +163,7 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25MHz.
-pub unsafe fn new_unchecked<'rx, 'tx>(
+pub unsafe fn new_unchecked<'rx, 'tx, const TX_SIZE: usize>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
@@ -180,7 +171,7 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
+) -> Result<(EthernetDMA<'rx, 'tx, TX_SIZE>, EthernetMAC), WrongClock> {
     setup::setup();
 
     let clock_frequency = clocks.hclk().to_Hz();
@@ -339,7 +330,7 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     Ok((dma, mac))
 }
 
-impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
+impl<'rx, 'tx, const TX_SIZE: usize> EthernetDMA<'rx, 'tx, TX_SIZE> {
     /// Enable RX and TX interrupts
     ///
     /// In your handler you must call
@@ -404,12 +395,19 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     pub fn send<F: FnOnce(&mut [u8]) -> R, R>(
         &mut self,
         length: usize,
-        with_timestamp: bool,
+        with_packet_id: Option<PacketId>,
         f: F,
-    ) -> Result<(R, TxDescriptorHandle), TxError> {
-        let result = self.tx_ring.send(length, with_timestamp, f);
+    ) -> Result<R, TxError> {
+        let result = self.tx_ring.send(length, with_packet_id, f);
         self.tx_ring.demand_poll(&self.eth_dma);
         result
+    }
+
+    pub fn get_timestamp<PKT>(&mut self, packet_id: PKT) -> Result<Timestamp, TimestampError>
+    where
+        PKT: Into<PacketId>,
+    {
+        self.tx_ring.get_timestamp_for_id(packet_id.into().clone())
     }
 }
 
