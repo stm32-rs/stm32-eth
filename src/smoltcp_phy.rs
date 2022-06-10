@@ -1,26 +1,22 @@
 use crate::PacketId;
 use crate::{rx::RxPacket, tx::TxError, EthernetDMA};
 use core::intrinsics::transmute;
-use core::num::NonZeroUsize;
 use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
 use smoltcp::Error;
 
 pub use smoltcp::phy::PacketId as SmolTcpPacketId;
 
-impl From<&smoltcp::phy::PacketId> for PacketId {
+impl From<smoltcp::phy::PacketId> for PacketId {
     // Convert a usize to a NonZeroUsize, losslessly
-    fn from(input: &smoltcp::phy::PacketId) -> Self {
-        let input = input.id();
-        let value = if input == 0 {
-            // This should never collide: if we have packets with number `0`, other temporally close
-            // packet numbers will be close to `0` or close to `usize::MAX`, so usize::MAX/2
-            // should be the furthest we can get from any collisions
-            NonZeroUsize::new(usize::MAX / 2).expect("Will be valid")
-        } else {
-            NonZeroUsize::new(input).expect("Will be valid")
-        };
-        Self(value)
+    fn from(input: smoltcp::phy::PacketId) -> Self {
+        Self(input.id())
+    }
+}
+
+impl From<PacketId> for smoltcp::phy::PacketId {
+    fn from(packet: PacketId) -> smoltcp::phy::PacketId {
+        smoltcp::phy::PacketId::new(packet.0)
     }
 }
 
@@ -101,7 +97,7 @@ impl<'a, const TX_SIZE: usize> TxToken for EthTxToken<'a, TX_SIZE> {
         F: FnOnce(&mut [u8]) -> Result<R, Error>,
     {
         let eth = unsafe { &mut *self.eth };
-        match eth.send(len, self.packet_id.as_ref().map(|v| v.into()), f) {
+        match eth.send(len, self.packet_id.map(|v| v.into()), f) {
             Err(TxError::WouldBlock) => Err(Error::Exhausted),
             Ok(r) => r,
         }

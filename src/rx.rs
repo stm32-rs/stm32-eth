@@ -165,10 +165,10 @@ impl RxRingEntry {
             // "Subsequent reads and writes cannot be moved ahead of preceding reads."
             atomic::compiler_fence(Ordering::Acquire);
 
-            if let Some(ts) = self.desc().get_timestamp() {
+            if let Some(_ts) = self.desc().get_timestamp() {
                 // TODO: Do something with timestamp
-                #[cfg(feature = "defmt")]
-                defmt::info!("Got PTP timestamp: {}", ts);
+                // #[cfg(feature = "defmt")]
+                // defmt::info!("Got PTP timestamp: {}", ts);
             } else {
                 #[cfg(feature = "defmt")]
                 defmt::info!("No timestamp...");

@@ -1,7 +1,5 @@
 #![no_std]
 
-use core::num::NonZeroUsize;
-
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -65,13 +63,7 @@ pub enum TimestampError {
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, PartialEq)]
-pub struct PacketId(pub(crate) NonZeroUsize);
-
-impl PacketId {
-    pub(crate) fn clone(&self) -> Self {
-        Self(self.0)
-    }
-}
+pub struct PacketId(pub(crate) usize);
 
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
@@ -403,11 +395,11 @@ impl<'rx, 'tx, const TX_SIZE: usize> EthernetDMA<'rx, 'tx, TX_SIZE> {
         result
     }
 
-    pub fn get_timestamp<PKT>(&mut self, packet_id: PKT) -> Result<Timestamp, TimestampError>
+    pub fn get_timestamp<'a, PKT>(&mut self, packet_id: PKT) -> Result<Timestamp, TimestampError>
     where
         PKT: Into<PacketId>,
     {
-        self.tx_ring.get_timestamp_for_id(packet_id.into().clone())
+        self.tx_ring.get_timestamp_for_id(packet_id.into())
     }
 }
 
