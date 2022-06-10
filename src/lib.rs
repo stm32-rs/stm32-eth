@@ -59,7 +59,6 @@ pub struct Timestamp {
 pub enum TimestampError {
     NotYetTimestamped,
     IdNotFound,
-    NoIdMap,
 }
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -379,8 +378,12 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    pub fn recv_next(&mut self, _packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
-        self.rx_ring.recv_next(&self.eth_dma)
+    pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
+        self.rx_ring.recv_next(&self.eth_dma, packet_id)
+    }
+
+    pub fn clear_rx_timestamps(&mut self) {
+        self.rx_ring.clear_rx_timestamps();
     }
 
     /// Is Tx DMA currently running?
@@ -400,11 +403,20 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         result
     }
 
-    pub fn get_timestamp<'a, PKT>(&mut self, packet_id: PKT) -> Result<Timestamp, TimestampError>
+    pub fn get_timestamp_for_id<'a, PKT>(
+        &mut self,
+        packet_id: PKT,
+    ) -> Result<Timestamp, TimestampError>
     where
-        PKT: Into<PacketId>,
+        PKT: Into<PacketId> + Clone,
     {
-        self.tx_ring.get_timestamp_for_id(packet_id.into())
+        let Self {
+            tx_ring, rx_ring, ..
+        } = self;
+
+        tx_ring
+            .get_timestamp_for_id(&packet_id.clone().into())
+            .or_else(|_| rx_ring.get_timestamp_for_id(&packet_id.into()))
     }
 }
 

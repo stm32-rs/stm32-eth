@@ -1,7 +1,6 @@
-use crate::stm32::ETHERNET_DMA;
+use crate::{stm32::ETHERNET_DMA, PacketId, Timestamp, TimestampError};
 
 use core::{
-    default::Default,
     ops::{Deref, DerefMut},
     sync::atomic::{self, Ordering},
 };
@@ -43,12 +42,6 @@ const RXDESC_1_RER: u32 = 1 << 15;
 #[derive(Clone)]
 pub struct RxDescriptor {
     desc: Descriptor,
-}
-
-impl Default for RxDescriptor {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl RxDescriptor {
@@ -96,9 +89,11 @@ impl RxDescriptor {
     }
 
     /// Get PTP timestamps if available
-    fn get_timestamp(&self) -> Option<(u32, u32)> {
+    pub fn timestamp(&self) -> Option<Timestamp> {
         if self.desc.read(0) & RXDESC_0_TIMESTAMP == RXDESC_0_TIMESTAMP && self.is_last() {
-            Some((self.desc.read(7), self.desc.read(6)))
+            let seconds = self.desc.read(7);
+            let nanos = self.desc.read(6);
+            Some(Timestamp { seconds, nanos })
         } else {
             None
         }
@@ -165,15 +160,6 @@ impl RxRingEntry {
             // "Subsequent reads and writes cannot be moved ahead of preceding reads."
             atomic::compiler_fence(Ordering::Acquire);
 
-            if let Some(_ts) = self.desc().get_timestamp() {
-                // TODO: Do something with timestamp
-                // #[cfg(feature = "defmt")]
-                // defmt::info!("Got PTP timestamp: {}", ts);
-            } else {
-                #[cfg(feature = "defmt")]
-                defmt::info!("No timestamp...");
-            }
-
             // TODO: obtain ethernet frame type (RDESC_1_FT)
             let pkt = RxPacket {
                 entry: self,
@@ -223,14 +209,30 @@ impl<'a> RxPacket<'a> {
 pub struct RxRing<'a> {
     entries: &'a mut [RxRingEntry],
     next_entry: usize,
+    rx_timestamps: [Option<(PacketId, Timestamp)>; 8],
 }
 
 impl<'a> RxRing<'a> {
+    pub fn get_timestamp_for_id(&mut self, id: &PacketId) -> Result<Timestamp, TimestampError> {
+        for entry in self.rx_timestamps.iter_mut() {
+            if let Some((packet_id, timestamp)) = entry {
+                if packet_id == id {
+                    let ts = *timestamp;
+                    entry.take();
+                    return Ok(ts);
+                }
+            }
+        }
+        return Err(TimestampError::IdNotFound);
+    }
+
     /// Allocate
     pub fn new(entries: &'a mut [RxRingEntry]) -> Self {
+        const NONE: Option<(PacketId, Timestamp)> = None;
         RxRing {
             entries,
             next_entry: 0,
+            rx_timestamps: [NONE; 8],
         }
     }
 
@@ -290,21 +292,44 @@ impl<'a> RxRing<'a> {
         }
     }
 
+    pub fn clear_rx_timestamps(&mut self) {
+        self.rx_timestamps.iter_mut().for_each(|t| {
+            t.take();
+        });
+    }
+
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Result<RxPacket, RxError> {
+    pub fn recv_next(
+        &mut self,
+        eth_dma: &ETHERNET_DMA,
+        packet_id: Option<PacketId>,
+    ) -> Result<RxPacket, RxError> {
         if !self.running_state(eth_dma).is_running() {
             self.demand_poll(eth_dma);
         }
 
         let entries_len = self.entries.len();
         let result = self.entries[self.next_entry].take_received();
-        match result {
-            Err(RxError::WouldBlock) => {}
-            _ => {
-                self.next_entry += 1;
-                if self.next_entry >= entries_len {
-                    self.next_entry = 0;
+
+        if result.as_ref().err() != Some(&RxError::WouldBlock) {
+            self.next_entry += 1;
+            if self.next_entry >= entries_len {
+                self.next_entry = 0;
+            }
+
+            if let Ok(entry) = &result {
+                if let (Some(packet_id), Some(timestamp)) =
+                    (packet_id, entry.entry.desc().timestamp())
+                {
+                    // TODO: override old timestamps here. This will not put in new timestamps if all old
+                    // ones aren't read
+                    for entry in self.rx_timestamps.iter_mut() {
+                        if entry.is_none() {
+                            *entry = Some((packet_id, timestamp));
+                            break;
+                        }
+                    }
                 }
             }
         }

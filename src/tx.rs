@@ -232,17 +232,17 @@ pub struct TxRing<'a> {
 }
 
 impl<'a> TxRing<'a> {
-    pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
+    pub fn get_timestamp_for_id(&mut self, id: &PacketId) -> Result<Timestamp, TimestampError> {
         if let Some(desc) = self.entries.iter_mut().find(|ts_id| {
             if let Some(ts_id) = &ts_id.desc().pkt_id {
-                ts_id == &id
+                ts_id == id
             } else {
                 false
             }
         }) {
             let tx_descriptor = desc.desc_mut();
             if let Some(ts) = tx_descriptor.timestamp() {
-                tx_descriptor.pkt_id = None;
+                tx_descriptor.pkt_id.take();
                 Ok(ts)
             } else {
                 Err(TimestampError::NotYetTimestamped)
