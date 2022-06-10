@@ -59,11 +59,16 @@ pub struct Timestamp {
 pub enum TimestampError {
     NotYetTimestamped,
     IdNotFound,
+    NoIdMap,
 }
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct PacketId(pub(crate) usize);
+
+impl PacketId {
+    pub const INIT: Option<Self> = None;
+}
 
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
@@ -87,10 +92,10 @@ use self::consts::*;
 pub struct WrongClock;
 
 /// Ethernet DMA.
-pub struct EthernetDMA<'rx, 'tx, const TX_SIZE: usize> {
+pub struct EthernetDMA<'rx, 'tx> {
     eth_dma: ETHERNET_DMA,
     rx_ring: RxRing<'rx>,
-    tx_ring: TxRing<'tx, TX_SIZE>,
+    tx_ring: TxRing<'tx>,
 }
 /// Ethernet media access control (MAC).
 pub struct EthernetMAC {
@@ -116,7 +121,7 @@ pub struct EthernetMAC {
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
-pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, const TX_SIZE: usize>(
+pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
@@ -125,7 +130,7 @@ pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, const TX_SIZE: u
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
-) -> Result<(EthernetDMA<'rx, 'tx, TX_SIZE>, EthernetMAC), WrongClock>
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
@@ -155,7 +160,7 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25MHz.
-pub unsafe fn new_unchecked<'rx, 'tx, const TX_SIZE: usize>(
+pub unsafe fn new_unchecked<'rx, 'tx>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
@@ -163,7 +168,7 @@ pub unsafe fn new_unchecked<'rx, 'tx, const TX_SIZE: usize>(
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
-) -> Result<(EthernetDMA<'rx, 'tx, TX_SIZE>, EthernetMAC), WrongClock> {
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
     setup::setup();
 
     let clock_frequency = clocks.hclk().to_Hz();
@@ -322,7 +327,7 @@ pub unsafe fn new_unchecked<'rx, 'tx, const TX_SIZE: usize>(
     Ok((dma, mac))
 }
 
-impl<'rx, 'tx, const TX_SIZE: usize> EthernetDMA<'rx, 'tx, TX_SIZE> {
+impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// Enable RX and TX interrupts
     ///
     /// In your handler you must call
@@ -374,7 +379,7 @@ impl<'rx, 'tx, const TX_SIZE: usize> EthernetDMA<'rx, 'tx, TX_SIZE> {
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    pub fn recv_next(&mut self) -> Result<RxPacket, RxError> {
+    pub fn recv_next(&mut self, _packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
         self.rx_ring.recv_next(&self.eth_dma)
     }
 

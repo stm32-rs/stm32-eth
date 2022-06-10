@@ -21,9 +21,9 @@ impl From<PacketId> for smoltcp::phy::PacketId {
 }
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/m-labs/smoltcp)
-impl<'a, 'rx, 'tx, 'b, const TX_SIZE: usize> Device<'a> for &'b mut EthernetDMA<'rx, 'tx, TX_SIZE> {
+impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
     type RxToken = EthRxToken<'a>;
-    type TxToken = EthTxToken<'a, TX_SIZE>;
+    type TxToken = EthTxToken<'a>;
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
@@ -35,16 +35,15 @@ impl<'a, 'rx, 'tx, 'b, const TX_SIZE: usize> Device<'a> for &'b mut EthernetDMA<
 
     fn receive(
         &mut self,
+        rx_packet_id: Option<smoltcp::phy::PacketId>,
         tx_packet_id: Option<smoltcp::phy::PacketId>,
     ) -> Option<(Self::RxToken, Self::TxToken)> {
         let self_ = unsafe {
             // HACK: eliminate lifetimes
-            transmute::<&mut EthernetDMA<'rx, 'tx, TX_SIZE>, &mut EthernetDMA<'a, 'a, TX_SIZE>>(
-                *self,
-            )
+            transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
         };
-        let eth = self_ as *mut EthernetDMA<'a, 'a, TX_SIZE>;
-        match self_.recv_next() {
+        let eth = self_ as *mut EthernetDMA<'a, 'a>;
+        match self_.recv_next(rx_packet_id.map(|id| id.into())) {
             Ok(packet) => {
                 let rx = EthRxToken { packet };
                 let tx = EthTxToken {
@@ -59,9 +58,8 @@ impl<'a, 'rx, 'tx, 'b, const TX_SIZE: usize> Device<'a> for &'b mut EthernetDMA<
 
     fn transmit(&mut self, packet_id: Option<smoltcp::phy::PacketId>) -> Option<Self::TxToken> {
         let eth = unsafe {
-            transmute::<&mut EthernetDMA<'rx, 'tx, TX_SIZE>, &mut EthernetDMA<'a, 'a, TX_SIZE>>(
-                *self,
-            ) as *mut EthernetDMA<'a, 'a, TX_SIZE>
+            transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
+                as *mut EthernetDMA<'a, 'a>
         };
         Some(EthTxToken { eth, packet_id })
     }
@@ -84,12 +82,12 @@ impl<'a> RxToken for EthRxToken<'a> {
 
 /// Just a reference to [`Eth`](../struct.EthernetDMA.html) for sending a
 /// packet later with [`consume()`](#method.consume).
-pub struct EthTxToken<'a, const TX_SIZE: usize> {
-    pub(super) eth: *mut EthernetDMA<'a, 'a, TX_SIZE>,
+pub struct EthTxToken<'a> {
+    pub(super) eth: *mut EthernetDMA<'a, 'a>,
     packet_id: Option<smoltcp::phy::PacketId>,
 }
 
-impl<'a, const TX_SIZE: usize> TxToken for EthTxToken<'a, TX_SIZE> {
+impl<'a> TxToken for EthTxToken<'a> {
     /// Allocate a [`Buffer`](../struct.Buffer.html), yield with
     /// `f(buffer)`, and send it as an Ethernet packet.
     fn consume<R, F>(self, _timestamp: Instant, len: usize, f: F) -> Result<R, Error>

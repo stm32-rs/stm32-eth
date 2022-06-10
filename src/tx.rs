@@ -44,6 +44,7 @@ pub enum TxError {
 #[derive(Clone)]
 pub struct TxDescriptor {
     desc: Descriptor,
+    pub(crate) pkt_id: Option<PacketId>,
 }
 
 impl Default for TxDescriptor {
@@ -57,6 +58,7 @@ impl TxDescriptor {
     pub const fn new() -> Self {
         Self {
             desc: Descriptor::new(),
+            pkt_id: None,
         }
     }
 
@@ -176,16 +178,15 @@ impl RingDescriptor for TxDescriptor {
 }
 
 impl TxRingEntry {
-    fn prepare_packet(&mut self, length: usize, timestamping: bool) -> Option<TxPacket> {
+    fn prepare_packet(&mut self, length: usize, packet_id: Option<PacketId>) -> Option<TxPacket> {
         assert!(length <= self.as_slice().len());
 
         if !self.desc().is_owned() {
             self.desc_mut().set_buffer1_len(length);
-
-            if timestamping {
+            if packet_id.is_some() {
                 self.desc_mut().set_timestamping();
             }
-
+            self.desc_mut().pkt_id = packet_id;
             self.desc_mut().set_interrupt();
 
             Some(TxPacket {
@@ -225,26 +226,23 @@ impl<'a> TxPacket<'a> {
 }
 
 /// Tx DMA state
-pub struct TxRing<'a, const TX_SIZE: usize> {
+pub struct TxRing<'a> {
     entries: &'a mut [TxRingEntry],
     next_entry: usize,
-    tx_id_map: [Option<PacketId>; TX_SIZE],
 }
 
-impl<'a, const SIZE: usize> TxRing<'a, SIZE> {
+impl<'a> TxRing<'a> {
     pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
-        if let Some((txd_index, ts_id)) =
-            self.tx_id_map.iter_mut().enumerate().find(|(_idx, ts_id)| {
-                if let Some(ts_id) = ts_id {
-                    *ts_id == id
-                } else {
-                    false
-                }
-            })
-        {
-            let tx_descriptor = self.entries[txd_index].desc();
+        if let Some(desc) = self.entries.iter_mut().find(|ts_id| {
+            if let Some(ts_id) = &ts_id.desc().pkt_id {
+                ts_id == &id
+            } else {
+                false
+            }
+        }) {
+            let tx_descriptor = desc.desc_mut();
             if let Some(ts) = tx_descriptor.timestamp() {
-                *ts_id = None;
+                tx_descriptor.pkt_id = None;
                 Ok(ts)
             } else {
                 Err(TimestampError::NotYetTimestamped)
@@ -258,11 +256,9 @@ impl<'a, const SIZE: usize> TxRing<'a, SIZE> {
     ///
     /// `start()` will be needed before `send()`
     pub fn new(entries: &'a mut [TxRingEntry]) -> Self {
-        const NONE: Option<PacketId> = Option::None;
         TxRing {
             entries,
             next_entry: 0,
-            tx_id_map: [NONE; SIZE],
         }
     }
 
@@ -309,11 +305,8 @@ impl<'a, const SIZE: usize> TxRing<'a, SIZE> {
         let entries_len = self.entries.len();
         let entry_num = self.next_entry;
 
-        match self.entries[entry_num].prepare_packet(length, packet_id.is_some()) {
+        match self.entries[entry_num].prepare_packet(length, packet_id) {
             Some(mut pkt) => {
-                if let Some(id) = packet_id {
-                    self.tx_id_map[entry_num] = Some(id);
-                }
                 let r = f(pkt.deref_mut());
                 pkt.send();
 
