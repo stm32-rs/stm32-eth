@@ -28,9 +28,8 @@ log = { version = "0.4", optional = true }
 defmt = { version = "0.3", optional = true }
 
 [dependencies.smoltcp]
-# git = "https://github.com/smoltcp-rs/smoltcp.git"
-# rev = "19a78bb5777037551f52babe32b592b738ebf91d"
-path = "/home/jona/projects/smoltcp"
+git = "https://github.com/datdenkikniet/smoltcp.git"
+branch = "unique_packet_id"
 default-features = false
 features = ["medium-ethernet", "proto-ipv4", "socket-udp", "socket-raw"]
 optional = true
