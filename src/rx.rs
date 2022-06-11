@@ -213,17 +213,17 @@ pub struct RxRing<'a> {
 }
 
 impl<'a> RxRing<'a> {
-    pub fn get_timestamp_for_id(&mut self, id: &PacketId) -> Result<Timestamp, TimestampError> {
+    pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, (TimestampError, PacketId)> {
         for entry in self.rx_timestamps.iter_mut() {
             if let Some((packet_id, timestamp)) = entry {
-                if packet_id == id {
+                if packet_id == &id {
                     let ts = *timestamp;
                     entry.take();
                     return Ok(ts);
                 }
             }
         }
-        return Err(TimestampError::IdNotFound);
+        return Err((TimestampError::IdNotFound, id));
     }
 
     /// Allocate

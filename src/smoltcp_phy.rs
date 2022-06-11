@@ -1,5 +1,6 @@
 use crate::PacketId;
 use crate::{rx::RxPacket, tx::TxError, EthernetDMA};
+use core::borrow::Borrow;
 use core::intrinsics::transmute;
 use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
@@ -7,16 +8,10 @@ use smoltcp::Error;
 
 pub use smoltcp::phy::PacketId as SmolTcpPacketId;
 
-impl From<smoltcp::phy::PacketId> for PacketId {
+impl From<&smoltcp::phy::PacketId> for PacketId {
     // Convert a usize to a NonZeroUsize, losslessly
-    fn from(input: smoltcp::phy::PacketId) -> Self {
+    fn from(input: &smoltcp::phy::PacketId) -> Self {
         Self(input.id())
-    }
-}
-
-impl From<PacketId> for smoltcp::phy::PacketId {
-    fn from(packet: PacketId) -> smoltcp::phy::PacketId {
-        smoltcp::phy::PacketId::new(packet.0)
     }
 }
 
@@ -43,7 +38,7 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
             transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
         };
         let eth = self_ as *mut EthernetDMA<'a, 'a>;
-        match self_.recv_next(rx_packet_id.map(|id| id.into())) {
+        match self_.recv_next(rx_packet_id.map(|id| id.borrow().into())) {
             Ok(packet) => {
                 let rx = EthRxToken { packet };
                 let tx = EthTxToken {
@@ -95,7 +90,7 @@ impl<'a> TxToken for EthTxToken<'a> {
         F: FnOnce(&mut [u8]) -> Result<R, Error>,
     {
         let eth = unsafe { &mut *self.eth };
-        match eth.send(len, self.packet_id.map(|v| v.into()), f) {
+        match eth.send(len, self.packet_id.map(|v| v.borrow().into()), f) {
             Err(TxError::WouldBlock) => Err(Error::Exhausted),
             Ok(r) => r,
         }

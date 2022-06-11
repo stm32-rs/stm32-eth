@@ -232,10 +232,13 @@ pub struct TxRing<'a> {
 }
 
 impl<'a> TxRing<'a> {
-    pub fn get_timestamp_for_id(&mut self, id: &PacketId) -> Result<Timestamp, TimestampError> {
+    pub fn get_timestamp_for_id(
+        &mut self,
+        id: PacketId,
+    ) -> Result<Timestamp, (TimestampError, PacketId)> {
         if let Some(desc) = self.entries.iter_mut().find(|ts_id| {
             if let Some(ts_id) = &ts_id.desc().pkt_id {
-                ts_id == id
+                ts_id == &id
             } else {
                 false
             }
@@ -245,10 +248,10 @@ impl<'a> TxRing<'a> {
                 tx_descriptor.pkt_id.take();
                 Ok(ts)
             } else {
-                Err(TimestampError::NotYetTimestamped)
+                Err((TimestampError::NotYetTimestamped, id))
             }
         } else {
-            Err(TimestampError::IdNotFound)
+            Err((TimestampError::IdNotFound, id))
         }
     }
 

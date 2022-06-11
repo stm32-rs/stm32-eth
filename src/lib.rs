@@ -406,17 +406,20 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     pub fn get_timestamp_for_id<'a, PKT>(
         &mut self,
         packet_id: PKT,
-    ) -> Result<Timestamp, TimestampError>
+    ) -> Result<Timestamp, (TimestampError, PKT)>
     where
-        PKT: Into<PacketId> + Clone,
+        PacketId: for<'p> From<&'p PKT>,
     {
         let Self {
             tx_ring, rx_ring, ..
         } = self;
 
+        let internal_packet_id = (&packet_id).into();
+
         tx_ring
-            .get_timestamp_for_id(&packet_id.clone().into())
-            .or_else(|_| rx_ring.get_timestamp_for_id(&packet_id.into()))
+            .get_timestamp_for_id(internal_packet_id)
+            .or_else(|(_, internal_packet_id)| rx_ring.get_timestamp_for_id(internal_packet_id))
+            .map_err(|(e, _)| (e, packet_id))
     }
 }
 
