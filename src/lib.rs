@@ -1,5 +1,6 @@
 #![no_std]
 
+use packet_id::IntoPacketId;
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -40,6 +41,8 @@ pub use setup::EthPins;
 use setup::{
     AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1, RmiiTxEN,
 };
+mod packet_id;
+pub use packet_id::PacketId;
 
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp;
@@ -59,14 +62,6 @@ pub struct Timestamp {
 pub enum TimestampError {
     NotYetTimestamped,
     IdNotFound,
-}
-
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug, PartialEq, Clone)]
-pub struct PacketId(pub(crate) usize);
-
-impl PacketId {
-    pub const INIT: Option<Self> = None;
 }
 
 /// From the datasheet: *VLAN Frame maxsize = 1522*
@@ -408,13 +403,13 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         packet_id: PKT,
     ) -> Result<Timestamp, (TimestampError, PKT)>
     where
-        PacketId: for<'p> From<&'p PKT>,
+        PKT: IntoPacketId,
     {
         let Self {
             tx_ring, rx_ring, ..
         } = self;
 
-        let internal_packet_id = (&packet_id).into();
+        let internal_packet_id = packet_id.to_packet_id();
 
         tx_ring
             .get_timestamp_for_id(internal_packet_id)
