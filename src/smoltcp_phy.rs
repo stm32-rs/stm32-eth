@@ -30,15 +30,15 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
 
     fn receive(
         &mut self,
-        rx_packet_id: Option<smoltcp::phy::PacketId>,
-        tx_packet_id: Option<smoltcp::phy::PacketId>,
+        rx_packet_id: smoltcp::phy::PacketId,
+        tx_packet_id: smoltcp::phy::PacketId,
     ) -> Option<(Self::RxToken, Self::TxToken)> {
         let self_ = unsafe {
             // HACK: eliminate lifetimes
             transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
         };
         let eth = self_ as *mut EthernetDMA<'a, 'a>;
-        match self_.recv_next(rx_packet_id.map(|id| id.borrow().into())) {
+        match self_.recv_next(Some(rx_packet_id.borrow().into())) {
             Ok(packet) => {
                 let rx = EthRxToken { packet };
                 let tx = EthTxToken {
@@ -51,7 +51,7 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
         }
     }
 
-    fn transmit(&mut self, packet_id: Option<smoltcp::phy::PacketId>) -> Option<Self::TxToken> {
+    fn transmit(&mut self, packet_id: smoltcp::phy::PacketId) -> Option<Self::TxToken> {
         let eth = unsafe {
             transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
                 as *mut EthernetDMA<'a, 'a>
@@ -79,7 +79,7 @@ impl<'a> RxToken for EthRxToken<'a> {
 /// packet later with [`consume()`](#method.consume).
 pub struct EthTxToken<'a> {
     pub(super) eth: *mut EthernetDMA<'a, 'a>,
-    packet_id: Option<smoltcp::phy::PacketId>,
+    packet_id: smoltcp::phy::PacketId,
 }
 
 impl<'a> TxToken for EthTxToken<'a> {
@@ -90,7 +90,7 @@ impl<'a> TxToken for EthTxToken<'a> {
         F: FnOnce(&mut [u8]) -> Result<R, Error>,
     {
         let eth = unsafe { &mut *self.eth };
-        match eth.send(len, self.packet_id.map(|v| v.borrow().into()), f) {
+        match eth.send(len, Some(self.packet_id.borrow().into()), f) {
             Err(TxError::WouldBlock) => Err(Error::Exhausted),
             Ok(r) => r,
         }
