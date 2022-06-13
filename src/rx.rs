@@ -42,6 +42,7 @@ const RXDESC_1_RER: u32 = 1 << 15;
 #[derive(Clone)]
 pub struct RxDescriptor {
     desc: Descriptor,
+    timestamp_info: Option<(PacketId, Timestamp)>,
 }
 
 impl RxDescriptor {
@@ -49,6 +50,7 @@ impl RxDescriptor {
     pub const fn new() -> Self {
         Self {
             desc: Descriptor::new(),
+            timestamp_info: None,
         }
     }
 
@@ -209,30 +211,31 @@ impl<'a> RxPacket<'a> {
 pub struct RxRing<'a> {
     entries: &'a mut [RxRingEntry],
     next_entry: usize,
-    rx_timestamps: [Option<(PacketId, Timestamp)>; 8],
 }
 
 impl<'a> RxRing<'a> {
-    pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, (TimestampError, PacketId)> {
-        for entry in self.rx_timestamps.iter_mut() {
-            if let Some((packet_id, timestamp)) = entry {
+    pub fn get_timestamp_for_id(
+        &mut self,
+        id: PacketId,
+    ) -> Result<Timestamp, (TimestampError, PacketId)> {
+        for entry in self.entries.iter_mut() {
+            if let Some((packet_id, timestamp)) = &mut entry.desc_mut().timestamp_info {
                 if packet_id == &id {
                     let ts = *timestamp;
-                    entry.take();
+                    entry.desc_mut().timestamp_info.take();
                     return Ok(ts);
                 }
             }
         }
+
         return Err((TimestampError::IdNotFound, id));
     }
 
     /// Allocate
     pub fn new(entries: &'a mut [RxRingEntry]) -> Self {
-        const NONE: Option<(PacketId, Timestamp)> = None;
         RxRing {
             entries,
             next_entry: 0,
-            rx_timestamps: [NONE; 8],
         }
     }
 
@@ -293,8 +296,8 @@ impl<'a> RxRing<'a> {
     }
 
     pub fn clear_rx_timestamps(&mut self) {
-        self.rx_timestamps.iter_mut().for_each(|t| {
-            t.take();
+        self.entries.iter_mut().for_each(|entry| {
+            entry.desc_mut().timestamp_info.take();
         });
     }
 
@@ -310,26 +313,19 @@ impl<'a> RxRing<'a> {
         }
 
         let entries_len = self.entries.len();
-        let result = self.entries[self.next_entry].take_received();
+        let mut result = self.entries[self.next_entry].take_received();
 
-        if result.as_ref().err() != Some(&RxError::WouldBlock) {
+        if result.as_mut().err() != Some(&mut RxError::WouldBlock) {
             self.next_entry += 1;
             if self.next_entry >= entries_len {
                 self.next_entry = 0;
             }
 
-            if let Ok(entry) = &result {
+            if let Ok(entry) = &mut result {
                 if let (Some(packet_id), Some(timestamp)) =
                     (packet_id, entry.entry.desc().timestamp())
                 {
-                    // TODO: override old timestamps here. This will not put in new timestamps if all old
-                    // ones aren't read
-                    for entry in self.rx_timestamps.iter_mut() {
-                        if entry.is_none() {
-                            *entry = Some((packet_id, timestamp));
-                            break;
-                        }
-                    }
+                    entry.entry.desc_mut().timestamp_info = Some((packet_id, timestamp))
                 }
             }
         }
