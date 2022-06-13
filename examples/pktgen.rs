@@ -70,7 +70,7 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let (mut eth_dma, mut eth_mac) = stm32_eth::new_borrowed_smi(
+    let (mut eth_dma, mut eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_MMC,
         p.ETHERNET_DMA,

@@ -160,9 +160,9 @@ where
 
     /// Get the link speed
     ///
-    /// If this returns `None`, some sort of corruption happened or the PHY is
+    /// If this returns `None`, some sort of corruption occured, or the PHY is
     /// in an illegal state
-    pub fn get_link_speed(&mut self) -> Option<LinkSpeed> {
+    pub fn link_speed(&mut self) -> Option<LinkSpeed> {
         let link_data = self.read(PHY_REG_SSR);
         let link_data = ((link_data >> 2) & 0b111) as u8;
         LinkSpeed::try_from(link_data).ok()
@@ -181,5 +181,28 @@ where
     /// Release the underlying [`StationManagement`]
     pub fn release(self) -> S {
         self.smi
+    }
+}
+
+impl<S, const EXT_WUCSR_CLEAR: bool> super::Phy for LAN87xxA<S, EXT_WUCSR_CLEAR>
+where
+    S: StationManagement,
+{
+    type LinkSpeed = Option<LinkSpeed>;
+
+    fn reset(&mut self) {
+        self.phy_reset()
+    }
+
+    fn init(&mut self) {
+        self.phy_init()
+    }
+
+    fn poll_link(&mut self) -> bool {
+        self.poll_link()
+    }
+
+    fn link_speed(&mut self) -> Self::LinkSpeed {
+        self.link_speed()
     }
 }

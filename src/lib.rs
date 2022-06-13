@@ -1,6 +1,6 @@
 //! An abstraction layer for ethernet periperhals embedded in STM32 processors.
 //!
-//! For initialisation, see [`new_no_smi`], [`new_borrowed_smi`], and [`new_owned_smi`]
+//! For initialisation, see [`new`], and [`new_owned_smi`]
 #![no_std]
 
 /// Re-export
@@ -84,55 +84,45 @@ pub struct EthernetDMA<'rx, 'tx> {
     tx_ring: TxRing<'tx>,
 }
 
-macro_rules! new {
-    ($name:ident, $smi_ty:ty) => {
-        /// Create and initialise the ethernet driver.
-        ///
-        /// Initialize and start tx and rx DMA engines.
-        /// Sets up the peripheral clocks and GPIO configuration,
-        /// and configures the ETH MAC and DMA peripherals.
-        /// Automatically sets slew rate to VeryHigh.
-        /// If you wish to use another configuration, please see
-        /// [new_unchecked](new_unchecked).
-        ///
-        /// This method does not initialise the external PHY.
-        ///
-        /// Interacting with a PHY can be done through a struct that implementes the
-        /// [`StationManagement`] trait.
-        ///
-        /// In the case of `new_borrowed_smi` you may access SMI through the [`EthernetMAC::smi`] function.
-        ///
-        /// In the case of `new_no_smi`, the SMI may be accessed by constructing a new [`Smi`] before passing
-        /// the `ETHERNET_MAC` to the `new_no_smi` function.
-        pub fn $name<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
-            eth_mac: ETHERNET_MAC,
-            eth_mmc: ETHERNET_MMC,
-            eth_dma: ETHERNET_DMA,
-            rx_buffer: &'rx mut [RxRingEntry],
-            tx_buffer: &'tx mut [TxRingEntry],
-            clocks: Clocks,
-            pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
-        ) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC<$smi_ty>), WrongClock>
-        where
-            REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
-            CRS: RmiiCrsDv + AlternateVeryHighSpeed,
-            TXEN: RmiiTxEN + AlternateVeryHighSpeed,
-            TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
-            TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
-            RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
-            RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
-        {
-            pins.setup_pins();
+/// Create and initialise the ethernet driver.
+///
+/// Initialize and start tx and rx DMA engines.
+/// Sets up the peripheral clocks and GPIO configuration,
+/// and configures the ETH MAC and DMA peripherals.
+/// Automatically sets slew rate to VeryHigh.
+/// If you wish to use another configuration, please see
+/// [new_unchecked](new_unchecked).
+///
+/// This method does not initialise the external PHY.
+///
+/// Interacting with a PHY can be done through a struct that implementes the
+/// [`mac::StationManagement`] trait.
+///
+/// You may access SMI through the [`EthernetMAC::smi`] function.
+pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
+    eth_mac: ETHERNET_MAC,
+    eth_mmc: ETHERNET_MMC,
+    eth_dma: ETHERNET_DMA,
+    rx_buffer: &'rx mut [RxRingEntry],
+    tx_buffer: &'tx mut [TxRingEntry],
+    clocks: Clocks,
+    pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC<mac::BorrowedSmi>), WrongClock>
+where
+    REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
+    CRS: RmiiCrsDv + AlternateVeryHighSpeed,
+    TXEN: RmiiTxEN + AlternateVeryHighSpeed,
+    TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
+    TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
+    RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
+    RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
+{
+    pins.setup_pins();
 
-            let eth_mac = EthernetMAC::<$smi_ty>::new(eth_mac);
+    let eth_mac = EthernetMAC::<mac::BorrowedSmi>::new(eth_mac);
 
-            unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
-        }
-    };
+    unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
 }
-
-new!(new_no_smi, mac::NoSmi);
-new!(new_borrowed_smi, mac::BorrowedSmi);
 
 /// Create and initialise the ethernet driver.
 ///
@@ -144,7 +134,7 @@ new!(new_borrowed_smi, mac::BorrowedSmi);
 /// [new_unchecked](new_unchecked).
 ///
 /// This method does not initialise the external PHY. The SMI for the external PHY
-/// can be accessed through a struct that implements the [`StationManagement`] trait,
+/// can be accessed through a struct that implements the [`mac::StationManagement`] trait,
 /// which [`EthernetMAC<OwnedSmi>`] does.
 ///
 /// # Note
@@ -190,8 +180,8 @@ where
 /// Create and initialise the ethernet driver (without GPIO configuration and validation).
 ///
 /// This method does not initialise the external PHY. However it does return an
-/// [EthernetMAC](EthernetMAC) which implements the
-/// [StationManagement](StationManagement) trait. This can be used to
+/// [`EthernetMAC`] which implements the
+/// [`mac::StationManagement`] trait. This can be used to
 /// communicate with the external PHY.
 ///
 /// # Note

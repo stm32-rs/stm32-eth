@@ -157,18 +157,6 @@ pub struct EthernetMAC<SMI> {
     _state: SMI,
 }
 
-impl EthernetMAC<NoSmi> {
-    pub fn new(eth_mac: ETHERNET_MAC) -> Self {
-        Self {
-            eth_mac,
-            _state: NoSmi {},
-        }
-    }
-}
-
-/// The MAC does not have and does not provide access to its SMI
-pub struct NoSmi;
-
 /// Access to the MAC's SMI can be obtained by borrowing [`MdioPin`] and [`MdcPin`] to it. For [`StationManagement`], see [`EthernetMAC::smi`]
 pub struct BorrowedSmi;
 
