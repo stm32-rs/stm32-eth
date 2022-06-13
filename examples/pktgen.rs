@@ -17,7 +17,7 @@ use fugit::RateExtU32;
 use stm32_eth::{
     hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
-    smi,
+    mac,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
@@ -70,7 +70,7 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let (mut eth_dma, mut eth_mac) = stm32_eth::new(
+    let (mut eth_dma, mut eth_mac) = stm32_eth::new_borrowed_smi(
         p.ETHERNET_MAC,
         p.ETHERNET_MMC,
         p.ETHERNET_DMA,
@@ -214,10 +214,10 @@ fn ETH() {
     stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
 }
 
-fn link_detected<Mdio, Mdc>(smi: smi::Smi<Mdio, Mdc>) -> bool
+fn link_detected<Mdio, Mdc>(smi: mac::Smi<Mdio, Mdc>) -> bool
 where
-    Mdio: smi::MdioPin,
-    Mdc: smi::MdcPin,
+    Mdio: mac::MdioPin,
+    Mdc: mac::MdcPin,
 {
     const STATUS_REG_ADDR: u8 = 0x3;
     const STATUS_REG_UP_MASK: u16 = 1 << 2;

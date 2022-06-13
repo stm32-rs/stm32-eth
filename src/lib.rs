@@ -30,8 +30,8 @@ use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, NVIC};
 mod ring;
 pub use ring::RingEntry;
 mod desc;
-mod mac;
-pub use mac::*;
+pub mod mac;
+pub use mac::EthernetMAC;
 mod rx;
 pub use rx::{RxDescriptor, RxError, RxRingEntry};
 use rx::{RxPacket, RxRing};
@@ -131,8 +131,8 @@ macro_rules! new {
     };
 }
 
-new!(new_no_smi, NoSmi);
-new!(new_borrowed_smi, BorrowedSmi);
+new!(new_no_smi, mac::NoSmi);
+new!(new_borrowed_smi, mac::BorrowedSmi);
 
 /// Create and initialise the ethernet driver.
 ///
@@ -177,12 +177,12 @@ where
     TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
-    MDIO: MdioPin,
-    MDC: MdcPin,
+    MDIO: mac::MdioPin,
+    MDC: mac::MdcPin,
 {
     pins.setup_pins();
 
-    let eth_mac = EthernetMAC::<OwnedSmi<MDIO, MDC>>::new(eth_mac, mdio, mdc);
+    let eth_mac = EthernetMAC::<mac::OwnedSmi<MDIO, MDC>>::new(eth_mac, mdio, mdc);
 
     unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
 }

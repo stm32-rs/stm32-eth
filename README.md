@@ -66,7 +66,7 @@ fn main() {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let (mut eth_dma, _eth_mac) = stm32_eth::new(
+    let (mut eth_dma, _eth_mac) = stm32_eth::new_no_smi(
         p.ETHERNET_MAC,
         p.ETHERNET_MMC,
         p.ETHERNET_DMA,
