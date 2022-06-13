@@ -3,7 +3,12 @@
 use core::convert::TryFrom;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use crate::smi::StationManagement;
+use crate::mac::StationManagement;
+
+/// SMSC LAN8720A Ethernet PHY
+pub type LAN8720A<SMI> = LAN87xxA<SMI, false>;
+/// SMSC LAN8742A Ethernet PHY
+pub type LAN8742A<SMI> = LAN87xxA<SMI, true>;
 
 /// The link speeds supported by this PHY
 #[derive(Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
@@ -65,23 +70,38 @@ mod phy_consts {
     pub const PHY_REG_SSR_100BASE_FD: u16 = 0b110 << 2;
 }
 
-/// SMSC LAN8742A Ethernet PHY
-pub struct LAN87xxA<S> {
+/// An SMSC LAN87XXA Ethernet PHY.
+///
+/// EXT_WUCSR_CLEAR is used to determine if the "WU CSR" bit
+/// in extended registers should be cleared
+///
+/// This type should not be used directly. Use [`LAN8720A`] or [`LAN8742A`] instead.
+pub struct LAN87xxA<S, const EXT_WUCSR_CLEAR: bool> {
     phy_addr: u8,
     smi: S,
 }
 
-impl<S> LAN87xxA<S>
+impl<S, const EXT_WUCSR_CLEAR: bool> LAN87xxA<S, EXT_WUCSR_CLEAR>
 where
     S: StationManagement,
 {
-    ///
+    /// Create a new LAN87XXA based PHY
     pub fn new(smi: S, phy_addr: u8) -> Self {
         LAN87xxA { smi, phy_addr }
     }
 
     fn write(&mut self, reg: u8, data: u16) {
         self.smi.write(self.phy_addr, reg, data)
+    }
+
+    /// Writes a value to an extended PHY register in MMD address space.
+    ///
+    /// Only available in `LAN8742A` PHYs
+    fn smi_write_ext(&mut self, reg_addr: u16, reg_data: u16) {
+        self.write(PHY_REG_CTL, 0x0003); // set address
+        self.write(PHY_REG_ADDAR, reg_addr);
+        self.write(PHY_REG_CTL, 0x4003); // set data
+        self.write(PHY_REG_ADDAR, reg_data);
     }
 
     fn read(&mut self, reg: u8) -> u16 {
@@ -94,11 +114,12 @@ where
         while self.read(PHY_REG_BCR) & PHY_REG_BCR_RESET == PHY_REG_BCR_RESET {}
     }
 
-    /// PHY initialisation.
+    /// Initialize the PHY
     pub fn phy_init(&mut self) {
-        // Clear WU CSR
-        #[cfg(feature = "phy-lan8742a")]
-        self.smi_write_ext(PHY_REG_WUCSR, 0);
+        if EXT_WUCSR_CLEAR {
+            // Clear WU CSR
+            self.smi_write_ext(PHY_REG_WUCSR, 0);
+        }
 
         // Enable auto-negotiation
         self.write(
@@ -147,25 +168,18 @@ where
         LinkSpeed::try_from(link_data).ok()
     }
 
-    ///
+    /// Check if the link is up
     pub fn link_established(&mut self) -> bool {
         self.poll_link()
     }
 
-    ///
+    /// Block until a link is established
     pub fn block_until_link(&mut self) {
         while !self.link_established() {}
     }
 
-    #[cfg_attr(
-        feature = "phy-lan8742a",
-        doc = "Writes a value to an extended PHY register in MMD address space"
-    )]
-    #[cfg(feature = "phy-lan8742a")]
-    fn smi_write_ext(&mut self, reg_addr: u16, reg_data: u16) {
-        self.write(PHY_REG_CTL, 0x0003); // set address
-        self.write(PHY_REG_ADDAR, reg_addr);
-        self.write(PHY_REG_CTL, 0x4003); // set data
-        self.write(PHY_REG_ADDAR, reg_data);
+    /// Release the underlying [`StationManagement`]
+    pub fn release(self) -> S {
+        self.smi
     }
 }

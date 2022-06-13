@@ -28,7 +28,6 @@ use hal::rcc::Clocks;
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, NVIC};
 
 mod ring;
-pub mod smi;
 pub use ring::RingEntry;
 mod desc;
 mod mac;
@@ -99,11 +98,11 @@ macro_rules! new {
         /// This method does not initialise the external PHY.
         ///
         /// Interacting with a PHY can be done through a struct that implementes the
-        /// [`smi::StationManagement`] trait.
+        /// [`StationManagement`] trait.
         ///
         /// In the case of `new_borrowed_smi` you may access SMI through the [`EthernetMAC::smi`] function.
         ///
-        /// In the case of `new_no_smi`, the SMI may be accessed by constructing a new [`smi::Smi`] before passing
+        /// In the case of `new_no_smi`, the SMI may be accessed by constructing a new [`Smi`] before passing
         /// the `ETHERNET_MAC` to the `new_no_smi` function.
         pub fn $name<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
             eth_mac: ETHERNET_MAC,
@@ -145,7 +144,7 @@ new!(new_borrowed_smi, BorrowedSmi);
 /// [new_unchecked](new_unchecked).
 ///
 /// This method does not initialise the external PHY. The SMI for the external PHY
-/// can be accessed through a struct that implements the [`smi::StationManagement`] trait,
+/// can be accessed through a struct that implements the [`StationManagement`] trait,
 /// which [`EthernetMAC<OwnedSmi>`] does.
 ///
 /// # Note
@@ -178,12 +177,12 @@ where
     TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
-    MDIO: smi::MdioPin,
-    MDC: smi::MdcPin,
+    MDIO: MdioPin,
+    MDC: MdcPin,
 {
     pins.setup_pins();
 
-    let eth_mac = EthernetMAC::new_owned(eth_mac, mdio, mdc);
+    let eth_mac = EthernetMAC::<OwnedSmi<MDIO, MDC>>::new(eth_mac, mdio, mdc);
 
     unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
 }
@@ -192,7 +191,7 @@ where
 ///
 /// This method does not initialise the external PHY. However it does return an
 /// [EthernetMAC](EthernetMAC) which implements the
-/// [StationManagement](smi::StationManagement) trait. This can be used to
+/// [StationManagement](StationManagement) trait. This can be used to
 /// communicate with the external PHY.
 ///
 /// # Note
