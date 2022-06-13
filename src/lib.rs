@@ -25,7 +25,6 @@ use hal::rcc::Clocks;
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, NVIC};
 
 mod ring;
-#[cfg(feature = "smi")]
 pub mod smi;
 pub use ring::RingEntry;
 mod desc;

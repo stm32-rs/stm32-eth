@@ -43,7 +43,7 @@ jobs:
         toolchain:
           - stable
         features:
-          - stm32f745,smi
+          - stm32f745
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
@@ -74,25 +74,25 @@ jobs:
         toolchain:
           - stable
         features:
-          - stm32f107,smi
-          - stm32f407,smi
-          - stm32f417,smi
-          - stm32f427,smi
-          - stm32f429,smi
-          - stm32f437,smi
-          - stm32f439,smi
-          - stm32f469,smi
-          - stm32f479,smi
-          - stm32f429,smi
-          - stm32f745,smi
-          - stm32f746,smi
-          - stm32f756,smi
-          - stm32f765,smi
-          - stm32f767,smi
-          - stm32f769,smi
-          - stm32f777,smi
-          - stm32f778,smi
-          - stm32f779,smi
+          - stm32f107
+          - stm32f407
+          - stm32f417
+          - stm32f427
+          - stm32f429
+          - stm32f437
+          - stm32f439
+          - stm32f469
+          - stm32f479
+          - stm32f429
+          - stm32f745
+          - stm32f746
+          - stm32f756
+          - stm32f765
+          - stm32f767
+          - stm32f769
+          - stm32f777
+          - stm32f778
+          - stm32f779
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -137,7 +137,7 @@ jobs:
         with:
           use-cross: false
           command: build
-          args: --target=${{ matrix.target }} --example pktgen --features stm32f429,smi
+          args: --target=${{ matrix.target }} --example pktgen --features stm32f429
 
       - name: cargo build f4 example ip
         uses: actions-rs/cargo@v1
@@ -151,14 +151,14 @@ jobs:
         with:
           use-cross: false
           command: build
-          args: --target=${{ matrix.target }} --example arp --features stm32f407,smi
+          args: --target=${{ matrix.target }} --example arp --features stm32f407
 
       - name: cargo build f4 example arp-smoltcp
         uses: actions-rs/cargo@v1
         with:
           use-cross: false
           command: build
-          args: --target=${{ matrix.target }} --example arp-smoltcp --features stm32f407,smi,smoltcp-phy,smoltcp/socket-icmp
+          args: --target=${{ matrix.target }} --example arp-smoltcp --features stm32f407,smoltcp-phy,smoltcp/socket-icmp
 
       - name: cargo build f1 example ip
         uses: actions-rs/cargo@v1
