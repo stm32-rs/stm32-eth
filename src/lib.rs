@@ -93,12 +93,8 @@ pub struct EthernetDMA<'rx, 'tx> {
 /// If you wish to use another configuration, please see
 /// [new_unchecked](new_unchecked).
 ///
-/// This method does not initialise the external PHY.
-///
-/// Interacting with a PHY can be done through a struct that implementes the
-/// [`mac::StationManagement`] trait.
-///
-/// You may access SMI through the [`EthernetMAC::smi`] function.
+/// This method does not initialise the external PHY. Interacting with a PHY
+/// can be done by using the struct returned from [`EthernetMAC::smi`].
 pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
@@ -133,9 +129,10 @@ where
 /// If you wish to use another configuration, please see
 /// [new_unchecked](new_unchecked).
 ///
-/// This method does not initialise the external PHY. The SMI for the external PHY
-/// can be accessed through a struct that implements the [`mac::StationManagement`] trait,
-/// which [`EthernetMAC<OwnedSmi>`] does.
+/// This method does not initialise the external PHY.
+///
+/// The SMI for the external PHY can be accessed through the
+/// returned [`EthernetMAC<OwnedSmi>`], which implements [`mac::StationManagement`].
 ///
 /// # Note
 /// - Make sure that the buffers reside in a memory region that is

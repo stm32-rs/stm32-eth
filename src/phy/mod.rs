@@ -8,15 +8,18 @@ pub trait Phy {
 
     /// Reset the PHY
     ///
-    /// TODO: describe what "reset" actually is
+    // TODO: describe what "reset" actually is
     fn reset(&mut self);
 
     /// Initialize the PHY
     ///
-    /// TODO: describe what "init" actually is
+    // TODO: describe what "init" actually is
     fn init(&mut self);
 
-    /// Poll the link status of this
+    /// Poll the link status of this PHY. If it returns `true`, the
+    /// link is up. If it returns `false`, the link is down.
+    /// 
+    // TODO: return an associated type with link information?
     fn poll_link(&mut self) -> bool;
 
     /// Get the link speed reported by the PHY
