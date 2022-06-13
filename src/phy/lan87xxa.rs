@@ -1,28 +1,12 @@
 //! SMSC LAN87xxA (LAN8742A, LAN8720A) Ethernet PHYs
-
 use core::convert::TryFrom;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use crate::mac::StationManagement;
+use crate::{mac::StationManagement, LinkSpeed};
 
 /// SMSC LAN8720A Ethernet PHY
 pub type LAN8720A<SMI> = LAN87xxA<SMI, false>;
 /// SMSC LAN8742A Ethernet PHY
 pub type LAN8742A<SMI> = LAN87xxA<SMI, true>;
-
-/// The link speeds supported by this PHY
-#[derive(Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
-#[repr(u8)]
-pub enum LinkSpeed {
-    /// 10BaseT - Half duplex
-    BaseT10HalfDuplex = 0b001,
-    /// 10BaseT - Full duplex
-    BaseT10FullDuplex = 0b101,
-    /// 100BaseT - Half duplex
-    BaseT100HalfDuplex = 0b010,
-    /// 100BaseT - Full duplex
-    BaseT100FullDuplex = 0b110,
-}
 
 use self::phy_consts::*;
 #[allow(dead_code)]
