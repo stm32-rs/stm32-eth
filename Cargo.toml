@@ -32,9 +32,17 @@ default-features = false
 features = ["medium-ethernet", "proto-ipv4"]
 optional = true
 
+[dependencies.num_enum]
+version = "0.5"
+default-features = false
+optional = true
+
 [features]
+default = [ "phy-lan87xxa" ]
 device-selected = []
 fence = []
+phy = [ "num_enum" ]
+phy-lan87xxa = [ "phy" ]
 
 stm32f107 = ["stm32f1xx-hal/stm32f107", "device-selected"]
 

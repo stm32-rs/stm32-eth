@@ -7,6 +7,61 @@ pub unsafe trait MdioPin {}
 /// MDC pin types.
 pub unsafe trait MdcPin {}
 
+pub trait StationManagement {
+    fn read(&self, phy: u8, reg: u8) -> u16;
+    fn write(&mut self, phy: u8, reg: u8, data: u16);
+}
+
+pub(crate) fn wait_ready(iar: &MACMIIAR) {
+    while iar.read().mb().bit_is_set() {}
+}
+
+pub(crate) fn write(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8, data: u16) {
+    dr.write(|w| {
+        #[cfg_attr(not(feature = "stm32f107"), allow(unused_unsafe))]
+        unsafe {
+            w.md().bits(data)
+        }
+    });
+
+    iar.modify(|_, w| {
+        #[cfg_attr(not(feature = "stm32f107"), allow(unused_unsafe))]
+        unsafe {
+            w.pa()
+                .bits(phy)
+                .mr()
+                .bits(reg)
+                /* Write operation MW=1*/
+                .mw()
+                .set_bit()
+                .mb()
+                .set_bit()
+        }
+    });
+    wait_ready(iar);
+}
+
+pub(crate) fn read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 {
+    iar.modify(|_, w| {
+        #[cfg_attr(not(feature = "stm32f107"), allow(unused_unsafe))]
+        unsafe {
+            w.pa()
+                .bits(phy)
+                .mr()
+                .bits(reg)
+                /* Read operation MW=0 */
+                .mw()
+                .clear_bit()
+                .mb()
+                .set_bit()
+        }
+    });
+    wait_ready(iar);
+
+    // Return value:
+    dr.read().md().bits()
+}
+
 /// Station Management Interface.
 ///
 /// Provides access to the MIIM implementation exposed by the MCU's MAC API.
@@ -15,6 +70,22 @@ pub struct Smi<'eth, 'pins, Mdio, Mdc> {
     macmiidr: &'eth MACMIIDR,
     _mdio: &'pins mut Mdio,
     _mdc: &'pins mut Mdc,
+}
+
+impl<'eth, 'pins, Mdio, Mdc> StationManagement for Smi<'eth, 'pins, Mdio, Mdc>
+where
+    Mdio: MdioPin,
+    Mdc: MdcPin,
+{
+    /// Read an SMI register
+    fn read(&self, phy: u8, reg: u8) -> u16 {
+        read(&self.macmiiar, &self.macmiidr, phy, reg)
+    }
+
+    /// Write an SMI register
+    fn write(&mut self, phy: u8, reg: u8, data: u16) {
+        write(&self.macmiiar, &self.macmiidr, phy, reg, data)
+    }
 }
 
 impl<'eth, 'pins, Mdio, Mdc> Smi<'eth, 'pins, Mdio, Mdc>
@@ -40,67 +111,9 @@ where
         }
     }
 
-    /// Wait for not busy
-    fn wait_ready(&self) {
-        while self.macmiiar.read().mb().bit_is_set() {}
-    }
-
-    fn read_data(&self) -> u16 {
-        self.macmiidr.read().md().bits()
-    }
-
     /// Read an SMI register
     pub fn read(&self, phy: u8, reg: u8) -> u16 {
-        self.macmiiar.modify(|_, w| {
-            // Note: unsafe block required for `stm32f107`.
-            #[allow(unused_unsafe)]
-            unsafe {
-                w.pa()
-                    .bits(phy)
-                    .mr()
-                    .bits(reg)
-                    /* Read operation MW=0 */
-                    .mw()
-                    .clear_bit()
-                    .mb()
-                    .set_bit()
-            }
-        });
-        self.wait_ready();
-
-        // Return value:
-        self.read_data()
-    }
-
-    fn write_data(&self, data: u16) {
-        self.macmiidr.write(|w| {
-            // Note: unsafe block required for `stm32f107`.
-            #[allow(unused_unsafe)]
-            unsafe {
-                w.md().bits(data)
-            }
-        });
-    }
-
-    /// Write an SMI register
-    pub fn write(&self, phy: u8, reg: u8, data: u16) {
-        self.write_data(data);
-        self.macmiiar.modify(|_, w| {
-            // Note: unsafe block required for `stm32f107`.
-            #[allow(unused_unsafe)]
-            unsafe {
-                w.pa()
-                    .bits(phy)
-                    .mr()
-                    .bits(reg)
-                    /* Write operation MW=1*/
-                    .mw()
-                    .set_bit()
-                    .mb()
-                    .set_bit()
-            }
-        });
-        self.wait_ready();
+        read(&self.macmiiar, &self.macmiidr, phy, reg)
     }
 }
 

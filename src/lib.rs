@@ -1,3 +1,6 @@
+//! An abstraction layer for ethernet periperhals embedded in STM32 processors.
+//!
+//! For initialisation, see [`new_no_smi`], [`new_borrowed_smi`], and [`new_owned_smi`]
 #![no_std]
 
 /// Re-export
@@ -28,6 +31,8 @@ mod ring;
 pub mod smi;
 pub use ring::RingEntry;
 mod desc;
+mod mac;
+pub use mac::*;
 mod rx;
 pub use rx::{RxDescriptor, RxError, RxRingEntry};
 use rx::{RxPacket, RxRing};
@@ -46,6 +51,11 @@ pub use smoltcp;
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::{EthRxToken, EthTxToken};
+
+#[cfg(feature = "phy")]
+mod phy;
+#[cfg(feature = "phy")]
+pub use phy::*;
 
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
@@ -74,10 +84,56 @@ pub struct EthernetDMA<'rx, 'tx> {
     rx_ring: RxRing<'rx>,
     tx_ring: TxRing<'tx>,
 }
-/// Ethernet media access control (MAC).
-pub struct EthernetMAC {
-    eth_mac: ETHERNET_MAC,
+
+macro_rules! new {
+    ($name:ident, $smi_ty:ty) => {
+        /// Create and initialise the ethernet driver.
+        ///
+        /// Initialize and start tx and rx DMA engines.
+        /// Sets up the peripheral clocks and GPIO configuration,
+        /// and configures the ETH MAC and DMA peripherals.
+        /// Automatically sets slew rate to VeryHigh.
+        /// If you wish to use another configuration, please see
+        /// [new_unchecked](new_unchecked).
+        ///
+        /// This method does not initialise the external PHY.
+        ///
+        /// Interacting with a PHY can be done through a struct that implementes the
+        /// [`smi::StationManagement`] trait.
+        ///
+        /// In the case of `new_borrowed_smi` you may access SMI through the [`EthernetMAC::smi`] function.
+        ///
+        /// In the case of `new_no_smi`, the SMI may be accessed by constructing a new [`smi::Smi`] before passing
+        /// the `ETHERNET_MAC` to the `new_no_smi` function.
+        pub fn $name<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
+            eth_mac: ETHERNET_MAC,
+            eth_mmc: ETHERNET_MMC,
+            eth_dma: ETHERNET_DMA,
+            rx_buffer: &'rx mut [RxRingEntry],
+            tx_buffer: &'tx mut [TxRingEntry],
+            clocks: Clocks,
+            pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
+        ) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC<$smi_ty>), WrongClock>
+        where
+            REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
+            CRS: RmiiCrsDv + AlternateVeryHighSpeed,
+            TXEN: RmiiTxEN + AlternateVeryHighSpeed,
+            TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
+            TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
+            RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
+            RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
+        {
+            pins.setup_pins();
+
+            let eth_mac = EthernetMAC::<$smi_ty>::new(eth_mac);
+
+            unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
+        }
+    };
 }
+
+new!(new_no_smi, NoSmi);
+new!(new_borrowed_smi, BorrowedSmi);
 
 /// Create and initialise the ethernet driver.
 ///
@@ -88,17 +144,16 @@ pub struct EthernetMAC {
 /// If you wish to use another configuration, please see
 /// [new_unchecked](new_unchecked).
 ///
-/// This method does not initialise the external PHY. However it does return an
-/// [EthernetMAC](EthernetMAC) which implements the
-/// [StationManagement](smi::StationManagement) trait. This can be used to
-/// communicate with the external PHY.
+/// This method does not initialise the external PHY. The SMI for the external PHY
+/// can be accessed through a struct that implements the [`smi::StationManagement`] trait,
+/// which [`EthernetMAC<OwnedSmi>`] does.
 ///
 /// # Note
 /// - Make sure that the buffers reside in a memory region that is
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
-pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
+pub fn new_owned_smi<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
@@ -106,7 +161,15 @@ pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock>
+    mdio: MDIO,
+    mdc: MDC,
+) -> Result<
+    (
+        EthernetDMA<'rx, 'tx>,
+        EthernetMAC<crate::mac::OwnedSmi<MDIO, MDC>>,
+    ),
+    WrongClock,
+>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
@@ -115,8 +178,13 @@ where
     TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
+    MDIO: smi::MdioPin,
+    MDC: smi::MdcPin,
 {
     pins.setup_pins();
+
+    let eth_mac = EthernetMAC::new_owned(eth_mac, mdio, mdc);
+
     unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
 }
 
@@ -132,15 +200,17 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25MHz.
-pub unsafe fn new_unchecked<'rx, 'tx>(
-    eth_mac: ETHERNET_MAC,
+pub unsafe fn new_unchecked<'rx, 'tx, Smi>(
+    eth_mac_in: EthernetMAC<Smi>,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC<Smi>), WrongClock> {
     setup::setup();
+
+    let eth_mac = &eth_mac_in.eth_mac;
 
     let clock_frequency = clocks.hclk().to_Hz();
 
@@ -270,12 +340,11 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
         rx_ring: RxRing::new(rx_buffer),
         tx_ring: TxRing::new(tx_buffer),
     };
-    let mac = EthernetMAC { eth_mac };
 
     dma.rx_ring.start(&dma.eth_dma);
     dma.tx_ring.start(&dma.eth_dma);
 
-    Ok((dma, mac))
+    Ok((dma, eth_mac_in))
 }
 
 impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
@@ -340,28 +409,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         let result = self.tx_ring.send(length, f);
         self.tx_ring.demand_poll(&self.eth_dma);
         result
-    }
-}
-
-#[cfg(feature = "smi")]
-impl EthernetMAC {
-    /// Borrow access to the MAC's SMI.
-    ///
-    /// Allows for controlling and monitoring any PHYs that may be accessible via the MDIO/MDC
-    /// pins.
-    ///
-    /// Exclusive access to the `MDIO` and `MDC` is required to ensure that are not used elsewhere
-    /// for the duration of SMI communication.
-    pub fn smi<'eth, 'pins, Mdio, Mdc>(
-        &'eth mut self,
-        mdio: &'pins mut Mdio,
-        mdc: &'pins mut Mdc,
-    ) -> smi::Smi<'eth, 'pins, Mdio, Mdc>
-    where
-        Mdio: smi::MdioPin,
-        Mdc: smi::MdcPin,
-    {
-        smi::Smi::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, mdio, mdc)
     }
 }
 
