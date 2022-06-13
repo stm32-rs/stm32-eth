@@ -43,6 +43,8 @@ const RXDESC_1_RER: u32 = 1 << 15;
 pub struct RxDescriptor {
     desc: Descriptor,
     timestamp_info: Option<(PacketId, Timestamp)>,
+    buffer_address: Option<u32>,
+    next_descriptor: Option<u32>,
 }
 
 impl RxDescriptor {
@@ -51,6 +53,8 @@ impl RxDescriptor {
         Self {
             desc: Descriptor::new(),
             timestamp_info: None,
+            buffer_address: None,
+            next_descriptor: None,
         }
     }
 
@@ -60,12 +64,17 @@ impl RxDescriptor {
     }
 
     /// Pass ownership to the DMA engine
+    ///
+    /// Overrides old timestamp data
     fn set_owned(&mut self) {
+        self.write_buffer1();
+        self.write_buffer2();
+
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]
         atomic::fence(Ordering::Release);
-
         atomic::compiler_fence(Ordering::Release);
+
         unsafe {
             self.desc.modify(0, |w| w | RXDESC_0_OWN);
         }
@@ -93,28 +102,57 @@ impl RxDescriptor {
     /// Get PTP timestamps if available
     pub fn timestamp(&self) -> Option<Timestamp> {
         if self.desc.read(0) & RXDESC_0_TIMESTAMP == RXDESC_0_TIMESTAMP && self.is_last() {
-            let seconds = self.desc.read(7);
-            let nanos = self.desc.read(6);
-            Some(Timestamp { seconds, nanos })
+            let seconds = self.desc.read(3);
+            let subseconds = self.desc.read(2);
+
+            let timestamp = Timestamp::new(seconds, subseconds);
+
+            Some(timestamp)
         } else {
             None
         }
     }
 
-    fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
+    /// Rewrite buffer1 to the last value we wrote to it
+    ///
+    /// In our case, the address of the data buffer for this descriptor
+    fn write_buffer1(&mut self) {
+        let buffer_addr = self
+            .buffer_address
+            .expect("Writing buffer1 of an RX descriptor, but `buffer_address` is None");
+
         unsafe {
-            self.desc.write(2, buffer as u32);
+            self.desc.write(2, buffer_addr as u32);
+        }
+    }
+
+    fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
+        self.buffer_address = Some(buffer as u32);
+        unsafe {
+            self.write_buffer1();
             self.desc.modify(1, |w| {
                 (w & !RXDESC_1_RBS_MASK) | ((len as u32) << RXDESC_1_RBS_SHIFT)
             });
         }
     }
 
+    /// Rewrite buffer2 to the last value we wrote it to
+    ///
+    /// In our case, the address of the next descriptor (may be zero)
+    fn write_buffer2(&mut self) {
+        let addr = self
+            .next_descriptor
+            .expect("Writing buffer2 of an RX descriptor, but `next_descriptor` is None");
+
+        unsafe {
+            self.desc.write(3, addr);
+        }
+    }
+
     // points to next descriptor (RCH)
     fn set_buffer2(&mut self, buffer: *const u8) {
-        unsafe {
-            self.desc.write(3, buffer as u32);
-        }
+        self.next_descriptor = Some(buffer as u32);
+        self.write_buffer2();
     }
 
     fn set_end_of_ring(&mut self) {
@@ -150,6 +188,8 @@ impl RingDescriptor for RxDescriptor {
 }
 
 impl RxRingEntry {
+    pub const RX_INIT: Self = Self::new();
+
     fn take_received(&mut self) -> Result<RxPacket, RxError> {
         if self.desc().is_owned() {
             Err(RxError::WouldBlock)

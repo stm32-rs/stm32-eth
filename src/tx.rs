@@ -44,7 +44,10 @@ pub enum TxError {
 #[derive(Clone)]
 pub struct TxDescriptor {
     desc: Descriptor,
-    pub(crate) pkt_id: Option<PacketId>,
+    pub(crate) packet_id: Option<PacketId>,
+    cached_timestamp: Option<Timestamp>,
+    buffer_address: Option<u32>,
+    next_descriptor: Option<u32>,
 }
 
 impl Default for TxDescriptor {
@@ -58,7 +61,10 @@ impl TxDescriptor {
     pub const fn new() -> Self {
         Self {
             desc: Descriptor::new(),
-            pkt_id: None,
+            packet_id: None,
+            cached_timestamp: None,
+            buffer_address: None,
+            next_descriptor: None,
         }
     }
 
@@ -68,11 +74,15 @@ impl TxDescriptor {
     }
 
     /// Pass ownership to the DMA engine
+    ///
+    /// Overwrites old timestamp data
     fn set_owned(&mut self) {
+        self.write_buffer1();
+        self.write_buffer2();
+
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]
         atomic::fence(Ordering::Release);
-
         atomic::compiler_fence(Ordering::Release);
         unsafe {
             self.desc.modify(0, |w| w | TXDESC_0_OWN);
@@ -89,10 +99,22 @@ impl TxDescriptor {
         (self.desc.read(0) & TXDESC_0_ES) == TXDESC_0_ES
     }
 
-    fn set_buffer1(&mut self, buffer: *const u8) {
+    /// Rewrite buffer1 to the last value we wrote to it
+    ///
+    /// In our case, the address of the data buffer for this descriptor
+    fn write_buffer1(&mut self) {
+        let buffer_addr = self
+            .buffer_address
+            .expect("Writing buffer2 of a TX descriptor, but `buffer_address` is None");
+
         unsafe {
-            self.desc.write(2, buffer as u32);
+            self.desc.write(2, buffer_addr as u32);
         }
+    }
+
+    fn set_buffer1(&mut self, buffer: *const u8) {
+        self.buffer_address = Some(buffer as u32);
+        self.write_buffer1();
     }
 
     fn set_buffer1_len(&mut self, len: usize) {
@@ -103,11 +125,22 @@ impl TxDescriptor {
         }
     }
 
+    /// Rewrite buffer2 to the last value we wrote it to
+    ///
+    /// In our case, the address of the next descriptor (may be zero)
+    fn write_buffer2(&mut self) {
+        let next_descriptor = self
+            .next_descriptor
+            .expect("Writing buffer2 of a TX descriptor, but `next_descriptor` is None");
+        unsafe {
+            self.desc.write(3, next_descriptor as u32);
+        }
+    }
+
     // points to next descriptor (RCH)
     fn set_buffer2(&mut self, buffer: *const u8) {
-        unsafe {
-            self.desc.write(3, buffer as u32);
-        }
+        self.next_descriptor = Some(buffer as u32);
+        self.write_buffer2();
     }
 
     fn set_end_of_ring(&mut self) {
@@ -120,15 +153,17 @@ impl TxDescriptor {
         self.desc.read(0) & TXDESC_0_LS == TXDESC_0_LS
     }
 
-    /// Enable PTP timestamping
-    fn timestamp(&self) -> Option<Timestamp> {
+    fn read_timestamp(&self) -> Option<Timestamp> {
         if !self.is_owned()
             && (self.desc.read(0) & TXDESC_0_TIMESTAMP) == TXDESC_0_TIMESTAMP
             && self.is_last()
         {
-            let seconds = self.desc.read(7);
-            let nanos = self.desc.read(6);
-            Some(Timestamp { seconds, nanos })
+            let seconds = self.desc.read(3);
+            let subseconds = self.desc.read(2);
+
+            let timestamp = Timestamp::new(seconds, subseconds);
+
+            Some(timestamp)
         } else {
             None
         }
@@ -137,7 +172,8 @@ impl TxDescriptor {
     /// Enable PTP timestamping
     fn set_timestamping(&mut self) {
         unsafe {
-            self.desc.modify(0, |w| w | TXDESC_0_TIMESTAMP);
+            self.desc
+                .modify(0, |w| w | TXDESC_0_TIMESTAMP | TXDESC_0_FS | TXDESC_0_LS);
         }
     }
 
@@ -178,15 +214,19 @@ impl RingDescriptor for TxDescriptor {
 }
 
 impl TxRingEntry {
+    pub const TX_INIT: Self = Self::new();
+
     fn prepare_packet(&mut self, length: usize, packet_id: Option<PacketId>) -> Option<TxPacket> {
         assert!(length <= self.as_slice().len());
 
         if !self.desc().is_owned() {
             self.desc_mut().set_buffer1_len(length);
+
             if packet_id.is_some() {
                 self.desc_mut().set_timestamping();
             }
-            self.desc_mut().pkt_id = packet_id;
+            self.desc_mut().packet_id = packet_id;
+
             self.desc_mut().set_interrupt();
 
             Some(TxPacket {
@@ -232,26 +272,44 @@ pub struct TxRing<'a> {
 }
 
 impl<'a> TxRing<'a> {
+    pub fn collect_timestamps(&mut self) {
+        for entry in self.entries.iter_mut() {
+            if let Some(timestamp) = entry.desc_mut().read_timestamp() {
+                if entry.desc().cached_timestamp.is_none() && entry.desc().packet_id.is_some() {
+                    entry.desc_mut().cached_timestamp = Some(timestamp);
+                }
+            }
+        }
+    }
+
     pub fn get_timestamp_for_id(
         &mut self,
         id: PacketId,
     ) -> Result<Timestamp, (TimestampError, PacketId)> {
-        if let Some(desc) = self.entries.iter_mut().find(|ts_id| {
-            if let Some(ts_id) = &ts_id.desc().pkt_id {
-                ts_id == &id
-            } else {
-                false
+        let mut id_found = false;
+        for entry in self.entries.iter_mut() {
+            let TxDescriptor {
+                cached_timestamp: timestamp,
+                packet_id,
+                ..
+            } = entry.desc_mut();
+
+            if let Some(packet_id) = packet_id {
+                if packet_id == &id {
+                    id_found = true;
+                    if let Some(timestamp) = timestamp {
+                        let ts = *timestamp;
+                        entry.desc_mut().cached_timestamp.take();
+                        return Ok(ts);
+                    }
+                }
             }
-        }) {
-            let tx_descriptor = desc.desc_mut();
-            if let Some(ts) = tx_descriptor.timestamp() {
-                tx_descriptor.pkt_id.take();
-                Ok(ts)
-            } else {
-                Err((TimestampError::NotYetTimestamped, id))
-            }
-        } else {
+        }
+
+        if !id_found {
             Err((TimestampError::IdNotFound, id))
+        } else {
+            Err((TimestampError::NotYetTimestamped, id))
         }
     }
 

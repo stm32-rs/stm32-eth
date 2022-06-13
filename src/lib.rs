@@ -54,8 +54,32 @@ pub use smoltcp_phy::*;
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug)]
 pub struct Timestamp {
-    pub seconds: u32,
-    pub nanos: u32,
+    seconds: u32,
+    subseconds: u32,
+}
+
+impl Timestamp {
+    pub const NANO_ROLLOVER: u32 = 999_999_999;
+    pub const NORMAL_ROLLOVER: u32 = 0x7FFF_FFFF;
+    pub const NANOS_IN_SECOND: u32 = 999_999_999;
+
+    pub fn new(seconds: u32, subseconds: u32) -> Self {
+        Self {
+            seconds,
+            subseconds,
+        }
+    }
+
+    pub fn seconds(&self) -> u32 {
+        let seconds_in_subseconds = self.subseconds / Self::NANOS_IN_SECOND;
+
+        self.seconds + seconds_in_subseconds
+    }
+
+    pub fn nanos(&self) -> u32 {
+        let nanos = self.subseconds % Self::NANOS_IN_SECOND;
+        nanos
+    }
 }
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -183,23 +207,25 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     while eth_dma.dmabmr.read().sr().bit_is_set() {}
 
     // Setup PTP timestamping
-
-    eth_ptp.ptptscr.write(|w| {
-        w.tse()
-            .set_bit()
-            .tsfcu()
-            .set_bit()
-            .tsssr()
-            .set_bit()
-            .tssarfe()
-            .set_bit()
-    });
+    eth_ptp
+        .ptptscr
+        .modify(|_, w| w.tse().set_bit().tsfcu().set_bit());
 
     // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
     eth_ptp.ptpssir.write(|w| w.stssi().bits(20));
     eth_ptp.ptptsar.write(|w| w.tsa().bits(1 << 31));
-    eth_ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
-    while eth_ptp.ptptscr.read().ttsaru().bit_is_set() {}
+
+    #[cfg(feature = "stm32f107")]
+    {
+        eth_ptp.ptptscr.modify(|_, w| w.tsaru().set_bit());
+        while eth_ptp.ptptscr.read().tsaru().bit_is_set() {}
+    }
+
+    #[cfg(not(feature = "stm32f107"))]
+    {
+        eth_ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
+        while eth_ptp.ptptscr.read().ttsaru().bit_is_set() {}
+    }
 
     // Initialise timestamp
     eth_ptp.ptptscr.modify(|_, w| w.tssti().set_bit());
@@ -357,10 +383,16 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// * By unsafely getting `Peripherals`.
     ///
     /// TODO: could return interrupt reason
-    pub fn interrupt_handler(&self) {
+    pub fn interrupt_handler(&mut self) {
+        let is_tx = self.eth_dma.dmasr.read().ts().bit_is_set();
+
         self.eth_dma
             .dmasr
             .write(|w| w.nis().set_bit().rs().set_bit().ts().set_bit());
+
+        if is_tx {
+            self.tx_ring.collect_timestamps();
+        }
     }
 
     /// Is Rx DMA currently running?
