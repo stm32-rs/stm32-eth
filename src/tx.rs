@@ -172,8 +172,7 @@ impl TxDescriptor {
     /// Enable PTP timestamping
     fn set_timestamping(&mut self) {
         unsafe {
-            self.desc
-                .modify(0, |w| w | TXDESC_0_TIMESTAMP | TXDESC_0_FS | TXDESC_0_LS);
+            self.desc.modify(0, |w| w | TXDESC_0_TIMESTAMP);
         }
     }
 

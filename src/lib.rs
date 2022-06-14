@@ -209,7 +209,7 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     // Setup PTP timestamping
     eth_ptp
         .ptptscr
-        .modify(|_, w| w.tse().set_bit().tsfcu().set_bit());
+        .write(|w| w.tse().set_bit().tsfcu().set_bit());
 
     // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
     eth_ptp.ptpssir.write(|w| w.stssi().bits(20));
