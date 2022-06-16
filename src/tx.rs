@@ -103,12 +103,15 @@ impl TxDescriptor {
     ///
     /// In our case, the address of the data buffer for this descriptor
     fn write_buffer1(&mut self) {
-        let buffer_addr = self
-            .buffer_address
-            .expect("Writing buffer2 of a TX descriptor, but `buffer_address` is None");
+        #[cfg(feature = "stm32f107")]
+        {
+            let buffer_addr = self
+                .buffer_address
+                .expect("Writing buffer2 of a TX descriptor, but `buffer_address` is None");
 
-        unsafe {
-            self.desc.write(2, buffer_addr as u32);
+            unsafe {
+                self.desc.write(2, buffer_addr);
+            }
         }
     }
 
@@ -133,7 +136,7 @@ impl TxDescriptor {
             .next_descriptor
             .expect("Writing buffer2 of a TX descriptor, but `next_descriptor` is None");
         unsafe {
-            self.desc.write(3, next_descriptor as u32);
+            self.desc.write(3, next_descriptor);
         }
     }
 
@@ -153,13 +156,15 @@ impl TxDescriptor {
         self.desc.read(0) & TXDESC_0_LS == TXDESC_0_LS
     }
 
-    fn read_timestamp(&self) -> Option<Timestamp> {
+    fn timestamp(&self) -> Option<Timestamp> {
         if !self.is_owned()
             && (self.desc.read(0) & TXDESC_0_TIMESTAMP) == TXDESC_0_TIMESTAMP
             && self.is_last()
         {
-            let seconds = self.desc.read(3);
-            let subseconds = self.desc.read(2);
+            #[cfg(not(feature = "stm32f107"))]
+            let (seconds, subseconds) = { (self.desc.read(7), self.desc.read(6)) };
+            #[cfg(feature = "stm32f107")]
+            let (seconds, subseconds) = { (self.desc.read(3), self.desc.read(2)) };
 
             let timestamp = Timestamp::new(seconds, subseconds);
 
@@ -273,7 +278,7 @@ pub struct TxRing<'a> {
 impl<'a> TxRing<'a> {
     pub fn collect_timestamps(&mut self) {
         for entry in self.entries.iter_mut() {
-            if let Some(timestamp) = entry.desc_mut().read_timestamp() {
+            if let Some(timestamp) = entry.desc_mut().timestamp() {
                 if entry.desc().cached_timestamp.is_none() && entry.desc().packet_id.is_some() {
                     entry.desc_mut().cached_timestamp = Some(timestamp);
                 }

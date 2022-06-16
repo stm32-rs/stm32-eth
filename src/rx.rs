@@ -102,8 +102,10 @@ impl RxDescriptor {
     /// Get PTP timestamps if available
     pub fn timestamp(&self) -> Option<Timestamp> {
         if self.desc.read(0) & RXDESC_0_TIMESTAMP == RXDESC_0_TIMESTAMP && self.is_last() {
-            let seconds = self.desc.read(3);
-            let subseconds = self.desc.read(2);
+            #[cfg(not(feature = "stm32f107"))]
+            let (seconds, subseconds) = { (self.desc.read(7), self.desc.read(6)) };
+            #[cfg(feature = "stm32f107")]
+            let (seconds, subseconds) = { (self.desc.read(3), self.desc.read(2)) };
 
             let timestamp = Timestamp::new(seconds, subseconds);
 
@@ -116,20 +118,23 @@ impl RxDescriptor {
     /// Rewrite buffer1 to the last value we wrote to it
     ///
     /// In our case, the address of the data buffer for this descriptor
+    ///
+    /// This only has to be done on stm32f107. For f4 and f7, enhanced descriptors
+    /// must be enabled for timestamping support, which we enable by default.
     fn write_buffer1(&mut self) {
         let buffer_addr = self
             .buffer_address
             .expect("Writing buffer1 of an RX descriptor, but `buffer_address` is None");
 
         unsafe {
-            self.desc.write(2, buffer_addr as u32);
+            self.desc.write(2, buffer_addr);
         }
     }
 
     fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
         self.buffer_address = Some(buffer as u32);
+        self.write_buffer1();
         unsafe {
-            self.write_buffer1();
             self.desc.modify(1, |w| {
                 (w & !RXDESC_1_RBS_MASK) | ((len as u32) << RXDESC_1_RBS_SHIFT)
             });
@@ -139,6 +144,9 @@ impl RxDescriptor {
     /// Rewrite buffer2 to the last value we wrote it to
     ///
     /// In our case, the address of the next descriptor (may be zero)
+    ///
+    /// This only has to be done on stm32f107. For f4 and f7, enhanced descriptors
+    /// must be enabled for timestamping support, which we enable by default.
     fn write_buffer2(&mut self) {
         let addr = self
             .next_descriptor

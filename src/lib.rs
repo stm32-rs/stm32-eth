@@ -61,7 +61,7 @@ pub struct Timestamp {
 impl Timestamp {
     pub const NANO_ROLLOVER: u32 = 999_999_999;
     pub const NORMAL_ROLLOVER: u32 = 0x7FFF_FFFF;
-    pub const NANOS_IN_SECOND: u32 = 999_999_999;
+    pub const NANOS_IN_SECOND: u32 = 1_000_000_000;
 
     pub fn new(seconds: u32, subseconds: u32) -> Self {
         Self {
