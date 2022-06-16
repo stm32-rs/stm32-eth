@@ -103,15 +103,12 @@ impl TxDescriptor {
     ///
     /// In our case, the address of the data buffer for this descriptor
     fn write_buffer1(&mut self) {
-        #[cfg(feature = "stm32f107")]
-        {
-            let buffer_addr = self
-                .buffer_address
-                .expect("Writing buffer2 of a TX descriptor, but `buffer_address` is None");
+        let buffer_addr = self
+            .buffer_address
+            .expect("Writing buffer2 of a TX descriptor, but `buffer_address` is None");
 
-            unsafe {
-                self.desc.write(2, buffer_addr);
-            }
+        unsafe {
+            self.desc.write(2, buffer_addr);
         }
     }
 

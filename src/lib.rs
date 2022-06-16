@@ -207,9 +207,12 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     while eth_dma.dmabmr.read().sr().bit_is_set() {}
 
     // Setup PTP timestamping
-    eth_ptp
-        .ptptscr
-        .write(|w| w.tse().set_bit().tsfcu().set_bit());
+    eth_ptp.ptptscr.write(|w| {
+        #[cfg(not(feature = "stm32f107"))]
+        let w = w.tsssr().set_bit().tssarfe().set_bit();
+
+        w.tse().set_bit().tsfcu().set_bit()
+    });
 
     // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
     eth_ptp.ptpssir.write(|w| w.stssi().bits(20));
