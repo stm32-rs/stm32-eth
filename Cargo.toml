@@ -31,7 +31,7 @@ defmt = { version = "0.3", optional = true }
 git = "https://github.com/datdenkikniet/smoltcp.git"
 branch = "unique_packet_id"
 default-features = false
-features = ["medium-ethernet", "proto-ipv4", "socket-udp", "socket-raw"]
+features = ["medium-ethernet", "proto-ipv4"]
 optional = true
 
 [features]
