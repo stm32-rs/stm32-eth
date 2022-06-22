@@ -389,9 +389,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     pub fn interrupt_handler(&mut self) {
         let is_tx = self.eth_dma.dmasr.read().ts().bit_is_set();
 
-        self.eth_dma
-            .dmasr
-            .write(|w| w.nis().set_bit().rs().set_bit().ts().set_bit());
+        eth_interrupt_handler(&self.eth_dma);
 
         if is_tx {
             self.tx_ring.collect_timestamps();
@@ -473,6 +471,12 @@ impl EthernetMAC {
     {
         smi::Smi::new(&self.eth_mac.macmiiar, &self.eth_mac.macmiidr, mdio, mdc)
     }
+}
+
+pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
+    eth_dma
+        .dmasr
+        .write(|w| w.nis().set_bit().rs().set_bit().ts().set_bit());
 }
 
 /// This block ensures that README.md is checked when `cargo test` is run.
