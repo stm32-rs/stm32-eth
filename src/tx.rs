@@ -18,6 +18,9 @@ const TXDESC_0_IC: u32 = 1 << 30;
 const TXDESC_0_FS: u32 = 1 << 28;
 /// Last segment of frame
 const TXDESC_0_LS: u32 = 1 << 29;
+/// Checksum insertion control
+const TXDESC_0_CIC0: u32 = 1 << 23;
+const TXDESC_0_CIC1: u32 = 1 << 22;
 /// Transmit end of ring
 const TXDESC_0_TER: u32 = 1 << 21;
 /// Second address chained
@@ -115,8 +118,15 @@ impl RingDescriptor for TxDescriptor {
     fn setup(&mut self, buffer: *const u8, _len: usize, next: Option<&Self>) {
         // Defer this initialization to this function, so we can have `RingEntry` on bss.
         unsafe {
-            self.desc
-                .write(0, TXDESC_0_TCH | TXDESC_0_IC | TXDESC_0_FS | TXDESC_0_LS);
+            self.desc.write(
+                0,
+                TXDESC_0_TCH
+                    | TXDESC_0_IC
+                    | TXDESC_0_FS
+                    | TXDESC_0_LS
+                    | TXDESC_0_CIC0
+                    | TXDESC_0_CIC1,
+            );
         }
         self.set_buffer1(buffer);
         match next {

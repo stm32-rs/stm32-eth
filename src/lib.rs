@@ -175,6 +175,9 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
             // Duplex mode
             .dm()
             .set_bit()
+            // IPv4 checksum offload
+            .ipco()
+            .set_bit()
             // Automatic pad/CRC stripping
             .apcs()
             .set_bit()

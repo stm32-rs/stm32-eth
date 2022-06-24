@@ -1,6 +1,6 @@
 use crate::{rx::RxPacket, tx::TxError, EthernetDMA};
 use core::intrinsics::transmute;
-use smoltcp::phy::{Device, DeviceCapabilities, RxToken, TxToken};
+use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
 use smoltcp::Error;
 
@@ -13,6 +13,7 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
         let mut caps = DeviceCapabilities::default();
         caps.max_transmission_unit = super::MTU;
         caps.max_burst_size = Some(1);
+        caps.checksum = ChecksumCapabilities::ignored();
         caps
     }
 
