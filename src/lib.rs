@@ -240,7 +240,12 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     eth_mmc.mmctimr.modify(|r, w| w.bits(r.bits() | (1 << 21)));
 
     // bus mode register
-    eth_dma.dmabmr.modify(|_, w|
+    eth_dma.dmabmr.modify(|_, w| {
+        // For any non-f107 chips, we must use enhanced descriptor format to support checksum
+        // offloading and/or timestamps.
+        #[cfg(not(feature = "stm32f107"))]
+        let w = w.edfe().set_bit();
+
         // Address-aligned beats
         w.aab()
             .set_bit()
@@ -258,7 +263,8 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
             .bits(0b01)
             // Use separate PBL
             .usp()
-            .set_bit());
+            .set_bit()
+    });
 
     let mut dma = EthernetDMA {
         eth_dma,

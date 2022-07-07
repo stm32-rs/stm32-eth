@@ -5,7 +5,7 @@ use volatile_register::{RO, RW};
 
 #[repr(C)]
 pub struct Descriptor {
-    desc: Aligned<A8, [u32; 4]>,
+    desc: Aligned<A8, [u32; 8]>,
 }
 
 impl Clone for Descriptor {
@@ -25,7 +25,7 @@ impl Default for Descriptor {
 impl Descriptor {
     pub const fn new() -> Self {
         Self {
-            desc: Aligned([0; 4]),
+            desc: Aligned([0; 8]),
         }
     }
 
