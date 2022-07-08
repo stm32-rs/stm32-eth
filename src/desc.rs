@@ -3,9 +3,15 @@ use core::ops::{Deref, DerefMut};
 use aligned::{Aligned, A8};
 use volatile_register::{RO, RW};
 
+#[cfg(not(feature = "stm32f107"))]
+const DESC_SIZE: usize = 8;
+
+#[cfg(feature = "stm32f107")]
+const DESC_SIZE: usize = 4;
+
 #[repr(C)]
 pub struct Descriptor {
-    desc: Aligned<A8, [u32; 8]>,
+    desc: Aligned<A8, [u32; DESC_SIZE]>,
 }
 
 impl Clone for Descriptor {
@@ -25,7 +31,7 @@ impl Default for Descriptor {
 impl Descriptor {
     pub const fn new() -> Self {
         Self {
-            desc: Aligned([0; 8]),
+            desc: Aligned([0; DESC_SIZE]),
         }
     }
 
