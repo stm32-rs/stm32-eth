@@ -260,60 +260,53 @@ impl_pins!(
 mod stm32f1 {
     use super::*;
     use stm32f1xx_hal::gpio::{
-        gpioa, gpiob, gpioc, gpiod, Alternate, Floating, IOPinSpeed, Input, OutputSpeed, PushPull,
+        gpioa::*, gpiob::*, gpioc::*, gpiod::*, Alternate, Floating, IOPinSpeed, Input,
+        OutputSpeed, PushPull,
     };
 
     // STM32F1xx's require access to the CRL/CRH registers to change pin mode. As a result, we
     // require that pins are already in the necessary mode before constructing `EthPins` as it
     // would be inconvenient to pass CRL and CRH through to the `AlternateVeryHighSpeed` callsite.
 
-    type PA1 = gpioa::PA1<Input<Floating>>;
-    type PA2 = gpioa::PA2<Alternate<PushPull>>;
-    type PA7 = gpioa::PA7<Input<Floating>>;
-    type PB11 = gpiob::PB11<Alternate<PushPull>>;
-    type PB12 = gpiob::PB12<Alternate<PushPull>>;
-    type PB13 = gpiob::PB13<Alternate<PushPull>>;
-    type PC1 = gpioc::PC1<Alternate<PushPull>>;
-    type PC4 = gpioc::PC4<Input<Floating>>;
-    type PC5 = gpioc::PC5<Input<Floating>>;
-    type PD8 = gpiod::PD8<Input<Floating>>;
-    type PD9 = gpiod::PD9<Input<Floating>>;
-    type PD10 = gpiod::PD10<Input<Floating>>;
-
-    unsafe impl RmiiRefClk for PA1 {}
-    unsafe impl RmiiCrsDv for PA7 {}
-    unsafe impl RmiiCrsDv for PD8 {}
-    unsafe impl RmiiTxEN for PB11 {}
-    unsafe impl RmiiTxD0 for PB12 {}
-    unsafe impl RmiiTxD1 for PB13 {}
-    unsafe impl RmiiRxD0 for PC4 {}
-    unsafe impl RmiiRxD0 for PD9 {}
-    unsafe impl RmiiRxD1 for PC5 {}
-    unsafe impl RmiiRxD1 for PD10 {}
-
-    macro_rules! impl_alt_very_high_speed {
-        ($($PIN:ident),*) => {
+    macro_rules! impl_pins {
+        ($($type:ident: [$(($PIN:ty, $is_input:literal)),+]),*) => {
             $(
-                impl AlternateVeryHighSpeed for $PIN {
-                    fn into_af11_very_high_speed(self) {
-                        // Within this critical section, modifying the `CRL` register can
-                        // only be unsound if this critical section preempts other code
-                        // that is modifying the same register
-                        cortex_m::interrupt::free(|_| {
-                            // SAFETY: this is sound as long as the API of the HAL and structure of the CRL
-                            // struct does not change. In case the size of the `CRL` struct is changed, compilation
-                            // will fail as `mem::transmute` can only convert between types of the same size.
-                            //
-                            // This guards us from unsound behaviour introduced by point releases of the f1 hal
-                            let acrl: &mut _ = &mut unsafe { core::mem::transmute(()) };
-                            let mut pin = self.into_alternate_push_pull(acrl);
-                            pin.set_speed(acrl, IOPinSpeed::Mhz50);
-                        });
+                $(
+                    unsafe impl $type for $PIN {}
+                    impl AlternateVeryHighSpeed for $PIN {
+                        fn into_af11_very_high_speed(self) {
+                            // Within this critical section, modifying the `CRL` register can
+                            // only be unsound if this critical section preempts other code
+                            // that is modifying the same register
+                            cortex_m::interrupt::free(|_| {
+                                // SAFETY: this is sound as long as the API of the HAL and structure of the CRL
+                                // struct does not change. In case the size of the `CRL` struct is changed, compilation
+                                // will fail as `mem::transmute` can only convert between types of the same size.
+                                //
+                                // This guards us from unsound behaviour introduced by point releases of the f1 hal
+                                let cr: &mut _ = &mut unsafe { core::mem::transmute(()) };
+                                // The speed can only be changed on output pins
+                                let mut pin = self.into_alternate_push_pull(cr);
+                                pin.set_speed(cr, IOPinSpeed::Mhz50);
+
+                                if $is_input {
+                                    pin.into_floating_input(cr);
+                                }
+                            });
+                        }
                     }
-                }
+                )+
             )*
-        }
+        };
     }
 
-    impl_alt_very_high_speed!(PA1, PA2, PA7, PB11, PB12, PB13, PC1, PC4, PC5, PD8, PD9, PD10);
+    impl_pins!(
+        RmiiRefClk: [(PA1<Input<Floating>>, true)],
+        RmiiCrsDv: [(PA7<Input<Floating>>, true), (PD8<Input<Floating>>, true)],
+        RmiiTxEN: [(PB11<Alternate<PushPull>>, false)],
+        RmiiTxD0: [(PB12<Alternate<PushPull>>, false)],
+        RmiiTxD1: [(PB13<Alternate<PushPull>>, false)],
+        RmiiRxD0: [(PC4<Input<Floating>>, true), (PD9<Input<Floating>>, true)],
+        RmiiRxD1: [(PC5<Input<Floating>>, true), (PD10<Input<Floating>>, true)]
+    );
 }
