@@ -22,7 +22,6 @@ pub use stm32f1xx_hal as hal;
 #[cfg(feature = "stm32f1xx-hal")]
 pub use stm32f1xx_hal::pac as stm32;
 
-use hal::rcc::Clocks;
 use stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, ETHERNET_PTP, NVIC};
 
 mod ring;
@@ -146,7 +145,7 @@ pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     eth_ptp: ETHERNET_PTP,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
-    clocks: Clocks,
+    hclk: u32,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
 ) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock>
 where
@@ -161,7 +160,7 @@ where
     pins.setup_pins();
     unsafe {
         new_unchecked(
-            eth_mac, eth_mmc, eth_dma, eth_ptp, rx_buffer, tx_buffer, clocks,
+            eth_mac, eth_mmc, eth_dma, eth_ptp, rx_buffer, tx_buffer, hclk,
         )
     }
 }
@@ -185,13 +184,11 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     eth_ptp: ETHERNET_PTP,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
-    clocks: Clocks,
+    hclk: u32,
 ) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
     setup::setup();
 
-    let clock_frequency = clocks.hclk().to_Hz();
-
-    let clock_range = match clock_frequency {
+    let clock_range = match hclk {
         0..=24_999_999 => return Err(WrongClock),
         25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
         35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,

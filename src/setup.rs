@@ -119,6 +119,8 @@ pub(crate) fn setup() {
                 .set_bit()
                 .ethmacrxen()
                 .set_bit()
+                .ethmacen()
+                .set_bit()
         });
 
         // Reset pulse.
