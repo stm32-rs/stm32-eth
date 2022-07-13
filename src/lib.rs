@@ -135,7 +135,7 @@ where
 /// This method does not initialise the external PHY.
 ///
 /// The SMI for the external PHY can be accessed through the
-/// returned [`EthernetMACWithSmi`], which implements [`mac::StationManagement`].
+/// returned [`EthernetMACWithSmi`], which implements [`mac::SerialManagement`].
 ///
 /// # Note
 /// - Make sure that the buffers reside in a memory region that is
@@ -176,7 +176,7 @@ where
 ///
 /// This method does not initialise the external PHY. However it does return an
 /// [`EthernetMAC`] which implements the
-/// [`mac::StationManagement`] trait. This can be used to
+/// [`mac::SerialManagement`] trait. This can be used to
 /// communicate with the external PHY.
 ///
 /// # Note

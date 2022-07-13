@@ -7,7 +7,7 @@ pub unsafe trait MdcPin {}
 
 /// A trait used for implementing access to SMI
 /// peripherals/functionality
-pub trait StationManagement {
+pub trait SerialManagement {
     /// Read an SMI register
     fn read(&self, phy: u8, reg: u8) -> u16;
     /// Write an SMI register
@@ -56,12 +56,10 @@ pub(crate) fn smi_read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 {
     dr.read().md().bits()
 }
 
-/// Station Management Interface
+/// Serial Management Interface
 ///
 /// Borrows [`MACMIIAR`] and [`MACMIIDR`] from (ETHERNET_MAC)[`crate::stm32::ETHERNET_MAC`], and holds a mutable borrow
 /// to the SMI pins.
-///
-/// Provides access to the MIIM implementation exposed by the MCU's MAC API.
 pub struct Smi<'eth, 'pins, Mdio, Mdc> {
     macmiiar: &'eth MACMIIAR,
     macmiidr: &'eth MACMIIDR,
@@ -69,7 +67,7 @@ pub struct Smi<'eth, 'pins, Mdio, Mdc> {
     _mdc: &'pins mut Mdc,
 }
 
-impl<'eth, 'pins, Mdio, Mdc> StationManagement for Smi<'eth, 'pins, Mdio, Mdc>
+impl<'eth, 'pins, Mdio, Mdc> SerialManagement for Smi<'eth, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,
     Mdc: MdcPin,

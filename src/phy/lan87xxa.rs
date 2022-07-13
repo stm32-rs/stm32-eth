@@ -1,7 +1,7 @@
 //! SMSC LAN87xxA (LAN8742A, LAN8720A) Ethernet PHYs
 use core::convert::TryFrom;
 
-use crate::{mac::StationManagement, LinkSpeed};
+use crate::{mac::SerialManagement, LinkSpeed};
 
 /// SMSC LAN8720A Ethernet PHY
 pub type LAN8720A<SMI> = LAN87xxA<SMI, false>;
@@ -67,7 +67,7 @@ pub struct LAN87xxA<S, const EXT_WUCSR_CLEAR: bool> {
 
 impl<S, const EXT_WUCSR_CLEAR: bool> LAN87xxA<S, EXT_WUCSR_CLEAR>
 where
-    S: StationManagement,
+    S: SerialManagement,
 {
     /// Create a new LAN87XXA based PHY
     pub fn new(smi: S, phy_addr: u8) -> Self {
@@ -162,7 +162,7 @@ where
         while !self.link_established() {}
     }
 
-    /// Release the underlying [`StationManagement`]
+    /// Release the underlying [`SerialManagement`]
     pub fn release(self) -> S {
         self.smi
     }
@@ -170,7 +170,7 @@ where
 
 impl<S, const EXT_WUCSR_CLEAR: bool> super::Phy for LAN87xxA<S, EXT_WUCSR_CLEAR>
 where
-    S: StationManagement,
+    S: SerialManagement,
 {
     type LinkSpeed = Option<LinkSpeed>;
 

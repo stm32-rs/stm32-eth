@@ -50,7 +50,7 @@ impl EthernetMAC {
 /// Ethernet media access control (MAC) with owned SMI
 ///
 /// This version of the struct owns it's SMI pins,
-/// allowing it to be used [`StationManagement`] directly.
+/// allowing it to be used [`SerialManagement`] directly.
 pub struct EthernetMACWithSmi<MDIO, MDC>
 where
     MDIO: MdioPin,
@@ -69,7 +69,7 @@ where
     /// Create a new EthernetMAC with owned MDIO and MDC pins.
     ///
     /// To interact with a connected Phy, use this struct's impl of
-    /// [`StationManagement`]
+    /// [`SerialManagement`]
     pub fn new(eth_mac: ETHERNET_MAC, mdio: MDIO, mdc: MDC) -> Self {
         Self { eth_mac, mdio, mdc }
     }
@@ -87,7 +87,7 @@ where
     }
 }
 
-impl<MDIO, MDC> StationManagement for EthernetMACWithSmi<MDIO, MDC>
+impl<MDIO, MDC> SerialManagement for EthernetMACWithSmi<MDIO, MDC>
 where
     MDIO: MdioPin,
     MDC: MdcPin,
