@@ -1,6 +1,6 @@
 //! An abstraction layer for ethernet periperhals embedded in STM32 processors.
 //!
-//! For initialisation, see [`new`], and [`new_with_smi_pins`]
+//! For initialisation, see [`new`], and [`new_with_smi`]
 #![no_std]
 
 use mac::EthernetMACWithSmi;
@@ -135,7 +135,7 @@ where
 /// This method does not initialise the external PHY.
 ///
 /// The SMI for the external PHY can be accessed through the
-/// returned [`EthernetMAC<OwnedSmi>`], which implements [`mac::StationManagement`].
+/// returned [`EthernetMACWithSmi`], which implements [`mac::StationManagement`].
 ///
 /// # Note
 /// - Make sure that the buffers reside in a memory region that is

@@ -5,8 +5,12 @@ pub unsafe trait MdioPin {}
 /// MDC pin types.
 pub unsafe trait MdcPin {}
 
+/// A trait used for implementing access to SMI
+/// peripherals/functionality
 pub trait StationManagement {
+    /// Read an SMI register
     fn read(&self, phy: u8, reg: u8) -> u16;
+    /// Write an SMI register
     fn write(&mut self, phy: u8, reg: u8, data: u16);
 }
 
@@ -52,9 +56,10 @@ pub(crate) fn smi_read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 {
     dr.read().md().bits()
 }
 
-/// Station Management Interface with pins and registers borrowed from [`EthernetMAC`].
+/// Station Management Interface
 ///
-/// Can also be constructed by borrowing from [`ETHERNET_MAC`] and borrowing the pins manually.
+/// Borrows [`MACMIIAR`] and [`MACMIIDR`] from (ETHERNET_MAC)[`crate::stm32::ETHERNET_MAC`], and holds a mutable borrow
+/// to the SMI pins.
 ///
 /// Provides access to the MIIM implementation exposed by the MCU's MAC API.
 pub struct Smi<'eth, 'pins, Mdio, Mdc> {
@@ -69,12 +74,10 @@ where
     Mdio: MdioPin,
     Mdc: MdcPin,
 {
-    /// Read an SMI register
     fn read(&self, phy: u8, reg: u8) -> u16 {
         smi_read(&self.macmiiar, &self.macmiidr, phy, reg)
     }
 
-    /// Write an SMI register
     fn write(&mut self, phy: u8, reg: u8, data: u16) {
         smi_write(&self.macmiiar, &self.macmiidr, phy, reg, data)
     }
@@ -85,7 +88,7 @@ where
     Mdio: MdioPin,
     Mdc: MdcPin,
 {
-    /// Create the temporary `Smi` instance.
+    /// Create a temporary `Smi` instance.
     ///
     /// Temporarily take exclusive access to the MDIO and MDC pins to ensure they are not used
     /// elsewhere for the duration of SMI communication.
@@ -101,11 +104,6 @@ where
             _mdio,
             _mdc,
         }
-    }
-
-    /// Read an SMI register
-    pub fn read(&self, phy: u8, reg: u8) -> u16 {
-        smi_read(&self.macmiiar, &self.macmiidr, phy, reg)
     }
 }
 
