@@ -1,8 +1,9 @@
 //! An abstraction layer for ethernet periperhals embedded in STM32 processors.
 //!
-//! For initialisation, see [`new`], and [`new_owned_smi`]
+//! For initialisation, see [`new`], and [`new_with_smi_pins`]
 #![no_std]
 
+use mac::EthernetMACWithSmi;
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -74,6 +75,8 @@ mod consts {
 use self::consts::*;
 
 /// HCLK must be at least 25MHz to use the ethernet peripheral.
+/// This (empty) struct is returned to indicate that it is not set
+/// correctly
 #[derive(Debug)]
 pub struct WrongClock;
 
@@ -103,7 +106,7 @@ pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC<mac::BorrowedSmi>), WrongClock>
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
@@ -115,7 +118,7 @@ where
 {
     pins.setup_pins();
 
-    let eth_mac = EthernetMAC::<mac::BorrowedSmi>::new(eth_mac);
+    let eth_mac = EthernetMAC::new(eth_mac);
 
     unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
 }
@@ -139,7 +142,7 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
-pub fn new_owned_smi<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
+pub fn new_with_smi<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
@@ -149,13 +152,7 @@ pub fn new_owned_smi<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, 
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
     mdio: MDIO,
     mdc: MDC,
-) -> Result<
-    (
-        EthernetDMA<'rx, 'tx>,
-        EthernetMAC<crate::mac::OwnedSmi<MDIO, MDC>>,
-    ),
-    WrongClock,
->
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMACWithSmi<MDIO, MDC>), WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
@@ -169,9 +166,10 @@ where
 {
     pins.setup_pins();
 
-    let eth_mac = EthernetMAC::<mac::OwnedSmi<MDIO, MDC>>::new(eth_mac, mdio, mdc);
+    let eth_mac = EthernetMAC::new(eth_mac);
 
     unsafe { new_unchecked(eth_mac, eth_mmc, eth_dma, rx_buffer, tx_buffer, clocks) }
+        .map(|(dma, mac)| (dma, mac.with_smi(mdio, mdc)))
 }
 
 /// Create and initialise the ethernet driver (without GPIO configuration and validation).
@@ -186,14 +184,14 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25MHz.
-pub unsafe fn new_unchecked<'rx, 'tx, Smi>(
-    eth_mac_in: EthernetMAC<Smi>,
+pub unsafe fn new_unchecked<'rx, 'tx>(
+    eth_mac_in: EthernetMAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC<Smi>), WrongClock> {
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
     setup::setup();
 
     let eth_mac = &eth_mac_in.eth_mac;
