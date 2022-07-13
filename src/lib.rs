@@ -181,7 +181,7 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
-    eth_ptp: ETHERNET_PTP,
+    _eth_ptp: ETHERNET_PTP,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     hclk: u32,
@@ -203,33 +203,33 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     // Wait until done
     while eth_dma.dmabmr.read().sr().bit_is_set() {}
 
-    // Setup PTP timestamping
-    eth_ptp.ptptscr.write(|w| {
-        #[cfg(not(feature = "stm32f107"))]
-        let w = w.tsssr().set_bit().tssarfe().set_bit();
+    // // Setup PTP timestamping
+    // eth_ptp.ptptscr.write(|w| {
+    //     #[cfg(not(feature = "stm32f107"))]
+    //     let w = w.tsssr().set_bit().tssarfe().set_bit();
 
-        w.tse().set_bit().tsfcu().set_bit()
-    });
+    //     w.tse().set_bit().tsfcu().set_bit()
+    // });
 
-    // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
-    eth_ptp.ptpssir.write(|w| w.stssi().bits(20));
-    eth_ptp.ptptsar.write(|w| w.tsa().bits(1 << 31));
+    // // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
+    // eth_ptp.ptpssir.write(|w| w.stssi().bits(20));
+    // eth_ptp.ptptsar.write(|w| w.tsa().bits(1 << 31));
 
-    #[cfg(feature = "stm32f107")]
-    {
-        eth_ptp.ptptscr.modify(|_, w| w.tsaru().set_bit());
-        while eth_ptp.ptptscr.read().tsaru().bit_is_set() {}
-    }
+    // #[cfg(feature = "stm32f107")]
+    // {
+    //     eth_ptp.ptptscr.modify(|_, w| w.tsaru().set_bit());
+    //     while eth_ptp.ptptscr.read().tsaru().bit_is_set() {}
+    // }
 
-    #[cfg(not(feature = "stm32f107"))]
-    {
-        eth_ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
-        while eth_ptp.ptptscr.read().ttsaru().bit_is_set() {}
-    }
+    // #[cfg(not(feature = "stm32f107"))]
+    // {
+    //     eth_ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
+    //     while eth_ptp.ptptscr.read().ttsaru().bit_is_set() {}
+    // }
 
-    // Initialise timestamp
-    eth_ptp.ptptscr.modify(|_, w| w.tssti().set_bit());
-    while eth_ptp.ptptscr.read().tssti().bit_is_set() {}
+    // // Initialise timestamp
+    // eth_ptp.ptptscr.modify(|_, w| w.tssti().set_bit());
+    // while eth_ptp.ptptscr.read().tssti().bit_is_set() {}
 
     // set clock range in MAC MII address register
     eth_mac.macmiiar.modify(|_, w| w.cr().bits(clock_range));
@@ -462,9 +462,8 @@ impl EthernetMAC {
 }
 
 pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
-    eth_dma
-        .dmasr
-        .write(|w| w.nis().set_bit().rs().set_bit().ts().set_bit());
+    // eth_dma.dmasr.modify(|_, w| w.ts().set_bit().rs().set_bit());
+    eth_dma.dmasr.write(|w| unsafe { w.bits(0xFFFF_FFFF) });
 }
 
 /// This block ensures that README.md is checked when `cargo test` is run.
