@@ -387,13 +387,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     ///
     /// TODO: could return interrupt reason
     pub fn interrupt_handler(&mut self) {
-        let is_tx = self.eth_dma.dmasr.read().ts().bit_is_set();
-
         eth_interrupt_handler(&self.eth_dma);
-
-        if is_tx {
-            self.tx_ring.collect_timestamps();
-        }
+        self.tx_ring.collect_timestamps();
     }
 
     /// Is Rx DMA currently running?
@@ -408,10 +403,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// immediately.
     pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
         self.rx_ring.recv_next(&self.eth_dma, packet_id)
-    }
-
-    pub fn clear_rx_timestamps(&mut self) {
-        self.rx_ring.clear_rx_timestamps();
     }
 
     /// Is Tx DMA currently running?
@@ -431,10 +422,11 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         result
     }
 
+    /// Get a timestamp for thegiven ID
     pub fn get_timestamp_for_id<'a, PKT>(
         &mut self,
         packet_id: PKT,
-    ) -> Result<Timestamp, (TimestampError, PKT)>
+    ) -> Result<Timestamp, TimestampError>
     where
         PKT: IntoPacketId,
     {
@@ -445,9 +437,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         let internal_packet_id = packet_id.to_packet_id();
 
         tx_ring
-            .get_timestamp_for_id(internal_packet_id)
-            .or_else(|(_, internal_packet_id)| rx_ring.get_timestamp_for_id(internal_packet_id))
-            .map_err(|(e, _)| (e, packet_id))
+            .get_timestamp_for_id(internal_packet_id.clone())
+            .or_else(|_| rx_ring.get_timestamp_for_id(internal_packet_id))
     }
 }
 

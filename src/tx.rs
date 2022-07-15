@@ -275,18 +275,19 @@ pub struct TxRing<'a> {
 impl<'a> TxRing<'a> {
     pub fn collect_timestamps(&mut self) {
         for entry in self.entries.iter_mut() {
-            if let Some(timestamp) = entry.desc_mut().timestamp() {
-                if entry.desc().cached_timestamp.is_none() && entry.desc().packet_id.is_some() {
+            if entry.desc().packet_id.is_some() {
+                if let Some(timestamp) = entry.desc_mut().timestamp() {
                     entry.desc_mut().cached_timestamp = Some(timestamp);
+                } else {
+                    entry.desc_mut().cached_timestamp.take();
                 }
+            } else {
+                entry.desc_mut().cached_timestamp.take();
             }
         }
     }
 
-    pub fn get_timestamp_for_id(
-        &mut self,
-        id: PacketId,
-    ) -> Result<Timestamp, (TimestampError, PacketId)> {
+    pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
         let mut id_found = false;
         for entry in self.entries.iter_mut() {
             let TxDescriptor {
@@ -308,9 +309,9 @@ impl<'a> TxRing<'a> {
         }
 
         if !id_found {
-            Err((TimestampError::IdNotFound, id))
+            Err(TimestampError::IdNotFound)
         } else {
-            Err((TimestampError::NotYetTimestamped, id))
+            Err(TimestampError::NotYetTimestamped)
         }
     }
 

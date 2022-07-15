@@ -262,10 +262,7 @@ pub struct RxRing<'a> {
 }
 
 impl<'a> RxRing<'a> {
-    pub fn get_timestamp_for_id(
-        &mut self,
-        id: PacketId,
-    ) -> Result<Timestamp, (TimestampError, PacketId)> {
+    pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
         for entry in self.entries.iter_mut() {
             if let Some((packet_id, timestamp)) = &mut entry.desc_mut().timestamp_info {
                 if packet_id == &id {
@@ -276,7 +273,7 @@ impl<'a> RxRing<'a> {
             }
         }
 
-        return Err((TimestampError::IdNotFound, id));
+        return Err(TimestampError::IdNotFound);
     }
 
     /// Allocate
@@ -343,12 +340,6 @@ impl<'a> RxRing<'a> {
         }
     }
 
-    pub fn clear_rx_timestamps(&mut self) {
-        self.entries.iter_mut().for_each(|entry| {
-            entry.desc_mut().timestamp_info.take();
-        });
-    }
-
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
     pub fn recv_next(
@@ -370,10 +361,13 @@ impl<'a> RxRing<'a> {
             }
 
             if let Ok(entry) = &mut result {
-                if let (Some(packet_id), Some(timestamp)) =
-                    (packet_id, entry.entry.desc().timestamp())
-                {
-                    entry.entry.desc_mut().timestamp_info = Some((packet_id, timestamp))
+                match (packet_id, entry.entry.desc().timestamp()) {
+                    (Some(packet_id), Some(timestamp)) => {
+                        entry.entry.desc_mut().timestamp_info = Some((packet_id, timestamp))
+                    }
+                    _ => {
+                        entry.entry.desc_mut().timestamp_info.take();
+                    }
                 }
             }
         }
