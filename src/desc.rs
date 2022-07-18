@@ -11,7 +11,7 @@ const DESC_SIZE: usize = 4;
 
 #[repr(C)]
 pub struct Descriptor {
-    desc: Aligned<A8, [u32; DESC_SIZE]>,
+    pub(crate) desc: Aligned<A8, [u32; DESC_SIZE]>,
 }
 
 impl Clone for Descriptor {

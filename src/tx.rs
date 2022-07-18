@@ -22,7 +22,9 @@ const TXDESC_0_LS: u32 = 1 << 29;
 const TXDESC_0_CIC0: u32 = 1 << 23;
 const TXDESC_0_CIC1: u32 = 1 << 22;
 /// Timestamp this packet
-const TXDESC_0_TIMESTAMP: u32 = 1 << 25;
+const TXDESC_0_TIMESTAMP_ENABLE: u32 = 1 << 25;
+/// This descriptor contains a timestamp
+const TXDESC_0_TIMESTAMP_STATUS: u32 = 1 << 17;
 /// Transmit end of ring
 const TXDESC_0_TER: u32 = 1 << 21;
 /// Second address chained
@@ -43,7 +45,7 @@ pub enum TxError {
 #[repr(C)]
 #[derive(Clone)]
 pub struct TxDescriptor {
-    desc: Descriptor,
+    pub(crate) desc: Descriptor,
     pub(crate) packet_id: Option<PacketId>,
     cached_timestamp: Option<Timestamp>,
     buffer_address: Option<u32>,
@@ -69,19 +71,17 @@ impl TxDescriptor {
     }
 
     /// Is owned by the DMA engine?
-    fn is_owned(&self) -> bool {
+    pub(crate) fn is_owned(&self) -> bool {
         (self.desc.read(0) & TXDESC_0_OWN) == TXDESC_0_OWN
     }
 
     /// Pass ownership to the DMA engine
-    ///
-    /// Overwrites old timestamp data
     fn set_owned(&mut self) {
         self.write_buffer1();
         self.write_buffer2();
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
-        #[cfg(feature = "fence")]
+        // #[cfg(feature = "fence")]
         atomic::fence(Ordering::Release);
         atomic::compiler_fence(Ordering::Release);
         unsafe {
@@ -90,7 +90,7 @@ impl TxDescriptor {
 
         // Used to flush the store buffer as fast as possible to make the buffer available for the
         // DMA.
-        #[cfg(feature = "fence")]
+        // #[cfg(feature = "fence")]
         atomic::fence(Ordering::SeqCst);
     }
 
@@ -149,21 +149,29 @@ impl TxDescriptor {
         }
     }
 
-    fn is_last(&self) -> bool {
-        self.desc.read(0) & TXDESC_0_LS == TXDESC_0_LS
+    fn is_last(tdes0: u32) -> bool {
+        tdes0 & TXDESC_0_LS == TXDESC_0_LS
     }
 
-    fn timestamp(&self) -> Option<Timestamp> {
-        if !self.is_owned()
-            && (self.desc.read(0) & TXDESC_0_TIMESTAMP) == TXDESC_0_TIMESTAMP
-            && self.is_last()
-        {
+    fn timestamp(&mut self) -> Option<Timestamp> {
+        let tdes0 = self.desc.read(0);
+
+        let contains_timestamp = (tdes0 & TXDESC_0_TIMESTAMP_STATUS) == TXDESC_0_TIMESTAMP_STATUS;
+
+        if !self.is_owned() && contains_timestamp && Self::is_last(tdes0) {
             #[cfg(not(feature = "stm32f107"))]
             let (seconds, subseconds) = { (self.desc.read(7), self.desc.read(6)) };
             #[cfg(feature = "stm32f107")]
             let (seconds, subseconds) = { (self.desc.read(3), self.desc.read(2)) };
 
             let timestamp = Timestamp::new(seconds, subseconds);
+
+            // Clear the timestamp status bit, because we're currently reading it
+            unsafe {
+                self.desc.write(0, tdes0 & !(TXDESC_0_TIMESTAMP_STATUS));
+            }
+
+            defmt::info!("{}.{:09}", timestamp.seconds(), timestamp.nanos());
 
             Some(timestamp)
         } else {
@@ -174,7 +182,9 @@ impl TxDescriptor {
     /// Enable PTP timestamping
     fn set_timestamping(&mut self) {
         unsafe {
-            self.desc.modify(0, |w| w | TXDESC_0_TIMESTAMP);
+            self.desc.modify(0, |w| {
+                w | TXDESC_0_TIMESTAMP_ENABLE | TXDESC_0_FS | TXDESC_0_LS
+            });
         }
     }
 
@@ -268,23 +278,35 @@ impl<'a> TxPacket<'a> {
 
 /// Tx DMA state
 pub struct TxRing<'a> {
-    entries: &'a mut [TxRingEntry],
+    pub(crate) entries: &'a mut [TxRingEntry],
     next_entry: usize,
 }
 
 impl<'a> TxRing<'a> {
     pub fn collect_timestamps(&mut self) {
+        let mut iterated_descriptors = 0;
+        let mut desc_with_id = 0;
+        let mut owned = 0;
         for entry in self.entries.iter_mut() {
+            // Clear all old timestamps
+            entry.desc_mut().cached_timestamp.take();
+            iterated_descriptors += 1;
+
+            owned += if entry.desc().is_owned() { 1 } else { 0 };
+
             if entry.desc().packet_id.is_some() {
+                desc_with_id += 1;
                 if let Some(timestamp) = entry.desc_mut().timestamp() {
                     entry.desc_mut().cached_timestamp = Some(timestamp);
-                } else {
-                    entry.desc_mut().cached_timestamp.take();
                 }
-            } else {
-                entry.desc_mut().cached_timestamp.take();
             }
         }
+        defmt::info!(
+            "Iterated: {}, With id: {}, Owned: {}",
+            iterated_descriptors,
+            desc_with_id,
+            owned
+        );
     }
 
     pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {

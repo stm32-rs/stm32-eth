@@ -61,7 +61,7 @@ pub struct Timestamp {
 impl Timestamp {
     pub const NANO_ROLLOVER: u32 = 999_999_999;
     pub const NORMAL_ROLLOVER: u32 = 0x7FFF_FFFF;
-    pub const NANOS_IN_SECOND: u32 = 1_000_000_000;
+    pub const NANOS_PER_SECOND: u32 = 1_000_000_000;
 
     pub fn new(seconds: u32, subseconds: u32) -> Self {
         Self {
@@ -71,13 +71,13 @@ impl Timestamp {
     }
 
     pub fn seconds(&self) -> u32 {
-        let seconds_in_subseconds = self.subseconds / Self::NANOS_IN_SECOND;
+        let seconds_in_subseconds = self.subseconds / Self::NANOS_PER_SECOND;
 
         self.seconds + seconds_in_subseconds
     }
 
     pub fn nanos(&self) -> u32 {
-        let nanos = self.subseconds % Self::NANOS_IN_SECOND;
+        let nanos = self.subseconds % Self::NANOS_PER_SECOND;
         nanos
     }
 }
@@ -206,33 +206,38 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     // Wait until done
     while eth_dma.dmabmr.read().sr().bit_is_set() {}
 
-    // Setup PTP timestamping
-    eth_ptp.ptptscr.write(|w| {
+    // Mask timestamp interrupt register, required for stm32f107 according to AN3411
+    eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
+
+    if false {
+        // Setup PTP timestamping
+        eth_ptp.ptptscr.write(|w| {
+            #[cfg(not(feature = "stm32f107"))]
+            let w = w.tsssr().set_bit().tssarfe().set_bit();
+
+            w.tse().set_bit().tsfcu().set_bit()
+        });
+
+        // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
+        eth_ptp.ptpssir.write(|w| w.stssi().bits(20));
+        eth_ptp.ptptsar.write(|w| w.tsa().bits(1 << 31));
+
+        #[cfg(feature = "stm32f107")]
+        {
+            eth_ptp.ptptscr.modify(|_, w| w.tsaru().set_bit());
+            while eth_ptp.ptptscr.read().tsaru().bit_is_set() {}
+        }
+
         #[cfg(not(feature = "stm32f107"))]
-        let w = w.tsssr().set_bit().tssarfe().set_bit();
+        {
+            eth_ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
+            while eth_ptp.ptptscr.read().ttsaru().bit_is_set() {}
+        }
 
-        w.tse().set_bit().tsfcu().set_bit()
-    });
-
-    // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
-    eth_ptp.ptpssir.write(|w| w.stssi().bits(20));
-    eth_ptp.ptptsar.write(|w| w.tsa().bits(1 << 31));
-
-    #[cfg(feature = "stm32f107")]
-    {
-        eth_ptp.ptptscr.modify(|_, w| w.tsaru().set_bit());
-        while eth_ptp.ptptscr.read().tsaru().bit_is_set() {}
+        // Initialise timestamp
+        eth_ptp.ptptscr.modify(|_, w| w.tssti().set_bit());
+        while eth_ptp.ptptscr.read().tssti().bit_is_set() {}
     }
-
-    #[cfg(not(feature = "stm32f107"))]
-    {
-        eth_ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
-        while eth_ptp.ptptscr.read().ttsaru().bit_is_set() {}
-    }
-
-    // Initialise timestamp
-    eth_ptp.ptptscr.modify(|_, w| w.tssti().set_bit());
-    while eth_ptp.ptptscr.read().tssti().bit_is_set() {}
 
     // set clock range in MAC MII address register
     eth_mac.macmiiar.modify(|_, w| w.cr().bits(clock_range));
@@ -387,6 +392,29 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     ///
     /// TODO: could return interrupt reason
     pub fn interrupt_handler(&mut self) {
+        let owned_descriptors = self
+            .tx_ring
+            .entries
+            .iter().map(|f|{
+                let tdes0 = f.desc().desc.read(0);
+                let tdes1 = f.desc().desc.read(1);
+                let tdes2 = f.desc().desc.read(2);
+                let tdes3 = f.desc().desc.read(3);
+        
+                defmt::trace!(
+                    "Available descriptors: TDES0: {:08X}, TDES1: {:08X}, TDES2: {:08X}, TDES3: {:08X}",
+                    tdes0,
+                    tdes1,
+                    tdes2,
+                    tdes3,
+                );
+                f
+            })
+            .filter(|e| e.desc().is_owned())
+            .count();
+
+        defmt::info!("Owned descriptors: {}", owned_descriptors);
+
         eth_interrupt_handler(&self.eth_dma);
         self.tx_ring.collect_timestamps();
     }
@@ -465,8 +493,22 @@ impl EthernetMAC {
 }
 
 pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
-    // eth_dma.dmasr.modify(|_, w| w.ts().set_bit().rs().set_bit());
-    eth_dma.dmasr.write(|w| unsafe { w.bits(0xFFFF_FFFF) });
+    let status = eth_dma.dmasr.read();
+    defmt::debug!(
+        "Interrupt handler -> EBS: {:02X}, TPS: {:02X}, RPS: {:02X}, AIS: {}, NIS: {}, TUS: {}, TS: {}, RS: {}",
+        status.ebs().bits(),
+        status.tps().bits(),
+        status.rps().bits(),
+        status.ais().bit_is_set(),
+        status.nis().bit_is_set(),
+        status.tus().bit_is_set(),
+        status.ts().bit_is_set(),
+        status.rs().bit_is_set(),
+    );
+
+    eth_dma
+        .dmasr
+        .write(|w| w.nis().set_bit().ts().set_bit().rs().set_bit());
 }
 
 /// This block ensures that README.md is checked when `cargo test` is run.

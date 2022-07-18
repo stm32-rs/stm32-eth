@@ -71,7 +71,6 @@ impl RxDescriptor {
         self.write_buffer2();
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
-        #[cfg(feature = "fence")]
         atomic::fence(Ordering::Release);
         atomic::compiler_fence(Ordering::Release);
 
@@ -81,7 +80,6 @@ impl RxDescriptor {
 
         // Used to flush the store buffer as fast as possible to make the buffer available for the
         // DMA.
-        #[cfg(feature = "fence")]
         atomic::fence(Ordering::SeqCst);
     }
 
