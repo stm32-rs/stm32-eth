@@ -284,29 +284,16 @@ pub struct TxRing<'a> {
 
 impl<'a> TxRing<'a> {
     pub fn collect_timestamps(&mut self) {
-        let mut iterated_descriptors = 0;
-        let mut desc_with_id = 0;
-        let mut owned = 0;
         for entry in self.entries.iter_mut() {
             // Clear all old timestamps
             entry.desc_mut().cached_timestamp.take();
-            iterated_descriptors += 1;
-
-            owned += if entry.desc().is_owned() { 1 } else { 0 };
 
             if entry.desc().packet_id.is_some() {
-                desc_with_id += 1;
                 if let Some(timestamp) = entry.desc_mut().timestamp() {
                     entry.desc_mut().cached_timestamp = Some(timestamp);
                 }
             }
         }
-        defmt::info!(
-            "Iterated: {}, With id: {}, Owned: {}",
-            iterated_descriptors,
-            desc_with_id,
-            owned
-        );
     }
 
     pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {

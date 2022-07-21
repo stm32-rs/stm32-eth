@@ -392,29 +392,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     ///
     /// TODO: could return interrupt reason
     pub fn interrupt_handler(&mut self) {
-        let owned_descriptors = self
-            .tx_ring
-            .entries
-            .iter().map(|f|{
-                let tdes0 = f.desc().desc.read(0);
-                let tdes1 = f.desc().desc.read(1);
-                let tdes2 = f.desc().desc.read(2);
-                let tdes3 = f.desc().desc.read(3);
-        
-                defmt::trace!(
-                    "Available descriptors: TDES0: {:08X}, TDES1: {:08X}, TDES2: {:08X}, TDES3: {:08X}",
-                    tdes0,
-                    tdes1,
-                    tdes2,
-                    tdes3,
-                );
-                f
-            })
-            .filter(|e| e.desc().is_owned())
-            .count();
-
-        defmt::info!("Owned descriptors: {}", owned_descriptors);
-
         eth_interrupt_handler(&self.eth_dma);
         self.tx_ring.collect_timestamps();
     }
@@ -494,7 +471,7 @@ impl EthernetMAC {
 
 pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
     let status = eth_dma.dmasr.read();
-    defmt::debug!(
+    defmt::trace!(
         "Interrupt handler -> EBS: {:02X}, TPS: {:02X}, RPS: {:02X}, AIS: {}, NIS: {}, TUS: {}, TS: {}, RS: {}",
         status.ebs().bits(),
         status.tps().bits(),
