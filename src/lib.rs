@@ -152,6 +152,60 @@ impl EthernetMAC {
             (true, true) => Speed::FullDuplexBase100Tx,
         }
     }
+
+    pub(crate) fn mask_timestamp_interrupt(&mut self) {
+        self.eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
+    }
+
+    pub(crate) fn set_clock_range(&mut self, range: u8) {
+        self.eth_mac
+            .macmiiar
+            .modify(|_, w| unsafe { w.cr().bits(range) });
+    }
+
+    pub(crate) fn enable(&mut self, speed: Speed) {
+        self.eth_mac.maccr.modify(|_, w| {
+            // CRC stripping for Type frames. STM32F1xx do not have this bit.
+            #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
+            let w = w.cstf().set_bit();
+
+            // Fast Ethernet speed
+            w
+                // IPv4 checksum offload
+                .ipco()
+                .set_bit()
+                // Automatic pad/CRC stripping
+                .apcs()
+                .set_bit()
+                // Retry disable in half-duplex mode
+                .rd()
+                .set_bit()
+                // Receiver enable
+                .re()
+                .set_bit()
+                // Transmitter enable
+                .te()
+                .set_bit()
+        });
+
+        // frame filter register
+        self.eth_mac.macffr.modify(|_, w| {
+            // Receive All
+            w.ra()
+                .set_bit()
+                // Promiscuous mode
+                .pm()
+                .set_bit()
+        });
+
+        // Flow Control Register
+        self.eth_mac.macfcr.modify(|_, w| {
+            // Pause time
+            w.pt().bits(0x100)
+        });
+
+        self.set_phy_speed(speed);
+    }
 }
 
 /// Create and initialise the ethernet driver.
@@ -182,6 +236,7 @@ pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
+    initial_speed: Option<Speed>,
 ) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
@@ -195,7 +250,14 @@ where
     pins.setup_pins();
     unsafe {
         new_unchecked(
-            eth_mac, eth_mmc, eth_dma, eth_ptp, rx_buffer, tx_buffer, clocks,
+            eth_mac,
+            eth_mmc,
+            eth_dma,
+            eth_ptp,
+            rx_buffer,
+            tx_buffer,
+            clocks,
+            initial_speed,
         )
     }
 }
@@ -220,8 +282,11 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
+    initial_speed: Option<Speed>,
 ) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock> {
     setup::setup();
+
+    let mut mac = EthernetMAC { eth_mac };
 
     let hclk = clocks.hclk().to_Hz();
 
@@ -241,7 +306,7 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     while eth_dma.dmabmr.read().sr().bit_is_set() {}
 
     // Mask timestamp interrupt register, required for stm32f107 according to AN3411
-    eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
+    mac.mask_timestamp_interrupt();
 
     if false {
         // Setup PTP timestamping
@@ -274,51 +339,11 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
     }
 
     // set clock range in MAC MII address register
-    eth_mac.macmiiar.modify(|_, w| w.cr().bits(clock_range));
+    mac.set_clock_range(clock_range);
 
     // Configuration Register
-    eth_mac.maccr.modify(|_, w| {
-        // CRC stripping for Type frames. STM32F1xx do not have this bit.
-        #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
-        let w = w.cstf().set_bit();
+    mac.enable(initial_speed.unwrap_or(Speed::HalfDuplexBase10T));
 
-        // Fast Ethernet speed
-        w
-            // .fes()
-            // .set_bit()
-            // Duplex mode
-            // .dm()
-            // .set_bit()
-            // IPv4 checksum offload
-            .ipco()
-            .set_bit()
-            // Automatic pad/CRC stripping
-            .apcs()
-            .set_bit()
-            // Retry disable in half-duplex mode
-            .rd()
-            .set_bit()
-            // Receiver enable
-            .re()
-            .set_bit()
-            // Transmitter enable
-            .te()
-            .set_bit()
-    });
-    // frame filter register
-    eth_mac.macffr.modify(|_, w| {
-        // Receive All
-        w.ra()
-            .set_bit()
-            // Promiscuous mode
-            .pm()
-            .set_bit()
-    });
-    // Flow Control Register
-    eth_mac.macfcr.modify(|_, w| {
-        // Pause time
-        w.pt().bits(0x100)
-    });
     // operation mode register
     eth_dma.dmaomr.modify(|_, w| {
         // Dropping of TCP/IP checksum error frames disable
@@ -382,7 +407,6 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
         rx_ring: RxRing::new(rx_buffer),
         tx_ring: TxRing::new(tx_buffer),
     };
-    let mac = EthernetMAC { eth_mac };
 
     dma.rx_ring.start(&dma.eth_dma);
     dma.tx_ring.start(&dma.eth_dma);
