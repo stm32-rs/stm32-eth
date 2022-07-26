@@ -11,6 +11,20 @@ use crate::{
 mod miim;
 pub use miim::*;
 
+/// Speeds at which this MAC can be configured
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Speed {
+    /// 10Base-T half duplex
+    HalfDuplexBase10T,
+    /// 10Base-T full duplex
+    FullDuplexBase10T,
+    /// 100Base-Tx half duplex
+    HalfDuplexBase100Tx,
+    /// 100Base-Tx full duplex
+    FullDuplexBase100Tx,
+}
+
 mod consts {
     /* For HCLK 60-100 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_42: u8 = 0;
@@ -54,6 +68,7 @@ impl EthernetMAC {
         // this function.
         #[allow(unused)] eth_dma: &EthernetDMA,
         clocks: Clocks,
+        initial_speed: Speed,
     ) -> Result<Self, WrongClock> {
         let clock_frequency = clocks.hclk().to_Hz();
 
@@ -132,7 +147,11 @@ impl EthernetMAC {
             .mmctimr
             .modify(|r, w| unsafe { w.bits(r.bits() | (1 << 21)) });
 
-        Ok(Self { eth_mac })
+        let mut me = Self { eth_mac };
+
+        me.set_speed(initial_speed);
+
+        Ok(me)
     }
 
     /// Borrow access to the MAC's SMI.
@@ -164,6 +183,31 @@ impl EthernetMAC {
             eth_mac: self,
             mdio,
             mdc,
+        }
+    }
+
+    /// Set the Ethernet Speed at which the MAC communicates
+    ///
+    /// Note that this does _not_ affect the PHY in any way. To
+    /// configure the PHY, use [`EthernetMACWithMii`] (see: [`Self::with_mii`])
+    /// or [`Stm32Mii`] (see: [`Self::mii`])
+    pub fn set_speed(&mut self, speed: Speed) {
+        self.eth_mac.maccr.modify(|_, w| match speed {
+            Speed::HalfDuplexBase10T => w.fes().clear_bit().dm().clear_bit(),
+            Speed::FullDuplexBase10T => w.fes().clear_bit().dm().set_bit(),
+            Speed::HalfDuplexBase100Tx => w.fes().set_bit().dm().clear_bit(),
+            Speed::FullDuplexBase100Tx => w.fes().set_bit().dm().set_bit(),
+        });
+    }
+
+    /// Get the Ethernet Speed at which the MAC communicates
+    pub fn get_speed(&self) -> Speed {
+        let cr = self.eth_mac.maccr.read();
+        match (cr.fes().bit_is_set(), cr.dm().bit_is_set()) {
+            (false, false) => Speed::HalfDuplexBase10T,
+            (false, true) => Speed::FullDuplexBase10T,
+            (true, false) => Speed::HalfDuplexBase100Tx,
+            (true, true) => Speed::FullDuplexBase100Tx,
         }
     }
 }
