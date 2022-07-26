@@ -115,9 +115,43 @@ pub struct EthernetDMA<'rx, 'tx> {
     rx_ring: RxRing<'rx>,
     tx_ring: TxRing<'tx>,
 }
+
+/// Speeds at which this MAC can be configured
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Speed {
+    HalfDuplexBase10T,
+    FullDuplexBase10T,
+    HalfDuplexBase100Tx,
+    FullDuplexBase100Tx,
+}
+
 /// Ethernet media access control (MAC).
 pub struct EthernetMAC {
     eth_mac: ETHERNET_MAC,
+}
+
+impl EthernetMAC {
+    /// Set communications rate appropriate for the given speed,
+    /// at which the MAC communicates with the PHY.
+    pub fn set_phy_speed(&mut self, speed: Speed) {
+        self.eth_mac.maccr.modify(|_, w| match speed {
+            Speed::HalfDuplexBase10T => w.fes().clear_bit().dm().clear_bit(),
+            Speed::FullDuplexBase10T => w.fes().clear_bit().dm().set_bit(),
+            Speed::HalfDuplexBase100Tx => w.fes().set_bit().dm().clear_bit(),
+            Speed::FullDuplexBase100Tx => w.fes().set_bit().dm().set_bit(),
+        });
+    }
+
+    pub fn get_phy_speed(&self) -> Speed {
+        let cr = self.eth_mac.maccr.read();
+        match (cr.fes().bit_is_set(), cr.dm().bit_is_set()) {
+            (false, false) => Speed::HalfDuplexBase10T,
+            (false, true) => Speed::FullDuplexBase10T,
+            (true, false) => Speed::HalfDuplexBase100Tx,
+            (true, true) => Speed::FullDuplexBase100Tx,
+        }
+    }
 }
 
 /// Create and initialise the ethernet driver.
@@ -249,11 +283,12 @@ pub unsafe fn new_unchecked<'rx, 'tx>(
         let w = w.cstf().set_bit();
 
         // Fast Ethernet speed
-        w.fes()
-            .set_bit()
+        w
+            // .fes()
+            // .set_bit()
             // Duplex mode
-            .dm()
-            .set_bit()
+            // .dm()
+            // .set_bit()
             // IPv4 checksum offload
             .ipco()
             .set_bit()
