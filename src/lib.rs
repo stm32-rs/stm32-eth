@@ -307,8 +307,10 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     }
 
     /// Calls [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html)
-    pub fn interrupt_handler(&self) {
+    pub fn interrupt_handler(&self) -> InterruptReasonSummary {
+        let status = eth_interrupt_handler(&self.eth_dma);
         eth_interrupt_handler(&self.eth_dma);
+        status
     }
 
     /// Is Rx DMA currently running?
@@ -364,6 +366,14 @@ impl EthernetMAC {
     }
 }
 
+/// A summary of the reasons for the interrupt
+/// that occured
+pub struct InterruptReasonSummary {
+    pub is_rx: bool,
+    pub is_tx: bool,
+    pub is_error: bool,
+}
+
 /// Call in interrupt handler to clear interrupt reason, when
 /// [`enable_interrupt()`](struct.EthernetDMA.html#method.enable_interrupt).
 ///
@@ -371,12 +381,20 @@ impl EthernetMAC {
 ///
 /// * Via the [`EthernetDMA`](struct.EthernetDMA.html) driver instance that your interrupt handler has access to.
 /// * By unsafely getting `Peripherals`.
-///
-/// TODO: could return interrupt reason
-pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
+pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) -> InterruptReasonSummary {
+    let status = eth_dma.dmasr.read();
+
+    let status = InterruptReasonSummary {
+        is_rx: status.rs().bit_is_set(),
+        is_tx: status.ts().bit_is_set(),
+        is_error: status.ais().bit_is_set(),
+    };
+
     eth_dma
         .dmasr
-        .write(|w| w.nis().set_bit().rs().set_bit().ts().set_bit());
+        .write(|w| w.nis().set_bit().ts().set_bit().rs().set_bit());
+
+    status
 }
 
 /// This block ensures that README.md is checked when `cargo test` is run.
