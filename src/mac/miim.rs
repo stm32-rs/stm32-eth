@@ -1,3 +1,9 @@
+#[cfg(feature = "ieee802_3_miim")]
+pub use ieee802_3_miim::Miim;
+
+#[cfg(feature = "ieee802_3_miim")]
+pub use ieee802_3_miim::*;
+
 use crate::stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
 
 /// MDIO pin types.
@@ -5,22 +11,13 @@ pub unsafe trait MdioPin {}
 /// MDC pin types.
 pub unsafe trait MdcPin {}
 
-/// A trait used for implementing access to SMI
-/// peripherals/functionality
-pub trait SerialManagement {
-    /// Read an SMI register
-    fn read(&self, phy: u8, reg: u8) -> u16;
-    /// Write an SMI register
-    fn write(&mut self, phy: u8, reg: u8, data: u16);
-}
-
 #[inline(always)]
-fn smi_wait_ready(iar: &MACMIIAR) {
+fn miim_wait_ready(iar: &MACMIIAR) {
     while iar.read().mb().bit_is_set() {}
 }
 
 #[inline(always)]
-pub(crate) fn smi_write(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8, data: u16) {
+pub(crate) fn miim_write(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8, data: u16) {
     dr.write(|w| w.md().bits(data));
 
     iar.modify(|_, w| {
@@ -34,11 +31,11 @@ pub(crate) fn smi_write(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8, data: u
             .mb()
             .set_bit()
     });
-    smi_wait_ready(iar);
+    miim_wait_ready(iar);
 }
 
 #[inline(always)]
-pub(crate) fn smi_read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 {
+pub(crate) fn miim_read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 {
     iar.modify(|_, w| {
         w.pa()
             .bits(phy)
@@ -50,7 +47,7 @@ pub(crate) fn smi_read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 {
             .mb()
             .set_bit()
     });
-    smi_wait_ready(iar);
+    miim_wait_ready(iar);
 
     // Return value:
     dr.read().md().bits()
@@ -60,28 +57,43 @@ pub(crate) fn smi_read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 {
 ///
 /// Borrows [`MACMIIAR`] and [`MACMIIDR`] from (ETHERNET_MAC)[`crate::stm32::ETHERNET_MAC`], and holds a mutable borrow
 /// to the SMI pins.
-pub struct Smi<'eth, 'pins, Mdio, Mdc> {
+pub struct Stm32Miim<'eth, 'pins, Mdio, Mdc> {
     macmiiar: &'eth MACMIIAR,
     macmiidr: &'eth MACMIIDR,
     _mdio: &'pins mut Mdio,
     _mdc: &'pins mut Mdc,
 }
 
-impl<'eth, 'pins, Mdio, Mdc> SerialManagement for Smi<'eth, 'pins, Mdio, Mdc>
+impl<'eth, 'pins, Mdio, Mdc> Stm32Miim<'eth, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,
     Mdc: MdcPin,
 {
-    fn read(&self, phy: u8, reg: u8) -> u16 {
-        smi_read(&self.macmiiar, &self.macmiidr, phy, reg)
+    pub fn read(&mut self, phy: u8, reg: u8) -> u16 {
+        miim_read(&self.macmiiar, &self.macmiidr, phy, reg)
     }
 
-    fn write(&mut self, phy: u8, reg: u8, data: u16) {
-        smi_write(&self.macmiiar, &self.macmiidr, phy, reg, data)
+    pub fn write(&mut self, phy: u8, reg: u8, data: u16) {
+        miim_write(&self.macmiiar, &self.macmiidr, phy, reg, data)
     }
 }
 
-impl<'eth, 'pins, Mdio, Mdc> Smi<'eth, 'pins, Mdio, Mdc>
+#[cfg(feature = "ieee802_3_miim")]
+impl<'eth, 'pins, Mdio, Mdc> Miim for Stm32Miim<'eth, 'pins, Mdio, Mdc>
+where
+    Mdio: MdioPin,
+    Mdc: MdcPin,
+{
+    fn read(&mut self, phy: u8, reg: u8) -> u16 {
+        self.read(phy, reg)
+    }
+
+    fn write(&mut self, phy: u8, reg: u8, data: u16) {
+        self.write(phy, reg, data)
+    }
+}
+
+impl<'eth, 'pins, Mdio, Mdc> Stm32Miim<'eth, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,
     Mdc: MdcPin,

@@ -18,6 +18,7 @@ use cortex_m::interrupt::Mutex;
 use cortex_m_rt::{entry, exception};
 use cortex_m_semihosting::hprintln;
 use fugit::RateExtU32;
+use ieee802_3_miim::Phy;
 use smoltcp::wire::{
     ArpOperation, ArpPacket, ArpRepr, EthernetAddress, EthernetFrame, EthernetProtocol,
     EthernetRepr, Ipv4Address,
@@ -25,13 +26,10 @@ use smoltcp::wire::{
 use stm32_eth::{
     hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
-    mac::{MdcPin, MdioPin, Smi, SerialManagement},
+    mac::phy::bare::BarePhy,
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 use stm32_eth::{EthPins, RingEntry, TxError};
-
-const PHY_REG_BSR: u8 = 0x01;
-const PHY_REG_BSR_UP: u16 = 1 << 2;
 
 const PHY_ADDR: u8 = 0;
 
@@ -75,7 +73,7 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let (mut eth_dma, mut eth_mac) = stm32_eth::new(
+    let (mut eth_dma, eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_MMC,
         p.ETHERNET_DMA,
@@ -89,8 +87,10 @@ fn main() -> ! {
 
     let mut last_link_up = false;
 
+    let mut bare_phy = BarePhy::new(eth_mac.with_smi(mdio, mdc), PHY_ADDR, Default::default());
+
     loop {
-        let link_up = link_detected(eth_mac.smi(&mut mdio, &mut mdc));
+        let link_up = bare_phy.phy_link_up();
 
         if link_up != last_link_up {
             if link_up {
@@ -178,13 +178,4 @@ fn ETH() {
     // Clear interrupt flags
     let p = unsafe { Peripherals::steal() };
     stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
-}
-
-fn link_detected<Mdio, Mdc>(smi: Smi<Mdio, Mdc>) -> bool
-where
-    Mdio: MdioPin,
-    Mdc: MdcPin,
-{
-    let status = smi.read(PHY_ADDR, PHY_REG_BSR);
-    (status & PHY_REG_BSR_UP) == PHY_REG_BSR_UP
 }

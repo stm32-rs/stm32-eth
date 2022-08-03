@@ -3,7 +3,7 @@
 //! For initialisation, see [`new`], and [`new_with_smi`]
 #![no_std]
 
-use mac::EthernetMACWithSmi;
+use mac::EthernetMACWithMiim;
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -51,11 +51,6 @@ pub use smoltcp;
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::{EthRxToken, EthTxToken};
-
-#[cfg(feature = "phy")]
-mod phy;
-#[cfg(feature = "phy")]
-pub use phy::*;
 
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
@@ -152,7 +147,7 @@ pub fn new_with_smi<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, M
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
     mdio: MDIO,
     mdc: MDC,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMACWithSmi<MDIO, MDC>), WrongClock>
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMACWithMiim<MDIO, MDC>), WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
