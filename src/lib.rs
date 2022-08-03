@@ -450,9 +450,10 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// * By unsafely getting `Peripherals`.
     ///
     /// TODO: could return interrupt reason
-    pub fn interrupt_handler(&mut self) {
-        eth_interrupt_handler(&self.eth_dma);
+    pub fn interrupt_handler(&mut self) -> InterruptReasonSummary {
+        let status = eth_interrupt_handler(&self.eth_dma);
         self.tx_ring.collect_timestamps();
+        status
     }
 
     /// Is Rx DMA currently running?
@@ -528,8 +529,18 @@ impl EthernetMAC {
     }
 }
 
-pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
+/// A summary of the reasons for the interrupt
+/// that occured
+pub struct InterruptReasonSummary {
+    pub is_rx: bool,
+    pub is_tx: bool,
+    pub is_error: bool,
+}
+
+pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) -> InterruptReasonSummary {
     let status = eth_dma.dmasr.read();
+
+    #[cfg(feature = "defmt")]
     defmt::trace!(
         "Interrupt handler -> EBS: {:02X}, TPS: {:02X}, RPS: {:02X}, AIS: {}, NIS: {}, TUS: {}, TS: {}, RS: {}",
         status.ebs().bits(),
@@ -542,9 +553,17 @@ pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) {
         status.rs().bit_is_set(),
     );
 
+    let status = InterruptReasonSummary {
+        is_rx: status.rs().bit_is_set(),
+        is_tx: status.ts().bit_is_set(),
+        is_error: status.ais().bit_is_set(),
+    };
+
     eth_dma
         .dmasr
         .write(|w| w.nis().set_bit().ts().set_bit().rs().set_bit());
+
+    status
 }
 
 /// This block ensures that README.md is checked when `cargo test` is run.

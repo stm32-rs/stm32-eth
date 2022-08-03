@@ -171,8 +171,6 @@ impl TxDescriptor {
                 self.desc.write(0, tdes0 & !(TXDESC_0_TIMESTAMP_STATUS));
             }
 
-            defmt::info!("{}.{:09}", timestamp.seconds(), timestamp.nanos());
-
             Some(timestamp)
         } else {
             None
