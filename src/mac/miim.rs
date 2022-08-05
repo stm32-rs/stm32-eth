@@ -4,7 +4,10 @@ pub use ieee802_3_miim::Miim;
 #[cfg(feature = "ieee802_3_miim")]
 pub use ieee802_3_miim::*;
 
-use crate::stm32::ethernet_mac::{MACMIIAR, MACMIIDR};
+use crate::{
+    stm32::{ethernet_mac::MACMIIAR, ETHERNET_MAC},
+    EthernetMAC,
+};
 
 /// MDIO pin types.
 pub unsafe trait MdioPin {}
@@ -17,10 +20,10 @@ fn miim_wait_ready(iar: &MACMIIAR) {
 }
 
 #[inline(always)]
-pub(crate) fn miim_write(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8, data: u16) {
-    dr.write(|w| w.md().bits(data));
+fn miim_write(eth_mac: &mut ETHERNET_MAC, phy: u8, reg: u8, data: u16) {
+    eth_mac.macmiidr.write(|w| w.md().bits(data));
 
-    iar.modify(|_, w| {
+    eth_mac.macmiiar.modify(|_, w| {
         w.pa()
             .bits(phy)
             .mr()
@@ -31,12 +34,12 @@ pub(crate) fn miim_write(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8, data: 
             .mb()
             .set_bit()
     });
-    miim_wait_ready(iar);
+    miim_wait_ready(&eth_mac.macmiiar);
 }
 
 #[inline(always)]
-pub(crate) fn miim_read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 {
-    iar.modify(|_, w| {
+fn miim_read(eth_mac: &mut ETHERNET_MAC, phy: u8, reg: u8) -> u16 {
+    eth_mac.macmiiar.modify(|_, w| {
         w.pa()
             .bits(phy)
             .mr()
@@ -47,34 +50,33 @@ pub(crate) fn miim_read(iar: &MACMIIAR, dr: &MACMIIDR, phy: u8, reg: u8) -> u16 
             .mb()
             .set_bit()
     });
-    miim_wait_ready(iar);
+    miim_wait_ready(&eth_mac.macmiiar);
 
     // Return value:
-    dr.read().md().bits()
+    eth_mac.macmiidr.read().md().bits()
 }
 
 /// Serial Management Interface
 ///
 /// Borrows [`MACMIIAR`] and [`MACMIIDR`] from (ETHERNET_MAC)[`crate::stm32::ETHERNET_MAC`], and holds a mutable borrow
 /// to the SMI pins.
-pub struct Stm32Miim<'eth, 'pins, Mdio, Mdc> {
-    macmiiar: &'eth MACMIIAR,
-    macmiidr: &'eth MACMIIDR,
+pub struct Stm32Miim<'mac, 'pins, Mdio, Mdc> {
+    mac: &'mac mut EthernetMAC,
     _mdio: &'pins mut Mdio,
     _mdc: &'pins mut Mdc,
 }
 
-impl<'eth, 'pins, Mdio, Mdc> Stm32Miim<'eth, 'pins, Mdio, Mdc>
+impl<'mac, 'pins, Mdio, Mdc> Stm32Miim<'mac, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,
     Mdc: MdcPin,
 {
     pub fn read(&mut self, phy: u8, reg: u8) -> u16 {
-        miim_read(&self.macmiiar, &self.macmiidr, phy, reg)
+        miim_read(&mut self.mac.eth_mac, phy, reg)
     }
 
     pub fn write(&mut self, phy: u8, reg: u8, data: u16) {
-        miim_write(&self.macmiiar, &self.macmiidr, phy, reg, data)
+        miim_write(&mut self.mac.eth_mac, phy, reg, data)
     }
 }
 
@@ -102,18 +104,8 @@ where
     ///
     /// Temporarily take exclusive access to the MDIO and MDC pins to ensure they are not used
     /// elsewhere for the duration of SMI communication.
-    pub fn new(
-        macmiiar: &'eth MACMIIAR,
-        macmiidr: &'eth MACMIIDR,
-        _mdio: &'pins mut Mdio,
-        _mdc: &'pins mut Mdc,
-    ) -> Self {
-        Self {
-            macmiiar,
-            macmiidr,
-            _mdio,
-            _mdc,
-        }
+    pub fn new(mac: &'eth mut EthernetMAC, _mdio: &'pins mut Mdio, _mdc: &'pins mut Mdc) -> Self {
+        Self { mac, _mdio, _mdc }
     }
 }
 
