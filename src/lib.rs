@@ -1,6 +1,6 @@
 //! An abstraction layer for ethernet periperhals embedded in STM32 processors.
 //!
-//! For initialisation, see [`new`], and [`new_with_smi`]
+//! For initialisation, see [`new`], and [`new_with_mii`]
 #![no_std]
 
 /// Re-export
@@ -103,7 +103,7 @@ where
 ///
 /// This method does not initialise the external PHY.
 ///
-/// The SMI for the external PHY can be accessed through the
+/// The MII for the external PHY can be accessed through the
 /// returned [`EthernetMACWithMii`], .
 ///
 /// # Note
@@ -111,7 +111,7 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
-pub fn new_with_smi<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
+pub fn new_with_mii<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
     eth_dma: ETHERNET_DMA,
@@ -133,7 +133,7 @@ where
     MDIO: mac::MdioPin,
     MDC: mac::MdcPin,
 {
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins)?.with_smi(mdio, mdc);
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins)?.with_mii(mdio, mdc);
 
     let dma = EthernetDMA::new(&mac, eth_dma, rx_buffer, tx_buffer);
 
