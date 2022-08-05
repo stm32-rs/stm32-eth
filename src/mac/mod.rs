@@ -40,10 +40,11 @@ impl EthernetMAC {
     ///     
     /// HCLK must be at least 25MHz, else this function will return `Err(WrongClock)`.
     ///
-    /// This method does not initialise the external PHY. However it does return an
-    /// [`EthernetMAC`] which implements the
-    /// [`mac::SerialManagement`] trait. This can be used to
-    /// communicate with the external PHY.
+    /// This method does not initialise the external PHY. However, you can access SMI
+    /// `read` and `write` functions through the `smi` and `with_smi` functions.
+    ///
+    /// Additionally, an optional `impl` of the [`ieee802_3_miim::Miim`] trait is available
+    /// with the `ieee802_3_miim` feature (enabled by default), for PHY communication.
     pub fn new<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
         eth_mac: ETHERNET_MAC,
         eth_mmc: ETHERNET_MMC,
@@ -154,21 +155,21 @@ impl EthernetMAC {
         &'eth mut self,
         mdio: &'pins mut Mdio,
         mdc: &'pins mut Mdc,
-    ) -> Stm32Miim<'eth, 'pins, Mdio, Mdc>
+    ) -> Stm32Mii<'eth, 'pins, Mdio, Mdc>
     where
         Mdio: MdioPin,
         Mdc: MdcPin,
     {
-        Stm32Miim::new(self, mdio, mdc)
+        Stm32Mii::new(self, mdio, mdc)
     }
 
-    /// Turn this [`EthernetMAC`] into an [`EthernetMACWithSmi`]
-    pub fn with_smi<MDIO, MDC>(self, mdio: MDIO, mdc: MDC) -> EthernetMACWithMiim<MDIO, MDC>
+    /// Turn this [`EthernetMAC`] into an [`EthernetMACWithMii`]
+    pub fn with_smi<MDIO, MDC>(self, mdio: MDIO, mdc: MDC) -> EthernetMACWithMii<MDIO, MDC>
     where
         MDIO: MdioPin,
         MDC: MdcPin,
     {
-        EthernetMACWithMiim {
+        EthernetMACWithMii {
             eth_mac: self,
             mdio,
             mdc,
@@ -181,7 +182,7 @@ impl EthernetMAC {
 /// This version of the struct owns it's SMI pins,
 /// allowing it to be used directly, instead of requiring
 /// that a  [`Miim`] is created.
-pub struct EthernetMACWithMiim<MDIO, MDC>
+pub struct EthernetMACWithMii<MDIO, MDC>
 where
     MDIO: MdioPin,
     MDC: MdcPin,
@@ -191,15 +192,17 @@ where
     mdc: MDC,
 }
 
-impl<MDIO, MDC> EthernetMACWithMiim<MDIO, MDC>
+impl<MDIO, MDC> EthernetMACWithMii<MDIO, MDC>
 where
     MDIO: MdioPin,
     MDC: MdcPin,
 {
     /// Create a new EthernetMAC with owned MDIO and MDC pins.
     ///
-    /// To interact with a connected Phy, use this struct's impl of
-    /// [`SerialManagement`]
+    /// To interact with a connected Phy, use the `read` and `write` functions.
+    ///
+    /// Functionality for interacting with PHYs from the `ieee802_3_miim` crate
+    /// is available if the default feature `ieee802_3_miim` is enabled.
     pub fn new(eth_mac: EthernetMAC, mdio: MDIO, mdc: MDC) -> Self {
         Self { eth_mac, mdio, mdc }
     }
@@ -211,7 +214,7 @@ where
     }
 }
 
-impl<MDIO, MDC> Deref for EthernetMACWithMiim<MDIO, MDC>
+impl<MDIO, MDC> Deref for EthernetMACWithMii<MDIO, MDC>
 where
     MDIO: MdioPin,
     MDC: MdcPin,
@@ -223,7 +226,7 @@ where
     }
 }
 
-impl<MDIO, MDC> EthernetMACWithMiim<MDIO, MDC>
+impl<MDIO, MDC> EthernetMACWithMii<MDIO, MDC>
 where
     MDIO: MdioPin,
     MDC: MdcPin,
@@ -242,7 +245,7 @@ where
 }
 
 #[cfg(feature = "ieee802_3_miim")]
-impl<MDIO, MDC> miim::Miim for EthernetMACWithMiim<MDIO, MDC>
+impl<MDIO, MDC> miim::Miim for EthernetMACWithMii<MDIO, MDC>
 where
     MDIO: MdioPin,
     MDC: MdcPin,

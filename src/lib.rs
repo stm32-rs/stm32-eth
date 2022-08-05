@@ -33,7 +33,7 @@ mod ring;
 pub use ring::RingEntry;
 mod desc;
 pub mod mac;
-pub use mac::{EthernetMAC, EthernetMACWithMiim, WrongClock};
+pub use mac::{EthernetMAC, EthernetMACWithMii, WrongClock};
 mod rx;
 pub use rx::{RxDescriptor, RxError, RxRingEntry};
 mod tx;
@@ -60,11 +60,15 @@ const MTU: usize = 1522;
 /// Sets up the peripheral clocks and GPIO configuration,
 /// and configures the ETH MAC and DMA peripherals.
 /// Automatically sets slew rate to VeryHigh.
-/// If you wish to use another configuration, please see
-/// [new_unchecked](new_unchecked).
 ///
 /// This method does not initialise the external PHY. Interacting with a PHY
 /// can be done by using the struct returned from [`EthernetMAC::smi`].
+///
+/// /// # Note
+/// - Make sure that the buffers reside in a memory region that is
+/// accessible by the peripheral. Core-Coupled Memory (CCM) is
+/// usually not accessible.
+/// - HCLK must be at least 25 MHz.
 pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
@@ -96,13 +100,11 @@ where
 /// Sets up the peripheral clocks and GPIO configuration,
 /// and configures the ETH MAC and DMA peripherals.
 /// Automatically sets slew rate to VeryHigh.
-/// If you wish to use another configuration, please see
-/// [new_unchecked](new_unchecked).
 ///
 /// This method does not initialise the external PHY.
 ///
 /// The SMI for the external PHY can be accessed through the
-/// returned [`EthernetMACWithSmi`], which implements [`mac::SerialManagement`].
+/// returned [`EthernetMACWithMii`], .
 ///
 /// # Note
 /// - Make sure that the buffers reside in a memory region that is
@@ -119,7 +121,7 @@ pub fn new_with_smi<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, M
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
     mdio: MDIO,
     mdc: MDC,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMACWithMiim<MDIO, MDC>), WrongClock>
+) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMACWithMii<MDIO, MDC>), WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,

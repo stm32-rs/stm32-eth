@@ -58,15 +58,14 @@ fn miim_read(eth_mac: &mut ETHERNET_MAC, phy: u8, reg: u8) -> u16 {
 
 /// Serial Management Interface
 ///
-/// Borrows [`MACMIIAR`] and [`MACMIIDR`] from (ETHERNET_MAC)[`crate::stm32::ETHERNET_MAC`], and holds a mutable borrow
-/// to the SMI pins.
-pub struct Stm32Miim<'mac, 'pins, Mdio, Mdc> {
+/// Borrows an [`EthernetMAC`] and holds a mutable borrow to the SMI pins.
+pub struct Stm32Mii<'mac, 'pins, Mdio, Mdc> {
     mac: &'mac mut EthernetMAC,
     _mdio: &'pins mut Mdio,
     _mdc: &'pins mut Mdc,
 }
 
-impl<'mac, 'pins, Mdio, Mdc> Stm32Miim<'mac, 'pins, Mdio, Mdc>
+impl<'mac, 'pins, Mdio, Mdc> Stm32Mii<'mac, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,
     Mdc: MdcPin,
@@ -81,7 +80,7 @@ where
 }
 
 #[cfg(feature = "ieee802_3_miim")]
-impl<'eth, 'pins, Mdio, Mdc> Miim for Stm32Miim<'eth, 'pins, Mdio, Mdc>
+impl<'eth, 'pins, Mdio, Mdc> Miim for Stm32Mii<'eth, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,
     Mdc: MdcPin,
@@ -95,7 +94,7 @@ where
     }
 }
 
-impl<'eth, 'pins, Mdio, Mdc> Stm32Miim<'eth, 'pins, Mdio, Mdc>
+impl<'eth, 'pins, Mdio, Mdc> Stm32Mii<'eth, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,
     Mdc: MdcPin,
