@@ -20,7 +20,7 @@ use fugit::RateExtU32;
 use stm32_eth::{
     hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
-    mac::{phy::bare::BarePhy, Phy},
+    mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 

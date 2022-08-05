@@ -18,7 +18,6 @@ use cortex_m::interrupt::Mutex;
 use cortex_m_rt::{entry, exception};
 use cortex_m_semihosting::hprintln;
 use fugit::RateExtU32;
-use ieee802_3_miim::Phy;
 use smoltcp::wire::{
     ArpOperation, ArpPacket, ArpRepr, EthernetAddress, EthernetFrame, EthernetProtocol,
     EthernetRepr, Ipv4Address,
@@ -26,7 +25,7 @@ use smoltcp::wire::{
 use stm32_eth::{
     hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
-    mac::phy::bare::BarePhy,
+    mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 use stm32_eth::{EthPins, RingEntry, TxError};
