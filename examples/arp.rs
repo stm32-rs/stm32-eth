@@ -1,4 +1,4 @@
-// cargo build --example arp --features=stm32f407,smi
+// cargo build --example arp --features=stm32f407
 // This example uses the STM32F407 and the KSZ8051R as PHY. If necessary the pins,
 // the PHY register addresses and masks have to be adapted, as well as the IPs.
 // With Wireshark, you can see the ARP packets, which should look like this:
@@ -20,16 +20,13 @@ use fugit::RateExtU32;
 use stm32_eth::{
     hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
-    smi,
+    mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
 use cortex_m_semihosting::hprintln;
 
 use stm32_eth::{EthPins, RingEntry, TxError};
-
-const PHY_REG_BSR: u8 = 0x01;
-const PHY_REG_BSR_UP: u16 = 1 << 2;
 
 const PHY_ADDR: u8 = 0;
 
@@ -73,7 +70,7 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let (mut eth_dma, mut eth_mac) = stm32_eth::new(
+    let (mut eth_dma, eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_MMC,
         p.ETHERNET_DMA,
@@ -87,8 +84,10 @@ fn main() -> ! {
 
     let mut last_link_up = false;
 
+    let mut bare_phy = BarePhy::new(eth_mac.with_smi(mdio, mdc), PHY_ADDR, Default::default());
+
     loop {
-        let link_up = link_detected(eth_mac.smi(&mut mdio, &mut mdc));
+        let link_up = bare_phy.phy_link_up();
 
         if link_up != last_link_up {
             if link_up {
@@ -176,13 +175,4 @@ fn ETH() {
     // Clear interrupt flags
     let p = unsafe { Peripherals::steal() };
     stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
-}
-
-fn link_detected<Mdio, Mdc>(smi: smi::Smi<Mdio, Mdc>) -> bool
-where
-    Mdio: smi::MdioPin,
-    Mdc: smi::MdcPin,
-{
-    let status = smi.read(PHY_ADDR, PHY_REG_BSR);
-    (status & PHY_REG_BSR_UP) == PHY_REG_BSR_UP
 }

@@ -15,7 +15,7 @@ travis-ci = { repository = "astro/stm32-eth", branch = "master" }
 maintenance = { status = "experimental" }
 
 [package.metadata.docs.rs]
-features = ["smi", "smoltcp-phy", "stm32f429", "smoltcp/socket-tcp"]
+features = ["smoltcp-phy", "smoltcp/socket-raw", "stm32f429"]
 
 [dependencies]
 volatile-register = "0.2"
@@ -24,6 +24,7 @@ stm32f7xx-hal = { version = "0.7.0", optional = true }
 stm32f4xx-hal = { version = "0.13", optional = true }
 stm32f1xx-hal = { git = "https://github.com/datdenkikniet/stm32f1xx-hal.git", branch = "gd32f107", optional = true }
 # stm32f1xx-hal = { path = "../stm32f1xx-hal", optional = true }
+ieee802_3_miim = { version = "0.7", optional = true }
 cortex-m = "0.7"
 log = { version = "0.4", optional = true }
 defmt = { version = "0.3", optional = true }
@@ -36,9 +37,9 @@ features = ["medium-ethernet", "proto-ipv4"]
 optional = true
 
 [features]
+default = [ "ieee802_3_miim" ]
 device-selected = []
 fence = []
-smi = []
 
 stm32f107 = ["stm32f1xx-hal/stm32f107", "device-selected"]
 
@@ -72,7 +73,7 @@ fugit = "0.3"
 
 [[example]]
 name = "pktgen"
-required-features = ["smi", "stm32f429"]
+required-features = ["stm32f429"]
 
 [[example]]
 name = "ip"
@@ -90,11 +91,11 @@ required-features = [
 
 [[example]]
 name = "arp"
-required-features = ["stm32f407", "smi"]
+required-features = ["stm32f407"]
 
 [[example]]
 name = "arp-smoltcp"
-required-features = ["stm32f407", "smi", "smoltcp-phy", "smoltcp/socket-icmp"]
+required-features = ["stm32f407", "smoltcp-phy", "smoltcp/socket-icmp"]
 
 [profile.release]
 debug = 2

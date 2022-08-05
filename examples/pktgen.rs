@@ -17,7 +17,7 @@ use fugit::RateExtU32;
 use stm32_eth::{
     hal::gpio::{GpioExt, Speed},
     hal::rcc::RccExt,
-    smi,
+    mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
@@ -70,7 +70,7 @@ fn main() -> ! {
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let (mut eth_dma, mut eth_mac) = stm32_eth::new(
+    let (mut eth_dma, eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_MMC,
         p.ETHERNET_DMA,
@@ -89,6 +89,8 @@ fn main() -> ! {
     let mut tx_bytes = 0usize;
     let mut tx_pkts = 0usize;
     let mut last_link_up = false;
+
+    let mut phy = BarePhy::new(eth_mac.with_smi(mdio, mdc), PHY_ADDR, Default::default());
 
     loop {
         let time: usize = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
@@ -115,7 +117,7 @@ fn main() -> ! {
         }
 
         // Link change detection
-        let link_up = link_detected(eth_mac.smi(&mut mdio, &mut mdc));
+        let link_up = phy.phy_link_up();
         if link_up != last_link_up {
             if link_up {
                 writeln!(stdout, "Ethernet: no link detected").unwrap();
@@ -151,7 +153,7 @@ fn main() -> ! {
 
         // fill tx queue
         const SIZE: usize = 1500;
-        if link_detected(eth_mac.smi(&mut mdio, &mut mdc)) {
+        if phy.phy_link_up() {
             'egress: loop {
                 let r = eth_dma.send(SIZE, |buf| {
                     buf[0..6].copy_from_slice(&DST_MAC);
@@ -212,15 +214,4 @@ fn ETH() {
     // Clear interrupt flags
     let p = unsafe { Peripherals::steal() };
     stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
-}
-
-fn link_detected<Mdio, Mdc>(smi: smi::Smi<Mdio, Mdc>) -> bool
-where
-    Mdio: smi::MdioPin,
-    Mdc: smi::MdcPin,
-{
-    const STATUS_REG_ADDR: u8 = 0x3;
-    const STATUS_REG_UP_MASK: u16 = 1 << 2;
-    let status = smi.read(PHY_ADDR, STATUS_REG_ADDR);
-    (status & STATUS_REG_UP_MASK) == STATUS_REG_UP_MASK
 }
