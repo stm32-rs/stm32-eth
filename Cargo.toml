@@ -33,11 +33,6 @@ default-features = false
 features = ["medium-ethernet", "proto-ipv4"]
 optional = true
 
-[dependencies.num_enum]
-version = "0.5"
-default-features = false
-optional = true
-
 [features]
 default = [ "ieee802_3_miim" ]
 device-selected = []
