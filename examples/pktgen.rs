@@ -90,7 +90,7 @@ fn main() -> ! {
     let mut tx_pkts = 0usize;
     let mut last_link_up = false;
 
-    let mut phy = BarePhy::new(eth_mac.with_smi(mdio, mdc), PHY_ADDR, Default::default());
+    let mut phy = BarePhy::new(eth_mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
 
     loop {
         let time: usize = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());

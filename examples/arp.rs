@@ -84,7 +84,7 @@ fn main() -> ! {
 
     let mut last_link_up = false;
 
-    let mut bare_phy = BarePhy::new(eth_mac.with_smi(mdio, mdc), PHY_ADDR, Default::default());
+    let mut bare_phy = BarePhy::new(eth_mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
 
     loop {
         let link_up = bare_phy.phy_link_up();

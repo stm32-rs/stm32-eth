@@ -115,7 +115,7 @@ where
 ///
 /// This method does not initialise the external PHY.
 ///
-/// The SMI for the external PHY can be accessed through the
+/// The MII for the external PHY can be accessed through the
 /// returned [`EthernetMACWithMii`], .
 ///
 /// # Note
@@ -149,7 +149,7 @@ where
 {
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins, speed)?.with_smi(mdio, mdc);
+    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins, speed)?.with_mii(mdio, mdc);
 
     let _ = setup_ptp(&mut mac, eth_ptp);
 

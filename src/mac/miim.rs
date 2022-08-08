@@ -99,7 +99,7 @@ where
     Mdio: MdioPin,
     Mdc: MdcPin,
 {
-    /// Create a temporary `Smi` instance.
+    /// Create a temporary [`Stm32Mii`] instance.
     ///
     /// Temporarily take exclusive access to the MDIO and MDC pins to ensure they are not used
     /// elsewhere for the duration of SMI communication.

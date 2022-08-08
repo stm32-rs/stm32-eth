@@ -165,8 +165,8 @@ impl EthernetMAC {
     /// pins.
     ///
     /// Exclusive access to the `MDIO` and `MDC` is required to ensure that are not used elsewhere
-    /// for the duration of SMI communication.
-    pub fn smi<'eth, 'pins, Mdio, Mdc>(
+    /// for the duration of Mii communication.
+    pub fn mii<'eth, 'pins, Mdio, Mdc>(
         &'eth mut self,
         mdio: &'pins mut Mdio,
         mdc: &'pins mut Mdc,
@@ -179,7 +179,7 @@ impl EthernetMAC {
     }
 
     /// Turn this [`EthernetMAC`] into an [`EthernetMACWithMii`]
-    pub fn with_smi<MDIO, MDC>(self, mdio: MDIO, mdc: MDC) -> EthernetMACWithMii<MDIO, MDC>
+    pub fn with_mii<MDIO, MDC>(self, mdio: MDIO, mdc: MDC) -> EthernetMACWithMii<MDIO, MDC>
     where
         MDIO: MdioPin,
         MDC: MdcPin,
@@ -219,7 +219,7 @@ impl EthernetMAC {
 
 /// Ethernet media access control (MAC) with owned SMI
 ///
-/// This version of the struct owns it's SMI pins,
+/// This version of the struct owns it's MII pins,
 /// allowing it to be used directly, instead of requiring
 /// that a  [`Miim`] is created.
 pub struct EthernetMACWithMii<MDIO, MDC>
@@ -283,13 +283,13 @@ where
 {
     pub fn read(&mut self, phy: u8, reg: u8) -> u16 {
         self.eth_mac
-            .smi(&mut self.mdio, &mut self.mdc)
+            .mii(&mut self.mdio, &mut self.mdc)
             .read(phy, reg)
     }
 
     pub fn write(&mut self, phy: u8, reg: u8, data: u16) {
         self.eth_mac
-            .smi(&mut self.mdio, &mut self.mdc)
+            .mii(&mut self.mdio, &mut self.mdc)
             .write(phy, reg, data)
     }
 }
