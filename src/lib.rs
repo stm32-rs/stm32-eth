@@ -87,9 +87,11 @@ where
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
 {
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins)?;
+    pins.setup_pins();
+    setup::setup();
 
-    let dma = EthernetDMA::new(&mac, eth_dma, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks)?;
 
     Ok((dma, mac))
 }
@@ -133,9 +135,11 @@ where
     MDIO: mac::MdioPin,
     MDC: mac::MdcPin,
 {
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins)?.with_mii(mdio, mdc);
+    pins.setup_pins();
+    setup::setup();
 
-    let dma = EthernetDMA::new(&mac, eth_dma, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks)?.with_mii(mdio, mdc);
 
     Ok((dma, mac))
 }
