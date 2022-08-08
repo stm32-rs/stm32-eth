@@ -68,7 +68,7 @@ const MTU: usize = 1522;
 /// Automatically sets slew rate to VeryHigh.
 ///
 /// This method does not initialise the external PHY. Interacting with a PHY
-/// can be done by using the struct returned from [`EthernetMAC::smi`].
+/// can be done by using the struct returned from [`EthernetMAC::mii`].
 ///
 /// /// # Note
 /// - Make sure that the buffers reside in a memory region that is
@@ -95,6 +95,10 @@ where
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
 {
+    pins.setup_pins();
+
+    setup::setup();
+
     // reset DMA bus mode register
     eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
 
@@ -103,11 +107,11 @@ where
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins, speed)?;
+    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?;
 
     let _ = setup_ptp(&mut mac, eth_ptp);
 
-    let dma = EthernetDMA::new(&mac, eth_dma, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
 
     Ok((dma, mac))
 }
@@ -153,6 +157,10 @@ where
     MDIO: mac::MdioPin,
     MDC: mac::MdcPin,
 {
+    pins.setup_pins();
+
+    setup::setup();
+
     // reset DMA bus mode register
     eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
 
@@ -161,11 +169,11 @@ where
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins, speed)?.with_mii(mdio, mdc);
+    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?.with_mii(mdio, mdc);
 
     let _ = setup_ptp(&mut mac, eth_ptp);
 
-    let dma = EthernetDMA::new(&mac, eth_dma, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
 
     Ok((dma, mac))
 }

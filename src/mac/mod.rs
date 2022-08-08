@@ -2,9 +2,7 @@ use core::ops::{Deref, DerefMut};
 
 use crate::{
     hal::rcc::Clocks,
-    setup::*,
     stm32::{ETHERNET_MAC, ETHERNET_MMC},
-    EthPins,
 };
 
 mod miim;
@@ -55,26 +53,12 @@ impl EthernetMAC {
     ///
     /// Additionally, an optional `impl` of the [`ieee802_3_miim::Miim`] trait is available
     /// with the `ieee802_3_miim` feature (enabled by default), for PHY communication.
-    pub fn new<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
+    pub(crate) fn new(
         eth_mac: ETHERNET_MAC,
         eth_mmc: ETHERNET_MMC,
         clocks: Clocks,
-        pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
         initial_speed: Speed,
-    ) -> Result<Self, WrongClock>
-    where
-        REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
-        CRS: RmiiCrsDv + AlternateVeryHighSpeed,
-        TXEN: RmiiTxEN + AlternateVeryHighSpeed,
-        TXD0: RmiiTxD0 + AlternateVeryHighSpeed,
-        TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
-        RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
-        RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
-    {
-        pins.setup_pins();
-
-        setup();
-
+    ) -> Result<Self, WrongClock> {
         let clock_frequency = clocks.hclk().to_Hz();
 
         let clock_range = match clock_frequency {
@@ -212,7 +196,7 @@ impl EthernetMAC {
         }
     }
 
-    pub(crate) fn mask_timestamp_interrupt(&mut self) {
+    pub fn mask_timestamp_interrupt(&mut self) {
         self.eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
     }
 }

@@ -2,10 +2,10 @@ use crate::stm32::ETHERNET_PTP;
 
 use crate::EthernetMAC;
 
-pub(crate) fn setup_ptp(mac: &mut EthernetMAC, eth_ptp: ETHERNET_PTP) {
+pub(crate) fn setup_ptp(_mac: &mut EthernetMAC, eth_ptp: ETHERNET_PTP) {
     // Mask timestamp interrupt register, required for stm32f107 according to AN3411
     #[cfg(feature = "stm32f107")]
-    mac.mask_timestamp_interrupt();
+    _mac.mask_timestamp_interrupt();
 
     if false {
         // Setup PTP timestamping

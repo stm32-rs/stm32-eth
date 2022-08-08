@@ -5,7 +5,7 @@ use crate::{
     rx::{RxPacket, RxRing},
     stm32::{Interrupt, ETHERNET_DMA},
     tx::TxRing,
-    EthernetMAC, PacketId, RxError, RxRingEntry, TxError, TxRingEntry,
+    PacketId, RxError, RxRingEntry, TxError, TxRingEntry,
 };
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -59,12 +59,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// - Make sure that the buffers reside in a memory region that is
     /// accessible by the peripheral. Core-Coupled Memory (CCM) is
     /// usually not accessible.
-    //
-    // NOTE: eth_mac is unused, but required for initialization as
-    // owning an [`EthernetMAC`] requires that all of it's checks
-    // (GPIO, clock speed) have passed.
-    pub fn new(
-        #[allow(unused)] eth_mac: &EthernetMAC,
+    pub(crate) fn new(
         eth_dma: ETHERNET_DMA,
         rx_buffer: &'rx mut [RxRingEntry],
         tx_buffer: &'tx mut [TxRingEntry],
