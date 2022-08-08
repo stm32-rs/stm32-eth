@@ -95,6 +95,12 @@ where
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
 {
+    // reset DMA bus mode register
+    eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
+
+    // Wait until done
+    while eth_dma.dmabmr.read().sr().bit_is_set() {}
+
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
     let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins, speed)?;
@@ -147,6 +153,12 @@ where
     MDIO: mac::MdioPin,
     MDC: mac::MdcPin,
 {
+    // reset DMA bus mode register
+    eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
+
+    // Wait until done
+    while eth_dma.dmabmr.read().sr().bit_is_set() {}
+
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
     let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, pins, speed)?.with_mii(mdio, mdc);
