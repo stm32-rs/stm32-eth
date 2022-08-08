@@ -1,10 +1,18 @@
 #![no_std]
 #![no_main]
 
-// A simple TCP echo server using RTIC
-//
-// To run, use the following command:
-// DEFMT_LOG=info PROBE_RUN_CHIP=<probe-run chip> cargo run --example rtic-echo --features <chip here> --target <correct target for chip> --release --features="cortex-m-rtic smoltcp-phy smoltcp/medium-ethernet smoltcp/socket-tcp defmt-rtt panic-probe systick-monotonic fugit defmt smoltcp/defmt"
+//! A simple TCP echo server using RTIC.
+//!
+//! Starts a TCP echo server on port `1337` at `ADDRESS`. `ADDRESS` is `10.0.0.1/24` by default.
+//!
+//! By default, the example assumes that the default RMII pins are used.
+//! To use it on an stm32-nucleo-f746zg dev board, the `rtic-echo-example-altpin` feature should be enabled. This may work on other
+//! boards, but that hasn't been tested so your mileage may vary.
+//!
+//! To run this, install `probe-run` (`cargo install probe-run --version '~0.3'`), and ensure that `probe-run` can
+//! attach to your test board.
+//! Then, use the following command:
+//! DEFMT_LOG=info PROBE_RUN_CHIP=<probe-run chip> cargo run --example rtic-echo --features <chip here>,rtic-echo-example --target <correct target for chip> --release
 
 use defmt_rtt as _;
 use panic_probe as _;
@@ -160,14 +168,16 @@ mod app {
 
         interface.poll(now_fn()).unwrap();
 
-        let mut phy = crate::EthernetPhy::from_miim(mac, 0).unwrap();
+        if let Ok(mut phy) = crate::EthernetPhy::from_miim(mac, 0) {
+            defmt::info!(
+                "Resetting PHY as an extra step. Type: {}",
+                phy.ident_string()
+            );
 
-        defmt::info!(
-            "Resetting PHY as an extra step. Type: {}",
-            phy.ident_string()
-        );
-
-        phy.phy_init();
+            phy.phy_init();
+        } else {
+            defmt::info!("Not resetting unsupported PHY.");
+        }
 
         defmt::info!("Setup done.");
 
@@ -262,18 +272,24 @@ mod pins {
         pub type RxD0 = PC4<Input>;
         pub type RxD1 = PC5<Input>;
 
+        #[cfg(not(feature = "rtic-echo-example-altpin"))]
         pub type TxEn = PB11<Input>;
+        #[cfg(not(feature = "rtic-echo-example-altpin"))]
         pub type TxD0 = PB12<Input>;
+
+        #[cfg(all(feature = "rtic-echo-example-altpin"))]
+        pub type TxEn = PG11<Input>;
+        #[cfg(feature = "rtic-echo-example-altpin")]
+        pub type TxD0 = PG13<Input>;
 
         pub type Mdio = PA2<Alternate<11>>;
         pub type Mdc = PC1<Alternate<11>>;
 
-        #[allow(unused_variables)]
         pub fn get_pins(
             gpioa: gpioa::Parts,
             gpiob: gpiob::Parts,
             gpioc: gpioc::Parts,
-            gpiog: gpiog::Parts,
+            #[allow(unused_variables)] gpiog: gpiog::Parts,
         ) -> (
             EthPins<RefClk, Crs, TxEn, TxD0, TxD1, RxD0, RxD1>,
             Mdio,
@@ -285,9 +301,16 @@ mod pins {
             let rx_d0 = gpioc.pc4.into_floating_input();
             let rx_d1 = gpioc.pc5.into_floating_input();
 
+            #[cfg(not(feature = "rtic-echo-example-altpin"))]
             let (tx_en, tx_d0) = (
                 gpiob.pb11.into_floating_input(),
                 gpiob.pb12.into_floating_input(),
+            );
+
+            #[cfg(feature = "rtic-echo-example-altpin")]
+            let (tx_en, tx_d0) = (
+                gpiog.pg11.into_floating_input(),
+                gpiog.pg13.into_floating_input(),
             );
 
             #[cfg(feature = "stm32f4xx-hal")]
@@ -322,7 +345,6 @@ mod pins {
     }
 
     #[cfg(any(feature = "stm32f1xx-hal"))]
-    #[allow(missing_docs)]
     mod pins {
         use stm32_eth::{
             hal::gpio::{Alternate, Input, PushPull, *},
