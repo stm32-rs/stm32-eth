@@ -113,10 +113,19 @@ where
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
 {
+    // Configure all of the pins correctly
     pins.setup_pins();
+
+    // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    // Congfigure and start up the ethernet DMA.
+    // Note: this _must_ happen before configuring the MAC.
+    // It's not entirely clear why, but no interrupts are
+    // generated if the order is reversed.
     let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
+
+    // Configure the ethernet MAC
     let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks)?;
 
     Ok((dma, mac))
@@ -162,10 +171,19 @@ where
     MDIO: mac::MdioPin,
     MDC: mac::MdcPin,
 {
+    // Configure all of the pins correctly
     pins.setup_pins();
+
+    // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    // Congfigure and start up the ethernet DMA.
+    // Note: this _must_ happen before configuring the MAC.
+    // It's not entirely clear why, but no interrupts are
+    // generated if the order is reversed.
     let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
+
+    // Configure the ethernet MAC
     let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks)?.with_mii(mdio, mdc);
 
     Ok((dma, mac))
