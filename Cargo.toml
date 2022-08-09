@@ -26,14 +26,7 @@ stm32f1xx-hal = { version = "0.9", optional = true }
 ieee802_3_miim = { version = "0.7", optional = true }
 cortex-m = "0.7"
 log = { version = "0.4", optional = true }
-
-# For rtic-echo
-cortex-m-rtic = { version = "1.0", optional = true }
 defmt = { version = "0.3", optional = true }
-defmt-rtt = { version = "0.3", optional = true }
-panic-probe = { version = "0.3", optional = true, features = [ "print-defmt" ] }
-systick-monotonic = { version = "1.0", optional = true }
-fugit = { version = "0.3", optional = true}
 
 [dependencies.smoltcp]
 version = "0.8"
@@ -70,7 +63,7 @@ stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 smoltcp-phy = ["smoltcp"]
 
 # Example features
-rtic-echo-example = [ "ieee802_3_miim", "cortex-m-rtic", "smoltcp-phy", "smoltcp/defmt", "smoltcp/medium-ethernet", "smoltcp/socket-tcp", "defmt", "defmt-rtt", "panic-probe", "systick-monotonic", "fugit" ]
+rtic-echo-example = [ "ieee802_3_miim", "defmt", "smoltcp-phy", "smoltcp/defmt", "smoltcp/medium-ethernet", "smoltcp/socket-tcp" ]
 rtic-echo-example-altpin = [ ]
 
 [dev-dependencies]
@@ -79,6 +72,10 @@ cortex-m-rt = "0.7"
 panic-itm = "0.4"
 cortex-m-semihosting = "0.3"
 fugit = "0.3"
+cortex-m-rtic = "1.0"
+defmt-rtt = "0.3"
+panic-probe = { version = "0.3", features = [ "print-defmt" ] }
+systick-monotonic = "1.0"
 
 [[example]]
 name = "pktgen"
