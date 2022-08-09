@@ -3,8 +3,6 @@
 //! For initialisation, see [`new`], and [`new_with_mii`]
 #![no_std]
 
-use mac::Speed;
-
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -26,28 +24,55 @@ pub use stm32f1xx_hal as hal;
 #[cfg(feature = "stm32f1xx-hal")]
 pub use stm32f1xx_hal::pac as stm32;
 
-use hal::rcc::Clocks;
-use stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, ETHERNET_PTP};
-
-mod dma;
-pub use dma::{eth_interrupt_handler, EthernetDMA};
-mod ring;
-pub use ring::RingEntry;
-mod desc;
-pub mod mac;
-pub use mac::{EthernetMAC, EthernetMACWithMii, WrongClock};
-mod rx;
-pub use rx::{RxDescriptor, RxError, RxRingEntry};
-mod tx;
-pub use tx::{TxDescriptor, TxError, TxRingEntry};
-pub mod setup;
-pub use setup::EthPins;
-use setup::{
-    AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1, RmiiTxEN,
+#[cfg(feature = "device-selected")]
+use {
+    hal::rcc::Clocks,
+    mac::Speed,
+    setup::{
+        AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1,
+        RmiiTxEN,
+    },
+    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, ETHERNET_PTP},
 };
+
 mod packet_id;
 pub use packet_id::PacketId;
+
+mod desc;
+
+#[cfg(feature = "device-selected")]
+mod dma;
+#[cfg(feature = "device-selected")]
+pub use dma::{eth_interrupt_handler, EthernetDMA};
+
+#[cfg(feature = "device-selected")]
+mod ring;
+#[cfg(feature = "device-selected")]
+pub use ring::RingEntry;
+
+#[cfg(feature = "device-selected")]
+pub mod mac;
+#[cfg(feature = "device-selected")]
+pub use mac::{EthernetMAC, EthernetMACWithMii, WrongClock};
+
+#[cfg(feature = "device-selected")]
+mod rx;
+#[cfg(feature = "device-selected")]
+pub use rx::{RxDescriptor, RxError, RxRingEntry};
+
+#[cfg(feature = "device-selected")]
+mod tx;
+#[cfg(feature = "device-selected")]
+pub use tx::{TxDescriptor, TxError, TxRingEntry};
+
+#[cfg(feature = "device-selected")]
+pub mod setup;
+#[cfg(feature = "device-selected")]
+pub use setup::EthPins;
+
+#[cfg(feature = "device-selected")]
 mod ptp;
+#[cfg(feature = "device-selected")]
 use ptp::setup_ptp;
 
 #[cfg(feature = "smoltcp-phy")]
@@ -56,6 +81,9 @@ pub use smoltcp;
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::*;
+
+#[cfg(not(feature = "device-selected"))]
+compile_error!("No device was selected! Exactly one stm32fxxx feature must be selected.");
 
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 const MTU: usize = 1522;
@@ -75,6 +103,7 @@ const MTU: usize = 1522;
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
+#[cfg(feature = "device-selected")]
 pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
@@ -95,23 +124,23 @@ where
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
 {
+    // Configure all of the pins correctly
     pins.setup_pins();
 
+    // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
-    // reset DMA bus mode register
-    eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
-
-    // Wait until done
-    while eth_dma.dmabmr.read().sr().bit_is_set() {}
+    // Congfigure and start up the ethernet DMA.
+    // Note: this _must_ happen before configuring the MAC.
+    // It's not entirely clear why, but no interrupts are
+    // generated if the order is reversed.
+    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
-
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?;
+    // Configure the ethernet MAC
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?;
 
     let _ = setup_ptp(&mut mac, eth_ptp);
-
-    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
 
     Ok((dma, mac))
 }
@@ -133,6 +162,7 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
+#[cfg(feature = "device-selected")]
 pub fn new_with_mii<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
     eth_mac: ETHERNET_MAC,
     eth_mmc: ETHERNET_MMC,
@@ -157,23 +187,24 @@ where
     MDIO: mac::MdioPin,
     MDC: mac::MdcPin,
 {
+    // Configure all of the pins correctly
     pins.setup_pins();
 
+    // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
-    // reset DMA bus mode register
-    eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
-
-    // Wait until done
-    while eth_dma.dmabmr.read().sr().bit_is_set() {}
+    // Congfigure and start up the ethernet DMA.
+    // Note: this _must_ happen before configuring the MAC.
+    // It's not entirely clear why, but no interrupts are
+    // generated if the order is reversed.
+    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?.with_mii(mdio, mdc);
+    // Configure the ethernet MAC
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?.with_mii(mdio, mdc);
 
     let _ = setup_ptp(&mut mac, eth_ptp);
-
-    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
 
     Ok((dma, mac))
 }

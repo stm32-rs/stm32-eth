@@ -215,6 +215,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 
 /// A summary of the reasons for the interrupt
 /// that occured
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy)]
 pub struct InterruptReasonSummary {
     pub is_rx: bool,
     pub is_tx: bool,
