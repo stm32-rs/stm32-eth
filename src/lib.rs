@@ -138,7 +138,7 @@ where
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?;
+    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?;
 
     let _ = setup_ptp(&mut mac, eth_ptp);
 
@@ -202,9 +202,9 @@ where
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?.with_mii(mdio, mdc);
+    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?.with_mii(mdio, mdc);
 
-    let _ = setup_ptp(&mut mac, eth_ptp);
+    setup_ptp(&mut mac, eth_ptp);
 
     Ok((dma, mac))
 }
