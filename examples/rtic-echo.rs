@@ -37,9 +37,9 @@ mod app {
     use fugit::RateExtU32;
 
     use smoltcp::{
-        iface::{self, Interface, SocketHandle},
-        socket::TcpSocket,
-        socket::TcpSocketBuffer,
+        iface::{self, Interface, SocketHandle, SocketSet},
+        socket::tcp::Socket,
+        storage::RingBuffer,
         wire::EthernetAddress,
     };
 
@@ -51,9 +51,13 @@ mod app {
     #[shared]
     struct Shared {
         #[lock_free]
-        interface: Interface<'static, &'static mut EthernetDMA<'static, 'static>>,
+        interface: Interface<'static>,
         #[lock_free]
         tcp_handle: SocketHandle,
+        #[lock_free]
+        socket_set: SocketSet<'static>,
+        #[lock_free]
+        eth_dma: EthernetDMA<'static, 'static>,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -68,7 +72,6 @@ mod app {
         rx_ring: [RxRingEntry; 4] = [RxRingEntry::new(),RxRingEntry::new(),RxRingEntry::new(),RxRingEntry::new()],
         tx_ring: [TxRingEntry; 4] = [TxRingEntry::new(),TxRingEntry::new(),TxRingEntry::new(),TxRingEntry::new()],
         storage: NetworkStorage = NetworkStorage::new(),
-        dma: core::mem::MaybeUninit<EthernetDMA<'static, 'static>> = core::mem::MaybeUninit::uninit(),
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
@@ -119,20 +122,20 @@ mod app {
 
         defmt::info!("Configuring ethernet");
 
-        let (dma, mac) = stm32_eth::new_with_mii(
+        let (mut dma, mac) = stm32_eth::new_with_mii(
             p.ETHERNET_MAC,
             p.ETHERNET_MMC,
             p.ETHERNET_DMA,
+            p.ETHERNET_PTP,
             rx_ring,
             tx_ring,
             clocks,
             pins,
             mdio,
             mdc,
+            None,
         )
         .unwrap();
-
-        let dma = cx.local.dma.write(dma);
 
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();
@@ -149,24 +152,27 @@ mod app {
 
         let mac_addr = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05];
 
-        let rx_buffer = TcpSocketBuffer::new(&mut store.tcp_socket_storage.rx_storage[..]);
-        let tx_buffer = TcpSocketBuffer::new(&mut store.tcp_socket_storage.tx_storage[..]);
-
-        let socket = TcpSocket::new(rx_buffer, tx_buffer);
-
-        let mut interface = iface::InterfaceBuilder::new(dma, &mut store.sockets[..])
+        let mut interface = iface::InterfaceBuilder::new()
             .hardware_addr(EthernetAddress::from_bytes(&mac_addr).into())
             .neighbor_cache(neighbor_cache)
             .ip_addrs(&mut store.ip_addrs[..])
             .routes(routes)
-            .finalize();
+            .finalize(&mut &mut dma);
 
-        let tcp_handle = interface.add_socket(socket);
+        let mut socket_set = SocketSet::new(&mut store.sockets[..]);
 
-        let socket = interface.get_socket::<TcpSocket>(tcp_handle);
+        let tcp_rx_buffer = RingBuffer::new(&mut store.tcp_socket_storage.rx_storage[..]);
+        let tcp_tx_buffer = RingBuffer::new(&mut store.tcp_socket_storage.tx_storage[..]);
+
+        let tcp_socket = Socket::new(tcp_rx_buffer, tcp_tx_buffer);
+        let tcp_handle = socket_set.add(tcp_socket);
+
+        let socket = socket_set.get_mut::<Socket>(tcp_handle);
         socket.listen(crate::ADDRESS).ok();
 
-        interface.poll(now_fn()).unwrap();
+        interface
+            .poll(now_fn(), &mut &mut dma, &mut socket_set)
+            .unwrap();
 
         if let Ok(mut phy) = crate::EthernetPhy::from_miim(mac, 0) {
             defmt::info!(
@@ -185,23 +191,30 @@ mod app {
             Shared {
                 interface,
                 tcp_handle,
+                socket_set,
+                eth_dma: dma,
             },
             Local {},
             init::Monotonics(mono),
         )
     }
 
-    #[task(binds = ETH, shared = [interface, tcp_handle], local = [data: [u8; 512] = [0u8; 512]], priority = 2)]
+    #[task(binds = ETH, shared = [interface, tcp_handle, socket_set, eth_dma], local = [data: [u8; 512] = [0u8; 512]], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (iface, tcp_handle, buffer) =
-            (cx.shared.interface, cx.shared.tcp_handle, cx.local.data);
+        let (iface, tcp_handle, socket_set, mut eth_dma, buffer) = (
+            cx.shared.interface,
+            cx.shared.tcp_handle,
+            cx.shared.socket_set,
+            cx.shared.eth_dma,
+            cx.local.data,
+        );
 
-        let interrupt_reason = iface.device_mut().interrupt_handler();
+        let interrupt_reason = eth_dma.interrupt_handler();
         defmt::debug!("Got an ethernet interrupt! Reason: {}", interrupt_reason);
 
-        iface.poll(now_fn()).ok();
+        iface.poll(now_fn(), &mut eth_dma, socket_set).ok();
 
-        let socket = iface.get_socket::<TcpSocket>(*tcp_handle);
+        let socket = socket_set.get_mut::<Socket>(*tcp_handle);
         if let Ok(recv_bytes) = socket.recv_slice(buffer) {
             if recv_bytes > 0 {
                 socket.send_slice(&buffer[..recv_bytes]).ok();
@@ -215,7 +228,7 @@ mod app {
             defmt::warn!("Disconnected... Reopening listening socket.");
         }
 
-        iface.poll(now_fn()).ok();
+        iface.poll(now_fn(), &mut eth_dma, socket_set).ok();
     }
 }
 
