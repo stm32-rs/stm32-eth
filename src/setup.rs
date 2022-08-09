@@ -1,3 +1,9 @@
+//! Pin definitions and setup functionality
+//!
+//! This module contains the unsafe traits that determine
+//! which pins can have a specific function, and provides
+//! functionality for setting up clocks and the MAC peripheral
+
 #[cfg(feature = "stm32f4xx-hal")]
 use stm32f4xx_hal::{
     bb,
@@ -142,26 +148,24 @@ pub(crate) fn setup() {
     });
 }
 
-/// RMII Reference Clock.
-pub unsafe trait RmiiRefClk {}
+macro_rules ! pin_trait {
+    ($([$name:ident, $doc:literal, $rm_name:literal]),*) => {
+        $(
+        #[doc = concat!($doc, "\n# Safety\nOnly pins specified as `ETH_RMII_", $rm_name, "` in a part's Reference Manual\nmay implement this trait.")]
+        pub unsafe trait $name {}
+        )*
+    }
+}
 
-/// RMII RX Data Valid.
-pub unsafe trait RmiiCrsDv {}
-
-/// RMII TX Enable.
-pub unsafe trait RmiiTxEN {}
-
-/// RMII TXD0.
-pub unsafe trait RmiiTxD0 {}
-
-/// RMII TXD1.
-pub unsafe trait RmiiTxD1 {}
-
-/// RMII RXD0.
-pub unsafe trait RmiiRxD0 {}
-
-/// RMII RXD1.
-pub unsafe trait RmiiRxD1 {}
+pin_trait!(
+    [RmiiRefClk, "RMII Reference Clock", "REF_CLK"],
+    [RmiiCrsDv, "RMII Rx Data Valid", "CRS_DV"],
+    [RmiiTxEN, "RMII TX Enable", "TX_EN"],
+    [RmiiTxD0, "RMII TX Data Pin 0", "TXD0"],
+    [RmiiTxD1, "RMII TX Data Pin 1", "TXD1"],
+    [RmiiRxD0, "RMII RX Data Pin 0", "RXD0"],
+    [RmiiRxD1, "RMII RX Data Pin 1", "RXD1"]
+);
 
 /// Trait needed to setup the pins for the Ethernet peripheral.
 pub trait AlternateVeryHighSpeed {
@@ -169,6 +173,10 @@ pub trait AlternateVeryHighSpeed {
     fn into_af11_very_high_speed(self);
 }
 
+/// A struct that represents a combination of pins to be used
+/// as RMII pins for the ethernet peripheral(s)
+// NOTE(missing_docs): all fields of this struct are self-explanatory
+#[allow(missing_docs)]
 pub struct EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1> {
     pub ref_clk: REFCLK,
     pub crs: CRS,

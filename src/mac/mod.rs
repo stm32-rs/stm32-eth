@@ -1,3 +1,5 @@
+//! Ethernet MAC driver implementation
+
 use core::ops::Deref;
 
 use crate::{
@@ -215,12 +217,14 @@ where
     MDIO: MdioPin,
     MDC: MdcPin,
 {
+    /// Read MII register `reg` from the PHY at address `phy`
     pub fn read(&mut self, phy: u8, reg: u8) -> u16 {
         self.eth_mac
             .mii(&mut self.mdio, &mut self.mdc)
             .read(phy, reg)
     }
 
+    /// Write the value `data` to MII register `reg` to the PHY at address `phy`
     pub fn write(&mut self, phy: u8, reg: u8, data: u16) {
         self.eth_mac
             .mii(&mut self.mdio, &mut self.mdc)

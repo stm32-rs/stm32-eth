@@ -2,6 +2,7 @@
 //!
 //! For initialisation, see [`new`], and [`new_with_mii`]
 #![no_std]
+#![deny(missing_docs)]
 
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]

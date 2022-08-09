@@ -31,12 +31,14 @@ const TXDESC_0_ES: u32 = 1 << 15;
 const TXDESC_1_TBS_SHIFT: usize = 0;
 const TXDESC_1_TBS_MASK: u32 = 0x0fff << TXDESC_1_TBS_SHIFT;
 
+/// Errors that can occur during Ethernet TX
 #[derive(Debug, PartialEq)]
 pub enum TxError {
     /// Ring buffer is full
     WouldBlock,
 }
 
+/// A TX DMA Ring Descriptor
 #[repr(C)]
 #[derive(Clone)]
 pub struct TxDescriptor {
@@ -112,6 +114,7 @@ impl TxDescriptor {
     }
 }
 
+/// A TX DMA Ring Descriptor entry
 pub type TxRingEntry = RingEntry<TxDescriptor>;
 
 impl RingDescriptor for TxDescriptor {

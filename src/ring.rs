@@ -7,6 +7,7 @@ pub trait RingDescriptor {
     fn setup(&mut self, buffer: *const u8, len: usize, next: Option<&Self>);
 }
 
+/// An entry in a DMA Descriptor ring
 pub struct RingEntry<T: Clone + RingDescriptor> {
     desc: Aligned<A8, [T; 1]>,
     buffer: Aligned<A8, [u8; MTU]>,
@@ -31,6 +32,9 @@ impl<T: Clone + RingDescriptor + Default> Default for RingEntry<T> {
 }
 
 impl RingEntry<TxDescriptor> {
+    /// The initial value of a TxRingDescriptor
+    pub const INIT: Self = Self::new();
+
     /// Creates a RingEntry with a TxDescriptor.
     pub const fn new() -> Self {
         RingEntry {
@@ -41,6 +45,9 @@ impl RingEntry<TxDescriptor> {
 }
 
 impl RingEntry<RxDescriptor> {
+    /// The initial value of an RxRingDescriptor
+    pub const INIT: Self = Self::new();
+
     /// Creates a RingEntry with a RxDescriptor.
     pub const fn new() -> Self {
         RingEntry {
