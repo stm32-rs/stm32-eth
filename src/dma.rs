@@ -4,7 +4,7 @@ use crate::{
     rx::{RxPacket, RxRing},
     stm32::{Interrupt, ETHERNET_DMA},
     tx::TxRing,
-    EthernetMAC, RxError, RxRingEntry, TxError, TxRingEntry,
+    RxError, RxRingEntry, TxError, TxRingEntry,
 };
 
 /// Ethernet DMA.
@@ -21,12 +21,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// - Make sure that the buffers reside in a memory region that is
     /// accessible by the peripheral. Core-Coupled Memory (CCM) is
     /// usually not accessible.
-    //
-    // NOTE: eth_mac is unused, but required for initialization as
-    // owning an [`EthernetMAC`] requires that all of it's checks
-    // (GPIO, clock speed) have passed.
-    pub fn new(
-        #[allow(unused)] eth_mac: &EthernetMAC,
+    pub(crate) fn new(
         eth_dma: ETHERNET_DMA,
         rx_buffer: &'rx mut [RxRingEntry],
         tx_buffer: &'tx mut [TxRingEntry],
@@ -166,6 +161,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 
 /// A summary of the reasons for the interrupt
 /// that occured
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy)]
 pub struct InterruptReasonSummary {
     pub is_rx: bool,
     pub is_tx: bool,
