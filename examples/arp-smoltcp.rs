@@ -1,4 +1,4 @@
-//! For build and run instructions, see [`README.md`](../README.md#examples)
+//! For build and run instructions, see README.md
 //!
 //! With Wireshark, you can see the ARP packets, which should look like this:
 //! No.  Time        Source          Destination     Protocol    Length  Info
@@ -38,7 +38,7 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
-    let (clocks, gpio, ethernet) = common::setup_clocks(p);
+    let (clocks, gpio, ethernet) = common::setup_peripherals(p);
 
     setup_systick(&mut cp.SYST);
 

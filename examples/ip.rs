@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-//! For build and run instructions, see [`README.md`](../README.md#examples)
+//! For build and run instructions, see README.md
 //!
 //! This example starts a TCP listening server that should transmit `Hello` to
 //! any connecting client, and then close the connection.
@@ -35,7 +35,7 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
-    let (clocks, gpio, ethernet) = common::setup_clocks(p);
+    let (clocks, gpio, ethernet) = common::setup_peripherals(p);
 
     setup_systick(&mut cp.SYST);
 

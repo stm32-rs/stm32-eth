@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
+//! For build and run instructions, see README.md
+//!
 //! A simple TCP echo server using RTIC.
 //!
 //! Starts a TCP echo server on port `1337` at `ADDRESS`. `ADDRESS` is `10.0.0.1/24` by default.
-//!
-//! For build and run instructions, see [`README.md`](../README.md#examples)
 
 use defmt_rtt as _;
 use panic_probe as _;
@@ -69,7 +69,7 @@ mod app {
         let rx_ring = cx.local.rx_ring;
         let tx_ring = cx.local.tx_ring;
 
-        let (clocks, gpio, ethernet) = crate::common::setup_clocks(p);
+        let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
 
         defmt::info!("Setting up pins");

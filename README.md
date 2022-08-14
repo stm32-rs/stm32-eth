@@ -88,7 +88,7 @@ Use feature-flag `smoltcp-phy`
 
 ## Examples
 
-The examples should run and compile on any MCU that has an 802.3 compatible PHY connected to the default RMII pins. 
+The examples should run and compile on any MCU that has an 802.3 compatible PHY capable of generating the required 50 MHz clock signal connected to the default RMII pins.
 
 The examples use `defmt` and `defmt_rtt` for logging, and `panic_probe` over `defmt_rtt` for printing panic backtraces.
 
@@ -97,11 +97,11 @@ To run or build them, the following steps should be taken:
 1. Determine the correct compilation target for the MCU that you're using. For `stm32f107`, it is `thumbv7m-none-eabi`. For all others, it is `thumbv7em-none-eabihf`.
 2. Determine the MCU feature necessary for running on your MCU, e.g. `stm32f745`.
 3. Determine the Additional required features (see section below) necessary to build the example.
-4. Follow the rest of the instructions in the "Building examples" or "Running examples" subsections.
+4. Follow the rest of the instructions in the ["Building examples"](#building-examples) or ["Running examples"](#running-examples) subsections.
 
 ### Additional required features
-Besides the feature selecting the correct MCU to be used when building and/or running an example, the following
-additional features are required:
+
+Besides the feature selecting the correct MCU to be used when building and/or running an example, the following additional features are required:
 
 | Example       | Additional required features                         |
 | ------------- | ---------------------------------------------------- |
@@ -111,6 +111,9 @@ additional features are required:
 | `pktgen`      | `defmt`                                              |
 | `rtic-echo`   | `rtic-echo-example`                                  |
 
+#### 144-pin nucleo boards
+
+For `stm32` 144-pin nucleo boards that contain an MCU supported by this crate the `example-nucleo-pins` feature should be activated. This causes the examples to use PG11 as TX_EN and PG13 as TXD0, instead of PB11 and PB12, which is the configuration used on these boards.
 
 ### Building examples
 Run the following command:
@@ -121,12 +124,11 @@ cargo build --release --example <example> --features <MCU feature>,<additional r
 For example, if we wish to build the `arp-smoltcp` example for an `stm32f429`, we should run the following command:
 
 ```bash
-cargo build --release --example arp-smoltcp --features stm32f429,smoltcp-phy,smoltcp/socket-tcp,smoltcp/socket-icmp --target thumbv7em-none-eabihf
+cargo build --release --example arp-smoltcp --features stm32f429,smoltcp-phy,smoltcp/socket-tcp --target thumbv7em-none-eabihf
 ```
 
 ### Running examples
-Install `probe-run` (`cargo install probe-run --version '~0.3'`), and ensure that `probe-run` can
-attach to your MCU.
+Install `probe-run` with `cargo install probe-run --version '~0.3'`
 
 Find the correct value for `PROBE_RUN_CHIP` for your MCU from the list provided by `probe-run --list-chips`.
 
@@ -143,8 +145,6 @@ For example, if we wish to run the `rtic-echo` example on an `STM32F107RCT6`, we
 DEFMT_LOG=info PROBE_RUN_CHIP=STM32F107RC cargo run --release --example rtic-echo --features stm32f107,rtic-echo-example --target thumbv7m-none-eabi
 ```
 
-### Pins
+### Other pin configurations
 
-For the `stm32-nucleo-f746zg` board, the `example-nucleo-pins` feature can be activated. 
-
-If the usage of different pins is required, the types and `setup_pins` function in `examples/common.rs` should be edited. If the pin configuration is for a `nucleo` board, a PR with the changes would be appreciated.
+If the usage of different pins is required, the types and `setup_pins` function in `examples/common.rs` should be edited. If the pin configuration is for a `nucleo` board or other commonly used board, a PR with the changes is most welcome.

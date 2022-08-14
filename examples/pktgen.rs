@@ -1,7 +1,6 @@
-//! An example that generates some empty ethernet packets.
+//! For build and run instructions, see README.md
 //!
-//! For build and run instructions, see [`README.md`](../README.md#examples)
-
+//! An example that generates some empty ethernet packets.
 #![no_std]
 #![no_main]
 
@@ -36,7 +35,7 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
-    let (clocks, gpio, ethernet) = common::setup_clocks(p);
+    let (clocks, gpio, ethernet) = common::setup_peripherals(p);
 
     setup_systick(&mut cp.SYST);
 

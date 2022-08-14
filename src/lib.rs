@@ -90,7 +90,7 @@ const MTU: usize = 1522;
 /// This method does not initialise the external PHY. Interacting with a PHY
 /// can be done by using the struct returned from [`EthernetMAC::mii`].
 ///
-/// /// # Note
+/// # Note
 /// - Make sure that the buffers reside in a memory region that is
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.

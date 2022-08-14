@@ -25,7 +25,7 @@ pub struct EthernetPeripherals {
 ///
 /// This configures HCLK to be at least 25 MHz, which is the minimum required
 /// for ethernet operation to be valid.
-pub fn setup_clocks(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, EthernetPeripherals) {
+pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, EthernetPeripherals) {
     let ethernet = EthernetPeripherals {
         dma: p.ETHERNET_DMA,
         mac: p.ETHERNET_MAC,
