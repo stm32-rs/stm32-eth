@@ -118,9 +118,6 @@ jobs:
     strategy:
       matrix:
         example:
-          - name: arp-smoltcp
-            example: arp-smoltcp
-            features: defmt,smoltcp-phy,smoltcp/socket-raw
           - name: arp
             example: arp
             features: defmt

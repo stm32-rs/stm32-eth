@@ -91,10 +91,6 @@ name = "arp"
 required-features = [ "defmt" ]
 
 [[example]]
-name = "arp-smoltcp"
-required-features = ["defmt", "smoltcp-phy", "smoltcp/socket-raw"]
-
-[[example]]
 name = "rtic-echo"
 required-features = [ "rtic-echo-example" ]
 

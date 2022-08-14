@@ -105,7 +105,6 @@ Besides the feature selecting the correct MCU to be used when building and/or ru
 
 | Example       | Additional required features                         |
 | ------------- | ---------------------------------------------------- |
-| `arp-smoltcp` | `defmt,smoltcp-phy,smoltcp/socket-raw`               |
 | `arp`         | `defmt`                                              |
 | `ip`          | `defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp` |
 | `pktgen`      | `defmt`                                              |
@@ -121,10 +120,10 @@ Run the following command:
 cargo build --release --example <example> --features <MCU feature>,<additional required features> --target <MCU compilation target>
 ```
 
-For example, if we wish to build the `arp-smoltcp` example for an `stm32f429`, we should run the following command:
+For example, if we wish to build the `ip` example for an `stm32f429`, we should run the following command:
 
 ```bash
-cargo build --release --example arp-smoltcp --features stm32f429,smoltcp-phy,smoltcp/socket-tcp --target thumbv7em-none-eabihf
+cargo build --release --example ip --features stm32f429,defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp --target thumbv7em-none-eabihf
 ```
 
 ### Running examples
