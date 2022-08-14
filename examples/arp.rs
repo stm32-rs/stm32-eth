@@ -1,9 +1,9 @@
-// cargo build --example arp --features=stm32f407
-// This example uses the STM32F407 and the KSZ8051R as PHY. If necessary the pins,
-// the PHY register addresses and masks have to be adapted, as well as the IPs.
-// With Wireshark, you can see the ARP packets, which should look like this:
-// No.  Time        Source          Destination     Protocol    Length  Info
-// 1	0.000000000	Cetia_ad:be:ef	Broadcast	    ARP	        60	    Who has 10.0.0.2? Tell 10.0.0.10
+//! cargo build --example arp --features=<MCU>
+//! This example should work on any MCU with an 802.3 compatible, on-by-default PHY connected to the
+//! default ethernet pins of that MCU.
+//! With Wireshark, you can see the ARP packets, which should look like this:
+//! No.  Time        Source          Destination     Protocol    Length  Info
+//! 1	0.000000000	Cetia_ad:be:ef	Broadcast	    ARP	        60	    Who has 10.0.0.2? Tell 10.0.0.10
 
 #![no_std]
 #![no_main]
@@ -16,17 +16,16 @@ use cortex_m_rt::{entry, exception};
 
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use fugit::RateExtU32;
 use stm32_eth::{
-    hal::gpio::{GpioExt, Speed},
-    hal::rcc::RccExt,
     mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
 use cortex_m_semihosting::hprintln;
 
-use stm32_eth::{EthPins, RingEntry, TxError};
+pub mod common;
+
+use stm32_eth::{RingEntry, TxError};
 
 const PHY_ADDR: u8 = 0;
 
@@ -38,42 +37,20 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
-    let rcc = p.RCC.constrain();
-    // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
+    let (clocks, gpio, ethernet) = common::setup_clocks(p);
 
     setup_systick(&mut cp.SYST);
 
     hprintln!("Enabling ethernet...").unwrap();
-    let gpioa = p.GPIOA.split();
-    let gpiob = p.GPIOB.split();
-    let gpioc = p.GPIOC.split();
-    let gpiog = p.GPIOG.split();
 
-    let eth_pins = EthPins {
-        ref_clk: gpioa.pa1,
-        crs: gpioa.pa7,
-        tx_en: gpiob.pb11,
-        tx_d0: gpiog.pg13,
-        tx_d1: gpiog.pg14,
-        rx_d0: gpioc.pc4,
-        rx_d1: gpioc.pc5,
-    };
-
-    let mut mdio = gpioa.pa2.into_alternate();
-    mdio.set_speed(Speed::VeryHigh);
-    let mut mdc = gpioc.pc1.into_alternate();
-    mdc.set_speed(Speed::VeryHigh);
-
-    // ETH_PHY_RESET(RST#) PB2 Chip Reset (active-low)
-    let _eth_reset = gpiob.pb2.into_push_pull_output().set_high();
+    let (eth_pins, mdio, mdc) = common::setup_pins(gpio);
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
     let mut tx_ring: [RingEntry<_>; 8] = Default::default();
     let (mut eth_dma, eth_mac) = stm32_eth::new(
-        p.ETHERNET_MAC,
-        p.ETHERNET_MMC,
-        p.ETHERNET_DMA,
+        ethernet.mac,
+        ethernet.mmc,
+        ethernet.dma,
         &mut rx_ring[..],
         &mut tx_ring[..],
         clocks,

@@ -24,6 +24,8 @@ use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
+mod common;
+
 use stm32_eth::{EthPins, RingEntry};
 
 static mut LOGGER: HioLogger = HioLogger {};
@@ -61,34 +63,20 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
-    let rcc = p.RCC.constrain();
-    // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
+    let (clocks, gpio, ethernet) = common::setup_clocks(p);
 
     setup_systick(&mut cp.SYST);
 
     writeln!(stdout, "Enabling ethernet...").unwrap();
-    let gpioa = p.GPIOA.split();
-    let gpiob = p.GPIOB.split();
-    let gpioc = p.GPIOC.split();
-    let gpiog = p.GPIOG.split();
 
-    let eth_pins = EthPins {
-        ref_clk: gpioa.pa1,
-        crs: gpioa.pa7,
-        tx_en: gpiog.pg11,
-        tx_d0: gpiog.pg13,
-        tx_d1: gpiob.pb13,
-        rx_d0: gpioc.pc4,
-        rx_d1: gpioc.pc5,
-    };
+    let eth_pins = common::setup_pins(gpio);
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
     let (mut eth_dma, _eth_mac) = stm32_eth::new(
-        p.ETHERNET_MAC,
-        p.ETHERNET_MMC,
-        p.ETHERNET_DMA,
+        ethernet.mac,
+        ethernet.mmc,
+        ethernet.dma,
         &mut rx_ring[..],
         &mut tx_ring[..],
         clocks,

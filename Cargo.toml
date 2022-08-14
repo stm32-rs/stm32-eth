@@ -63,8 +63,8 @@ stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 smoltcp-phy = ["smoltcp"]
 
 # Example features
+nucleo-pins = [ ]
 rtic-echo-example = [ "ieee802_3_miim", "defmt", "smoltcp-phy", "smoltcp/defmt", "smoltcp/medium-ethernet", "smoltcp/socket-tcp" ]
-rtic-echo-example-altpin = [ ]
 
 [dev-dependencies]
 cortex-m = "0.7"
@@ -79,29 +79,22 @@ systick-monotonic = "1.0"
 
 [[example]]
 name = "pktgen"
-required-features = ["stm32f429"]
+required-features = [ ]
 
 [[example]]
 name = "ip"
 required-features = [
-    "stm32f429", "smoltcp-phy", "log", "smoltcp/socket-tcp", "smoltcp/socket-icmp",
-    "smoltcp/log", "smoltcp/verbose"
-]
-
-[[example]]
-name = "ip-f107"
-required-features = [
-    "stm32f107", "smoltcp-phy", "log", "smoltcp/socket-tcp", "smoltcp/socket-icmp",
+    "smoltcp-phy", "log", "smoltcp/socket-tcp", "smoltcp/socket-icmp",
     "smoltcp/log", "smoltcp/verbose"
 ]
 
 [[example]]
 name = "arp"
-required-features = ["stm32f407"]
+required-features = [ ]
 
 [[example]]
 name = "arp-smoltcp"
-required-features = ["stm32f407", "smoltcp-phy", "smoltcp/socket-icmp"]
+required-features = ["smoltcp-phy", "smoltcp/socket-icmp"]
 
 [[example]]
 name = "rtic-echo"

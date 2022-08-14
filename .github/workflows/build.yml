@@ -180,7 +180,7 @@ jobs:
           - stm32f107
           - stm32f407
           - stm32f765
-          - rtic-echo-example-altpin,stm32f765
+          - nucleo-pins,stm32f765
     steps:
       - name: Checkout
         uses: actions/checkout@v3
