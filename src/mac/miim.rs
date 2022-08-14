@@ -1,7 +1,5 @@
-#[cfg(feature = "ieee802_3_miim")]
 pub use ieee802_3_miim::Miim;
 
-#[cfg(feature = "ieee802_3_miim")]
 pub use ieee802_3_miim::*;
 
 use crate::{
@@ -90,7 +88,6 @@ where
     }
 }
 
-#[cfg(feature = "ieee802_3_miim")]
 impl<'eth, 'pins, Mdio, Mdc> Miim for Stm32Mii<'eth, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,

@@ -232,7 +232,6 @@ where
     }
 }
 
-#[cfg(feature = "ieee802_3_miim")]
 impl<MDIO, MDC> miim::Miim for EthernetMACWithMii<MDIO, MDC>
 where
     MDIO: MdioPin,
