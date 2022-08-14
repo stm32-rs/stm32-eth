@@ -1,6 +1,4 @@
 #![allow(unused_attributes)]
-#![no_std]
-#![no_main]
 
 //! Common features used in examples.
 //!

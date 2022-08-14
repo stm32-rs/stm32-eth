@@ -59,7 +59,9 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --target=${{ matrix.target }} --features ${{ matrix.features }}
+          # We use `--no-default-features` because compiling `defmt` for non-embedded targets
+          # doesn't work.
+          args: --target=${{ matrix.target }} --no-default-features --features ${{ matrix.features }}
 
 
   # Compilation
@@ -77,7 +79,6 @@ jobs:
           - stm32f407
           - stm32f417
           - stm32f427
-          - stm32f429
           - stm32f437
           - stm32f439
           - stm32f469
@@ -116,25 +117,33 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        toolchain:
-          - stable
-        target:
-          - thumbv7m-none-eabi
+        example:
+          - name: arp-smoltcp
+            example: arp-smoltcp
+            features: defmt,smoltcp-phy,smoltcp/socket-raw
+          - name: arp
+            example: arp
+            features: defmt
+          - name: ip
+            example: ip
+            features: defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp
+          - name: pktgen
+            example: pktgen
+            features: defmt
+          - name: rtic-echo
+            example: rtic-echo
+            features: rtic-echo-example
+          - name: rtic-echo with nucleo pins
+            example: rtic-echo
+            features: rtic-echo-example,example-nucleo-pins
         mcu:
           - stm32f107
           - stm32f429
           - stm32f745
-        example:
-          - name: arp-smoltcp
-            features: defmt,smoltcp-phy,smoltcp/socket-raw
-          - name: arp
-            features: defmt
-          - name: ip
-            features: defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp
-          - name: pktgen
-            features: defmt
-          - name: rtic-echo
-            features: rtic-echo-example
+        toolchain:
+          - stable
+        target:
+          - thumbv7m-none-eabi
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -151,7 +160,7 @@ jobs:
         with:
           use-cross: false
           command: build
-          args: --release --target=${{ matrix.target }} --example ${{ matrix.example.name}} --features ${{ matrix.mcu }},${{ matrix.example.features }}
+          args: --release --target=${{ matrix.target }} --example ${{ matrix.example.example}} --features ${{ matrix.mcu }},${{ matrix.example.features }}
 
   # Refs: https://github.com/rust-lang/crater/blob/9ab6f9697c901c4a44025cf0a39b73ad5b37d198/.github/workflows/bors.yml#L125-L149
   #
