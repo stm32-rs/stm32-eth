@@ -1,50 +1,29 @@
 #![no_std]
 #![no_main]
 
-extern crate panic_itm;
+//! For build and run instructions, see [`README.md`](../README.md#examples)
+//!
+//! This example starts a TCP listening server that should transmit `Hello` to
+//! any connecting client, and then close the connection.
+
+use defmt_rtt as _;
+use panic_probe as _;
 
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
-use stm32_eth::{
-    hal::gpio::GpioExt,
-    hal::rcc::RccExt,
-    stm32::{interrupt, CorePeripherals, Peripherals, SYST},
-};
+use stm32_eth::stm32::{interrupt, CorePeripherals, Peripherals, SYST};
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
 
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
-
-use fugit::RateExtU32;
-use log::{Level, LevelFilter, Metadata, Record};
 use smoltcp::iface::{InterfaceBuilder, NeighborCache};
 use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-mod common;
+pub mod common;
 
-use stm32_eth::{EthPins, RingEntry};
-
-static mut LOGGER: HioLogger = HioLogger {};
-
-struct HioLogger {}
-
-impl log::Log for HioLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Trace
-    }
-
-    fn log(&self, record: &Record) {
-        if self.enabled(record.metadata()) {
-            let mut stdout = hio::hstdout().unwrap();
-            writeln!(stdout, "{} - {}", record.level(), record.args()).unwrap();
-        }
-    }
-    fn flush(&self) {}
-}
+use stm32_eth::RingEntry;
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
@@ -53,13 +32,6 @@ static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 #[entry]
 fn main() -> ! {
-    unsafe {
-        log::set_logger(&LOGGER).unwrap();
-    }
-    log::set_max_level(LevelFilter::Info);
-
-    let mut stdout = hio::hstdout().unwrap();
-
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
@@ -67,9 +39,9 @@ fn main() -> ! {
 
     setup_systick(&mut cp.SYST);
 
-    writeln!(stdout, "Enabling ethernet...").unwrap();
+    defmt::info!("Enabling ethernet...");
 
-    let eth_pins = common::setup_pins(gpio);
+    let (eth_pins, _mdio, _mdc) = common::setup_pins(gpio);
 
     let mut rx_ring: [RingEntry<_>; 8] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
@@ -107,7 +79,7 @@ fn main() -> ! {
     );
     let server_handle = iface.add_socket(server_socket);
 
-    writeln!(stdout, "Ready, listening at {}", ip_addr).unwrap();
+    defmt::info!("Ready, listening at {}", ip_addr);
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
@@ -118,19 +90,15 @@ fn main() -> ! {
             Ok(true) => {
                 let socket = iface.get_socket::<TcpSocket>(server_handle);
                 if !socket.is_open() {
-                    socket
-                        .listen(80)
-                        .or_else(|e| writeln!(stdout, "TCP listen error: {:?}", e))
-                        .unwrap();
+                    if let Err(e) = socket.listen(80) {
+                        defmt::error!("TCP listen error: {:?}", e)
+                    }
                 }
 
                 if socket.can_send() {
-                    write!(socket, "hello\n")
-                        .map(|_| {
-                            socket.close();
-                        })
-                        .or_else(|e| writeln!(stdout, "TCP send error: {:?}", e))
-                        .unwrap();
+                    if let Err(e) = socket.send_slice(b"hello\n").map(|_| socket.close()) {
+                        defmt::info!("TCP send error: {:?}", e);
+                    }
                 }
             }
             Ok(false) => {
@@ -146,7 +114,7 @@ fn main() -> ! {
             Err(e) =>
             // Ignore malformed packets
             {
-                writeln!(stdout, "Error: {:?}", e).unwrap()
+                defmt::info!("Error: {:?}", e);
             }
         }
     }

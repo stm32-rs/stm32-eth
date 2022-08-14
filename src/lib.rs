@@ -67,11 +67,11 @@ use setup::{
     AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1, RmiiTxEN,
 };
 
-#[cfg(feature = "smoltcp-phy")]
+#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 pub use smoltcp;
-#[cfg(feature = "smoltcp-phy")]
+#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 mod smoltcp_phy;
-#[cfg(feature = "smoltcp-phy")]
+#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 pub use smoltcp_phy::{EthRxToken, EthTxToken};
 
 #[cfg(not(feature = "device-selected"))]

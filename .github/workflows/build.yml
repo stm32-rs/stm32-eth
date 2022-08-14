@@ -11,7 +11,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Run cargo fmt --check, includes macros/
   style:
     name: style
     runs-on: ubuntu-20.04
@@ -117,70 +116,25 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        target:
-          - thumbv7m-none-eabi
         toolchain:
           - stable
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Install Rust ${{ matrix.toolchain }} with target (${{ matrix.target }})
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.toolchain }}
-          target: ${{ matrix.target }}
-          override: true
-
-      - name: cargo build f4 example pktgen
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: false
-          command: build
-          args: --release --target=${{ matrix.target }} --example pktgen --features stm32f429
-
-      - name: cargo build f4 example ip
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: false
-          command: build
-          args: --release --target=${{ matrix.target }} --example ip --features stm32f429,smoltcp-phy,log,smoltcp/socket-tcp,smoltcp/socket-icmp,smoltcp/log,smoltcp/verbose
-
-      - name: cargo build f4 example arp
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: false
-          command: build
-          args: --release --target=${{ matrix.target }} --example arp --features stm32f407
-
-      - name: cargo build f4 example arp-smoltcp
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: false
-          command: build
-          args: --release --target=${{ matrix.target }} --example arp-smoltcp --features stm32f407,smoltcp-phy,smoltcp/socket-icmp
-
-      - name: cargo build f1 example ip
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: false
-          command: build
-          args: --release --target=${{ matrix.target }} --example ip-f107 --features stm32f107,smoltcp-phy,log,smoltcp/socket-tcp,smoltcp/socket-icmp,smoltcp/log,smoltcp/verbose
-  
-  rtic-echo-example:
-    name: rtic-echo example
-    runs-on: ubuntu-20.04
-    strategy:
-      matrix:
         target:
           - thumbv7m-none-eabi
-        toolchain:
-          - stable
-        features:
+        mcu:
           - stm32f107
-          - stm32f407
-          - stm32f765
-          - nucleo-pins,stm32f765
+          - stm32f429
+          - stm32f745
+        example:
+          - name: arp-smoltcp
+            features: defmt,smoltcp-phy,smoltcp/socket-raw
+          - name: arp
+            features: defmt
+          - name: ip
+            features: defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp
+          - name: pktgen
+            features: defmt
+          - name: rtic-echo
+            features: rtic-echo-example
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -192,12 +146,12 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
-      - name: build rtic-echo-example with features ${{ matrix.features }}
+      - name: Build example ${{ matrix.example.name }} for ${{ matrix.mcu }}
         uses: actions-rs/cargo@v1
         with:
           use-cross: false
           command: build
-          args: --release --target=${{ matrix.target }} --example rtic-echo --features rtic-echo-example,${{ matrix.features }}
+          args: --release --target=${{ matrix.target }} --example ${{ matrix.example.name}} --features ${{ matrix.mcu }},${{ matrix.example.features }}
 
   # Refs: https://github.com/rust-lang/crater/blob/9ab6f9697c901c4a44025cf0a39b73ad5b37d198/.github/workflows/bors.yml#L125-L149
   #
@@ -211,7 +165,6 @@ jobs:
       - build
       - test
       - examples
-      - rtic-echo-example
     runs-on: ubuntu-20.04
     steps:
       - name: Mark the job as a success

@@ -2,6 +2,10 @@
 #![no_std]
 #![no_main]
 
+//! Common features used in examples.
+//!
+//! Note that this module isn't an example by itself.
+
 use stm32_eth::{
     hal::{gpio::GpioExt, rcc::Clocks},
     stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
@@ -88,14 +92,14 @@ mod pins {
     pub type RxD0 = PC4<Input>;
     pub type RxD1 = PC5<Input>;
 
-    #[cfg(not(feature = "nucleo-pins"))]
+    #[cfg(not(feature = "example-nucleo-pins"))]
     pub type TxEn = PB11<Input>;
-    #[cfg(not(feature = "nucleo-pins"))]
+    #[cfg(not(feature = "example-nucleo-pins"))]
     pub type TxD0 = PB12<Input>;
 
-    #[cfg(all(feature = "nucleo-pins"))]
+    #[cfg(all(feature = "example-nucleo-pins"))]
     pub type TxEn = PG11<Input>;
-    #[cfg(feature = "nucleo-pins")]
+    #[cfg(feature = "example-nucleo-pins")]
     pub type TxD0 = PG13<Input>;
 
     pub type Mdio = PA2<Alternate<11>>;
@@ -122,13 +126,13 @@ mod pins {
         let rx_d0 = gpioc.pc4.into_floating_input();
         let rx_d1 = gpioc.pc5.into_floating_input();
 
-        #[cfg(not(feature = "nucleo-pins"))]
+        #[cfg(not(feature = "example-nucleo-pins"))]
         let (tx_en, tx_d0) = (
             gpiob.pb11.into_floating_input(),
             gpiob.pb12.into_floating_input(),
         );
 
-        #[cfg(feature = "nucleo-pins")]
+        #[cfg(feature = "example-nucleo-pins")]
         let (tx_en, tx_d0) = {
             (
                 gpiog.pg11.into_floating_input(),

@@ -1,6 +1,5 @@
-//! cargo build --example arp-smoltcp --features=<MCU>,smoltcp-phy,smoltcp/socket-tcp,smoltcp/socket-icmp
-//! This example should work on any MCU with an 802.3 compatible, on-by-default PHY connected to the default 
-//! ethernet pins of that MCU.
+//! For build and run instructions, see [`README.md`](../README.md#examples)
+//!
 //! With Wireshark, you can see the ARP packets, which should look like this:
 //! No.  Time        Source          Destination     Protocol    Length  Info
 //! 1	0.000000000	Cetia_ad:be:ef	Broadcast	    ARP	        60	    Who has 10.0.0.2? Tell 10.0.0.10
@@ -8,7 +7,8 @@
 #![no_std]
 #![no_main]
 
-extern crate panic_itm;
+use defmt_rtt as _;
+use panic_probe as _;
 
 use core::cell::RefCell;
 use core::default::Default;
@@ -16,7 +16,6 @@ use core::default::Default;
 use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
 use cortex_m_rt::{entry, exception};
-use cortex_m_semihosting::hprintln;
 use smoltcp::wire::{
     ArpOperation, ArpPacket, ArpRepr, EthernetAddress, EthernetFrame, EthernetProtocol,
     EthernetRepr, Ipv4Address,
@@ -43,7 +42,8 @@ fn main() -> ! {
 
     setup_systick(&mut cp.SYST);
 
-    hprintln!("Enabling ethernet...").unwrap();
+    defmt::info!("Enabling ethernet...");
+
     let (eth_pins, mdio, mdc) = common::setup_pins(gpio);
 
     let mut rx_ring: [RingEntry<_>; 16] = Default::default();
@@ -69,9 +69,9 @@ fn main() -> ! {
 
         if link_up != last_link_up {
             if link_up {
-                hprintln!("Ethernet: link detected").unwrap();
+                defmt::info!("Ethernet: link detected");
             } else {
-                hprintln!("Ethernet: no link detected").unwrap();
+                defmt::info!("Ethernet: no link detected");
             }
             last_link_up = link_up;
         }
@@ -110,12 +110,12 @@ fn main() -> ! {
 
             match r {
                 Ok(()) => {
-                    hprintln!("ARP-smoltcp sent").unwrap();
+                    defmt::info!("ARP-smoltcp sent");
                 }
-                Err(TxError::WouldBlock) => hprintln!("ARP failed").unwrap(),
+                Err(TxError::WouldBlock) => defmt::info!("ARP failed"),
             }
         } else {
-            hprintln!("Down").unwrap();
+            defmt::info!("Down");
         }
 
         cortex_m::interrupt::free(|cs| {

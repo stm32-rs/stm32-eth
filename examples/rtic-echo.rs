@@ -5,14 +5,7 @@
 //!
 //! Starts a TCP echo server on port `1337` at `ADDRESS`. `ADDRESS` is `10.0.0.1/24` by default.
 //!
-//! By default, the example assumes that the default RMII pins are used.
-//! To use it on an stm32-nucleo-f746zg dev board, the `nucleo-pins` feature should be enabled. This may work on other
-//! boards, but that hasn't been tested so your mileage may vary.
-//!
-//! To run this, install `probe-run` (`cargo install probe-run --version '~0.3'`), and ensure that `probe-run` can
-//! attach to your test board.
-//! Then, use the following command:
-//! DEFMT_LOG=info PROBE_RUN_CHIP=<probe-run chip> cargo run --example rtic-echo --features <chip here>,rtic-echo-example --target <correct target for chip> --release
+//! For build and run instructions, see [`README.md`](../README.md#examples)
 
 use defmt_rtt as _;
 use panic_probe as _;
