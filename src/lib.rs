@@ -124,10 +124,10 @@ where
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
     // generated if the order is reversed.
-    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks)?;
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks)?;
 
     Ok((dma, mac))
 }
@@ -182,10 +182,10 @@ where
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
     // generated if the order is reversed.
-    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks)?.with_mii(mdio, mdc);
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks)?.with_mii(mdio, mdc);
 
     Ok((dma, mac))
 }

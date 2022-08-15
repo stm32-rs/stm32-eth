@@ -5,6 +5,7 @@ use core::ops::Deref;
 use crate::{
     hal::rcc::Clocks,
     stm32::{ETHERNET_MAC, ETHERNET_MMC},
+    EthernetDMA,
 };
 
 mod miim;
@@ -48,6 +49,10 @@ impl EthernetMAC {
     pub(crate) fn new(
         eth_mac: ETHERNET_MAC,
         eth_mmc: ETHERNET_MMC,
+        // Take a reference to EthernetDMA to ensure
+        // that `EthernetDMA` has been called before
+        // this function.
+        #[allow(unused)] eth_dma: &EthernetDMA,
         clocks: Clocks,
     ) -> Result<Self, WrongClock> {
         let clock_frequency = clocks.hclk().to_Hz();

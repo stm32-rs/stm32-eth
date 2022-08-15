@@ -2,6 +2,8 @@
 * General
     * Remove the `smi` feature and always enable miim/smi. Use `ieee802_3_miim` for SMI access
     * Split MAC and DMA setup into their own separate modules
+* CI
+    * Test compilability of examples more extensively
 * Examples:
     * Switch to `defmt` as logger
     * Use `probe-run` as runner
