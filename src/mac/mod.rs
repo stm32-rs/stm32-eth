@@ -41,10 +41,10 @@ impl EthernetMAC {
     /// HCLK must be at least 25MHz, else this function will return `Err(WrongClock)`.
     ///
     /// This method does not initialise the external PHY. However, you can access SMI
-    /// `read` and `write` functions through the `smi` and `with_smi` functions.
+    /// `read` and `write` functions through the [`Self::mii`] and [`Self::with_miim`] functions.
     ///
-    /// Additionally, an optional `impl` of the [`ieee802_3_miim::Miim`] trait is available
-    /// with the `ieee802_3_miim` feature (enabled by default), for PHY communication.
+    /// Additionally, an `impl` of the [`ieee802_3_miim::Miim`] trait is available
+    /// for PHY communication.
     pub(crate) fn new(
         eth_mac: ETHERNET_MAC,
         eth_mmc: ETHERNET_MMC,
@@ -188,7 +188,7 @@ where
     /// To interact with a connected Phy, use the `read` and `write` functions.
     ///
     /// Functionality for interacting with PHYs from the `ieee802_3_miim` crate
-    /// is available if the default feature `ieee802_3_miim` is enabled.
+    /// is available.
     pub fn new(eth_mac: EthernetMAC, mdio: MDIO, mdc: MDC) -> Self {
         Self { eth_mac, mdio, mdc }
     }

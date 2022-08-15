@@ -1,6 +1,15 @@
 ## Unreleased
-* Add `RTIC` example
-* Use `ieee802_3_miim` for SMI access.
+* General
+    * Remove the `smi` feature and always enable miim/smi. Use `ieee802_3_miim` for SMI access
+    * Split MAC and DMA setup into their own separate modules
+* Examples:
+    * Switch to `defmt` as logger
+    * Use `probe-run` as runner
+    * Ensure that all examples build (and hopefully run) for all supported MCUs
+    * Add more extensive example run and build docs
+    * Remove arp-smoltcp example
+    * Add `rtic-echo` example
+    * Use a more simple `memory.x` that works for all supported MCUs
 
 ## [0.3.0](https://github.com/stm32-rs/stm32-eth/tree/v0.3.0)
 
