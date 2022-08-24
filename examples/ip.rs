@@ -9,7 +9,6 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use cortex_m::asm;
 use cortex_m_rt::{entry, exception};
 use stm32_eth::stm32::{interrupt, CorePeripherals, Peripherals, SYST};
 
@@ -43,7 +42,7 @@ fn main() -> ! {
 
     let (eth_pins, _mdio, _mdc) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RingEntry<_>; 8] = Default::default();
+    let mut rx_ring: [RingEntry<_>; 2] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
     let (mut eth_dma, _eth_mac) = stm32_eth::new(
         ethernet.mac,
@@ -71,8 +70,8 @@ fn main() -> ! {
         .neighbor_cache(neighbor_cache)
         .finalize();
 
-    let mut server_rx_buffer = [0; 2048];
-    let mut server_tx_buffer = [0; 2048];
+    let mut server_rx_buffer = [0; 512];
+    let mut server_tx_buffer = [0; 512];
     let server_socket = TcpSocket::new(
         TcpSocketBuffer::new(&mut server_rx_buffer[..]),
         TcpSocketBuffer::new(&mut server_tx_buffer[..]),
@@ -101,16 +100,7 @@ fn main() -> ! {
                     }
                 }
             }
-            Ok(false) => {
-                // Sleep if no ethernet work is pending
-                cortex_m::interrupt::free(|cs| {
-                    let eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
-                    if !*eth_pending {
-                        asm::wfi();
-                        // Awaken by interrupt
-                    }
-                });
-            }
+            Ok(false) => {}
             Err(e) =>
             // Ignore malformed packets
             {

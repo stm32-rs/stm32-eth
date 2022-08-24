@@ -56,8 +56,8 @@ mod app {
     }
 
     #[init(local = [
-        rx_ring: [RxRingEntry; 4] = [RxRingEntry::new(),RxRingEntry::new(),RxRingEntry::new(),RxRingEntry::new()],
-        tx_ring: [TxRingEntry; 4] = [TxRingEntry::new(),TxRingEntry::new(),TxRingEntry::new(),TxRingEntry::new()],
+        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
+        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
         storage: NetworkStorage = NetworkStorage::new(),
         dma: core::mem::MaybeUninit<EthernetDMA<'static, 'static>> = core::mem::MaybeUninit::uninit(),
     ])]

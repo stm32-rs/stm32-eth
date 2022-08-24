@@ -14,7 +14,6 @@ use core::cell::RefCell;
 use core::default::Default;
 use cortex_m_rt::{entry, exception};
 
-use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
 use stm32_eth::{
     mac::{phy::BarePhy, Phy},
@@ -43,8 +42,9 @@ fn main() -> ! {
 
     let (eth_pins, mdio, mdc) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RingEntry<_>; 16] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 8] = Default::default();
+    let mut rx_ring: [RingEntry<_>; 2] = Default::default();
+    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
+
     let (mut eth_dma, eth_mac) = stm32_eth::new(
         ethernet.mac,
         ethernet.mmc,
@@ -118,10 +118,6 @@ fn main() -> ! {
         cortex_m::interrupt::free(|cs| {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
-
-            if !*eth_pending {
-                asm::wfi();
-            }
         });
     }
 }
