@@ -205,11 +205,6 @@ impl EthernetMAC {
             (true, true) => Speed::FullDuplexBase100Tx,
         }
     }
-
-    /// Mask the timestamp interrupt
-    pub fn mask_timestamp_interrupt(&mut self) {
-        self.eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
-    }
 }
 
 /// Ethernet media access control (MAC) with owned SMI

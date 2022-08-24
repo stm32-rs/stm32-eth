@@ -131,6 +131,8 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    let _ = setup_ptp(&eth_mac, eth_ptp);
+
     // Congfigure and start up the ethernet DMA.
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
@@ -139,9 +141,7 @@ where
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
     // Configure the ethernet MAC
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, speed)?;
-
-    let _ = setup_ptp(&mut mac, eth_ptp);
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, speed)?;
 
     Ok((dma, mac))
 }
@@ -194,6 +194,8 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    setup_ptp(&eth_mac, eth_ptp);
+
     // Congfigure and start up the ethernet DMA.
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
@@ -203,9 +205,7 @@ where
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
     // Configure the ethernet MAC
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, speed)?.with_mii(mdio, mdc);
-
-    setup_ptp(&mut mac, eth_ptp);
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, speed)?.with_mii(mdio, mdc);
 
     Ok((dma, mac))
 }
