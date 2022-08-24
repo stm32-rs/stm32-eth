@@ -118,11 +118,6 @@ impl TxDescriptor {
         }
     }
 
-    fn set_buffer1(&mut self, buffer: *const u8) {
-        self.buffer_address = Some(buffer as u32);
-        self.write_buffer1();
-    }
-
     fn set_buffer1_len(&mut self, len: usize) {
         unsafe {
             self.desc.modify(1, |w| {
@@ -141,12 +136,6 @@ impl TxDescriptor {
         unsafe {
             self.desc.write(3, next_descriptor);
         }
-    }
-
-    // points to next descriptor (RCH)
-    fn set_buffer2(&mut self, buffer: *const u8) {
-        self.next_descriptor = Some(buffer as u32);
-        self.write_buffer2();
     }
 
     fn set_end_of_ring(&mut self) {
@@ -217,15 +206,20 @@ impl RingDescriptor for TxDescriptor {
                     | TXDESC_0_CIC1,
             );
         }
-        self.set_buffer1(buffer);
-        match next {
-            Some(next) => self.set_buffer2(&next.desc as *const Descriptor as *const u8),
+
+        self.buffer_address = Some(buffer as u32);
+        self.write_buffer1();
+
+        let buffer_addr = match next {
+            Some(next) => &next.desc as *const Descriptor as *const u8 as usize,
             None => {
-                #[allow(clippy::zero_ptr)]
-                self.set_buffer2(0 as *const u8);
                 self.set_end_of_ring();
+                0
             }
         };
+
+        self.next_descriptor = Some(buffer_addr as u32);
+        self.write_buffer2();
     }
 }
 
