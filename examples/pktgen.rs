@@ -1,30 +1,25 @@
-//! Example assumes use of an STM32F429 connected to a network via a single PHY whose address is
-//! `0`. The PHY is expected to be accessible via SMI with an implementation of the standard basic
-//! status register as described in the IEEE 802.3 Ethernet standard.
-
+//! For build and run instructions, see README.md
+//!
+//! An example that generates some empty ethernet packets.
 #![no_std]
 #![no_main]
 
-extern crate panic_itm;
+use defmt_rtt as _;
+use panic_probe as _;
 
 use core::cell::RefCell;
 use core::default::Default;
 use cortex_m_rt::{entry, exception};
 
-use cortex_m::asm;
 use cortex_m::interrupt::Mutex;
-use fugit::RateExtU32;
 use stm32_eth::{
-    hal::gpio::{GpioExt, Speed},
-    hal::rcc::RccExt,
     mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
-use core::fmt::Write;
-use cortex_m_semihosting::hio;
+use stm32_eth::{RingEntry, TxError};
 
-use stm32_eth::{EthPins, RingEntry, TxError};
+pub mod common;
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 const DST_MAC: [u8; 6] = [0x00, 0x00, 0xBE, 0xEF, 0xDE, 0xAD];
@@ -36,44 +31,22 @@ static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 #[entry]
 fn main() -> ! {
-    let mut stdout = hio::hstdout().unwrap();
-
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
-    let rcc = p.RCC.constrain();
-    // HCLK must be at least 25MHz to use the ethernet peripheral
-    let clocks = rcc.cfgr.sysclk(32.MHz()).hclk(32.MHz()).freeze();
+    let (clocks, gpio, ethernet) = common::setup_peripherals(p);
 
     setup_systick(&mut cp.SYST);
 
-    writeln!(stdout, "Enabling ethernet...").unwrap();
-    let gpioa = p.GPIOA.split();
-    let gpiob = p.GPIOB.split();
-    let gpioc = p.GPIOC.split();
-    let gpiog = p.GPIOG.split();
+    defmt::info!("Enabling ethernet...");
+    let (eth_pins, mdio, mdc) = common::setup_pins(gpio);
 
-    let eth_pins = EthPins {
-        ref_clk: gpioa.pa1,
-        crs: gpioa.pa7,
-        tx_en: gpiog.pg11,
-        tx_d0: gpiog.pg13,
-        tx_d1: gpiob.pb13,
-        rx_d0: gpioc.pc4,
-        rx_d1: gpioc.pc5,
-    };
-
-    let mut mdio = gpioa.pa2.into_alternate();
-    mdio.set_speed(Speed::VeryHigh);
-    let mut mdc = gpioc.pc1.into_alternate();
-    mdc.set_speed(Speed::VeryHigh);
-
-    let mut rx_ring: [RingEntry<_>; 16] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 8] = Default::default();
+    let mut rx_ring: [RingEntry<_>; 2] = Default::default();
+    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
     let (mut eth_dma, eth_mac) = stm32_eth::new(
-        p.ETHERNET_MAC,
-        p.ETHERNET_MMC,
-        p.ETHERNET_DMA,
+        ethernet.mac,
+        ethernet.mmc,
+        ethernet.dma,
         &mut rx_ring[..],
         &mut tx_ring[..],
         clocks,
@@ -98,16 +71,15 @@ fn main() -> ! {
         // print stats every 30 seconds
         if time >= last_stats_time + 30 {
             let t = time - last_stats_time;
-            writeln!(
-                stdout,
+            defmt::info!(
                 "T={}\tRx:\t{} KB/s\t{} pps\tTx:\t{} KB/s\t{} pps",
                 time,
                 rx_bytes / 1024 / t,
                 rx_pkts / t,
                 tx_bytes / 1024 / t,
                 tx_pkts / t
-            )
-            .unwrap();
+            );
+
             // Reset
             rx_bytes = 0;
             rx_pkts = 0;
@@ -120,9 +92,9 @@ fn main() -> ! {
         let link_up = phy.phy_link_up();
         if link_up != last_link_up {
             if link_up {
-                writeln!(stdout, "Ethernet: no link detected").unwrap();
+                defmt::info!("Ethernet: no link detected");
             } else {
-                writeln!(stdout, "Ethernet: link detected!").unwrap();
+                defmt::info!("Ethernet: link detected!");
             }
             last_link_up = link_up;
         }
@@ -148,7 +120,7 @@ fn main() -> ! {
             }
         }
         if !eth_dma.rx_is_running() {
-            writeln!(stdout, "RX stopped").unwrap();
+            defmt::info!("RX stopped");
         }
 
         // fill tx queue
@@ -170,13 +142,6 @@ fn main() -> ! {
                 }
             }
         }
-
-        cortex_m::interrupt::free(|cs| {
-            let eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
-            if !*eth_pending {
-                asm::wfi();
-            }
-        });
     }
 }
 
@@ -186,13 +151,15 @@ fn setup_systick(syst: &mut SYST) {
     syst.enable_interrupt();
 
     if !SYST::is_precise() {
-        let mut stderr = hio::hstderr().unwrap();
-        writeln!(
-            stderr,
+        use cortex_m::peripheral::syst::SystClkSource::*;
+
+        defmt::error!(
             "Warning: SYSTICK with source {:?} is not precise",
-            syst.get_clock_source()
-        )
-        .unwrap();
+            match syst.get_clock_source() {
+                Core => "Core",
+                External => "External",
+            }
+        );
     }
 }
 
