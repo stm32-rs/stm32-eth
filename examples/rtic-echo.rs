@@ -32,7 +32,7 @@ mod app {
     use smoltcp::{
         iface::{self, Interface, SocketHandle},
         socket::TcpSocket,
-        socket::TcpSocketBuffer,
+        socket::{TcpSocketBuffer, TcpState},
         wire::EthernetAddress,
     };
 
@@ -164,7 +164,7 @@ mod app {
             }
         }
 
-        if !socket.is_listening() && !socket.is_open() {
+        if !socket.is_listening() && !socket.is_open() || socket.state() == TcpState::CloseWait {
             socket.abort();
             socket.listen(crate::ADDRESS).ok();
             defmt::warn!("Disconnected... Reopening listening socket.");
