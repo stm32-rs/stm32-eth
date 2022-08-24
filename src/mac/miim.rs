@@ -1,7 +1,5 @@
-#[cfg(feature = "ieee802_3_miim")]
 pub use ieee802_3_miim::Miim;
 
-#[cfg(feature = "ieee802_3_miim")]
 pub use ieee802_3_miim::*;
 
 use crate::{
@@ -10,8 +8,17 @@ use crate::{
 };
 
 /// MDIO pin types.
+///
+/// # Safety
+/// Only pins specified as ETH_MDIO in a part's reference manual
+/// may implement this trait
 pub unsafe trait MdioPin {}
+
 /// MDC pin types.
+///
+/// # Safety
+/// Only pins specified as ETH_MDC in a part's reference manual
+/// may implement this trait
 pub unsafe trait MdcPin {}
 
 #[inline(always)]
@@ -70,16 +77,17 @@ where
     Mdio: MdioPin,
     Mdc: MdcPin,
 {
+    /// Read MII register `reg` from the PHY at address `phy`
     pub fn read(&mut self, phy: u8, reg: u8) -> u16 {
         miim_read(&mut self.mac.eth_mac, phy, reg)
     }
 
+    /// Write the value `data` to MII register `reg` to the PHY at address `phy`
     pub fn write(&mut self, phy: u8, reg: u8, data: u16) {
         miim_write(&mut self.mac.eth_mac, phy, reg, data)
     }
 }
 
-#[cfg(feature = "ieee802_3_miim")]
 impl<'eth, 'pins, Mdio, Mdc> Miim for Stm32Mii<'eth, 'pins, Mdio, Mdc>
 where
     Mdio: MdioPin,

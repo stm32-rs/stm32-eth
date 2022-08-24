@@ -2,6 +2,7 @@
 //!
 //! For initialisation, see [`new`], and [`new_with_mii`]
 #![no_std]
+#![deny(missing_docs)]
 
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
@@ -75,11 +76,11 @@ mod ptp;
 #[cfg(feature = "device-selected")]
 use ptp::setup_ptp;
 
-#[cfg(feature = "smoltcp-phy")]
+#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 pub use smoltcp;
-#[cfg(feature = "smoltcp-phy")]
+#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 mod smoltcp_phy;
-#[cfg(feature = "smoltcp-phy")]
+#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 pub use smoltcp_phy::*;
 
 #[cfg(not(feature = "device-selected"))]
@@ -98,7 +99,7 @@ const MTU: usize = 1522;
 /// This method does not initialise the external PHY. Interacting with a PHY
 /// can be done by using the struct returned from [`EthernetMAC::mii`].
 ///
-/// /// # Note
+/// # Note
 /// - Make sure that the buffers reside in a memory region that is
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
@@ -134,11 +135,11 @@ where
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
     // generated if the order is reversed.
-    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
     // Configure the ethernet MAC
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?;
+    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, speed)?;
 
     let _ = setup_ptp(&mut mac, eth_ptp);
 
@@ -197,12 +198,12 @@ where
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
     // generated if the order is reversed.
-    let dma = EthernetDMA::new(eth_dma, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
     // Configure the ethernet MAC
-    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, speed)?.with_mii(mdio, mdc);
+    let mut mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, speed)?.with_mii(mdio, mdc);
 
     setup_ptp(&mut mac, eth_ptp);
 

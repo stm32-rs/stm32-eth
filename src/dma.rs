@@ -3,7 +3,7 @@ use cortex_m::peripheral::NVIC;
 use crate::{
     packet_id::IntoPacketId,
     rx::{RxPacket, RxRing},
-    stm32::{Interrupt, ETHERNET_DMA},
+    stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC},
     tx::TxRing,
     PacketId, RxError, RxRingEntry, TxError, TxRingEntry,
 };
@@ -61,6 +61,11 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// usually not accessible.
     pub(crate) fn new(
         eth_dma: ETHERNET_DMA,
+        // Take a reference to ETHERNET_MAC to ensure that
+        // this function cannot be called before `EthernetMAC::new`.
+        // If we do that, shenanigans ensues (presumably clock and wait
+        // condition mismatch)
+        #[allow(unused_variables)] eth_mac: &ETHERNET_MAC,
         rx_buffer: &'rx mut [RxRingEntry],
         tx_buffer: &'tx mut [TxRingEntry],
     ) -> Self {

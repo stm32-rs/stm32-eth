@@ -1,8 +1,11 @@
+//! Ethernet MAC driver implementation
+
 use core::ops::{Deref, DerefMut};
 
 use crate::{
     hal::rcc::Clocks,
     stm32::{ETHERNET_MAC, ETHERNET_MMC},
+    EthernetDMA,
 };
 
 mod miim;
@@ -11,6 +14,8 @@ pub use miim::*;
 /// Speeds at which this MAC can be configured
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Note(missing_docs): the variants are self explanatory
+#[allow(missing_docs)]
 pub enum Speed {
     HalfDuplexBase10T,
     FullDuplexBase10T,
@@ -49,13 +54,17 @@ impl EthernetMAC {
     /// HCLK must be at least 25MHz, else this function will return `Err(WrongClock)`.
     ///
     /// This method does not initialise the external PHY. However, you can access SMI
-    /// `read` and `write` functions through the `smi` and `with_smi` functions.
+    /// `read` and `write` functions through the [`Self::mii`] and [`Self::with_miim`] functions.
     ///
-    /// Additionally, an optional `impl` of the [`ieee802_3_miim::Miim`] trait is available
-    /// with the `ieee802_3_miim` feature (enabled by default), for PHY communication.
+    /// Additionally, an `impl` of the [`ieee802_3_miim::Miim`] trait is available
+    /// for PHY communication.
     pub(crate) fn new(
         eth_mac: ETHERNET_MAC,
         eth_mmc: ETHERNET_MMC,
+        // Take a reference to EthernetDMA to ensure
+        // that `EthernetDMA` has been called before
+        // this function.
+        #[allow(unused)] eth_dma: &EthernetDMA,
         clocks: Clocks,
         initial_speed: Speed,
     ) -> Result<Self, WrongClock> {
@@ -186,6 +195,7 @@ impl EthernetMAC {
         });
     }
 
+    /// Get the current PHY speed that the MAC is configured for
     pub fn get_phy_speed(&self) -> Speed {
         let cr = self.eth_mac.maccr.read();
         match (cr.fes().bit_is_set(), cr.dm().bit_is_set()) {
@@ -196,6 +206,7 @@ impl EthernetMAC {
         }
     }
 
+    /// Mask the timestamp interrupt
     pub fn mask_timestamp_interrupt(&mut self) {
         self.eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
     }
@@ -226,7 +237,7 @@ where
     /// To interact with a connected Phy, use the `read` and `write` functions.
     ///
     /// Functionality for interacting with PHYs from the `ieee802_3_miim` crate
-    /// is available if the default feature `ieee802_3_miim` is enabled.
+    /// is available.
     pub fn new(eth_mac: EthernetMAC, mdio: MDIO, mdc: MDC) -> Self {
         Self { eth_mac, mdio, mdc }
     }
@@ -265,12 +276,14 @@ where
     MDIO: MdioPin,
     MDC: MdcPin,
 {
+    /// Read MII register `reg` from the PHY at address `phy`
     pub fn read(&mut self, phy: u8, reg: u8) -> u16 {
         self.eth_mac
             .mii(&mut self.mdio, &mut self.mdc)
             .read(phy, reg)
     }
 
+    /// Write the value `data` to MII register `reg` to the PHY at address `phy`
     pub fn write(&mut self, phy: u8, reg: u8, data: u16) {
         self.eth_mac
             .mii(&mut self.mdio, &mut self.mdc)
@@ -278,7 +291,6 @@ where
     }
 }
 
-#[cfg(feature = "ieee802_3_miim")]
 impl<MDIO, MDC> miim::Miim for EthernetMACWithMii<MDIO, MDC>
 where
     MDIO: MdioPin,

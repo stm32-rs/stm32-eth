@@ -14,10 +14,14 @@ use crate::{
     ring::{RingDescriptor, RingEntry},
 };
 
+/// Errors that can occur during RX
 #[derive(Debug, PartialEq)]
 pub enum RxError {
+    /// Receiving would block
     WouldBlock,
+    /// The received packet was truncated
     Truncated,
+    /// An error occured with the DMA
     DmaError,
 }
 
@@ -44,6 +48,7 @@ const RXDESC_1_RER: u32 = 1 << 15;
 
 #[repr(C)]
 #[derive(Clone)]
+/// An RX DMA Descriptor
 pub struct RxDescriptor {
     desc: Descriptor,
     timestamp_info: Option<(PacketId, Timestamp)>,
@@ -176,6 +181,7 @@ impl RxDescriptor {
     }
 }
 
+/// An RX DMA Ring Descriptor entry
 pub type RxRingEntry = RingEntry<RxDescriptor>;
 
 impl RingDescriptor for RxDescriptor {
@@ -198,6 +204,7 @@ impl RingDescriptor for RxDescriptor {
 }
 
 impl RxRingEntry {
+    /// The initial value for an Rx Ring Entry
     pub const RX_INIT: Self = Self::new();
 
     fn take_received(&mut self) -> Result<RxPacket, RxError> {

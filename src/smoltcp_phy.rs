@@ -60,6 +60,8 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
     }
 }
 
+/// An Ethernet RX token that can be consumed in order to receive
+/// an ethernet packet.
 pub struct EthRxToken<'a> {
     pub(super) packet: RxPacket<'a>,
 }
