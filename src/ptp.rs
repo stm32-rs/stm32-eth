@@ -5,7 +5,7 @@ pub(crate) fn setup_ptp(_eth_mac: &ETHERNET_MAC, eth_ptp: ETHERNET_PTP) {
     #[cfg(feature = "stm32f107")]
     _eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
 
-    if false {
+    if true {
         // Setup PTP timestamping
         eth_ptp.ptptscr.write(|w| {
             #[cfg(not(feature = "stm32f107"))]

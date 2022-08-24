@@ -131,15 +131,16 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
-    let _ = setup_ptp(&eth_mac, eth_ptp);
-
     // Congfigure and start up the ethernet DMA.
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
     // generated if the order is reversed.
     let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
+    setup_ptp(&eth_mac, eth_ptp);
+
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
+
     // Configure the ethernet MAC
     let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, speed)?;
 
@@ -194,13 +195,13 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
-    setup_ptp(&eth_mac, eth_ptp);
-
     // Congfigure and start up the ethernet DMA.
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
     // generated if the order is reversed.
     let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
+
+    setup_ptp(&eth_mac, eth_ptp);
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
