@@ -36,9 +36,10 @@ const TXDESC_0_TCH: u32 = 1 << 20;
 /// Error status
 const TXDESC_0_ES: u32 = 1 << 15;
 /// TX done bit
-
 const TXDESC_1_TBS_SHIFT: usize = 0;
 const TXDESC_1_TBS_MASK: u32 = 0x0fff << TXDESC_1_TBS_SHIFT;
+/// An empty mask
+const TXDESC_0_MASK_NONE: u32 = 0;
 
 /// Errors that can occur during Ethernet TX
 #[derive(Debug, PartialEq)]
@@ -54,8 +55,20 @@ pub struct TxDescriptor {
     pub(crate) desc: Descriptor,
     pub(crate) packet_id: Option<PacketId>,
     cached_timestamp: Option<Timestamp>,
-    buffer_address: Option<u32>,
-    next_descriptor: Option<u32>,
+    buffer_address: u32,
+    next_descriptor: u32,
+    /// The value that we want TDES0 to have when
+    /// the OWNED bit is set.
+    ///
+    /// We use a value tracked by this descriptor because
+    /// the DMA may reset any of the control bits in TDES0
+    /// when writing to or updating a descriptor.
+    ///
+    /// Control bits are: IC, LS, FS, DC, DP, CIC[0:1], TER, TCH
+    tdes0: u32,
+
+    /// Whether or not this TxDescriptor should be timestamped
+    timestamping: bool,
 }
 
 impl Default for TxDescriptor {
@@ -71,33 +84,37 @@ impl TxDescriptor {
             desc: Descriptor::new(),
             packet_id: None,
             cached_timestamp: None,
-            buffer_address: None,
-            next_descriptor: None,
+            buffer_address: 0,
+            next_descriptor: 0,
+            tdes0: 0,
+            timestamping: false,
         }
     }
 
-    /// Is owned by the DMA engine?
-    pub(crate) fn is_owned(&self) -> bool {
-        (self.desc.read(0) & TXDESC_0_OWN) == TXDESC_0_OWN
-    }
-
-    /// Pass ownership to the DMA engine
-    fn set_owned(&mut self) {
-        self.write_buffer1();
-        self.write_buffer2();
-
-        // "Preceding reads and writes cannot be moved past subsequent writes."
-        // #[cfg(feature = "fence")]
-        atomic::fence(Ordering::Release);
-        atomic::compiler_fence(Ordering::Release);
+    /// Write the cached `tdes0` value to the actual
+    /// TDES word in memory.
+    fn write_tdes0(&mut self, extra_mask: u32) {
         unsafe {
-            self.desc.modify(0, |w| w | TXDESC_0_OWN);
+            let tdes0 = self.tdes0 | extra_mask;
+            self.desc.write(0, tdes0);
         }
+    }
 
-        // Used to flush the store buffer as fast as possible to make the buffer available for the
-        // DMA.
-        // #[cfg(feature = "fence")]
-        atomic::fence(Ordering::SeqCst);
+    /// Enable PTP timestamping on the tdes0 value
+    /// controlled by this descriptor
+    ///
+    /// The change will only take effect after `write_tdes0`
+    /// has been called
+    fn set_timestamping(&mut self) {
+        self.timestamping = true;
+    }
+
+    /// Enable TX interrupt
+    ///
+    /// The change will only take effect after `write_tdes0`
+    /// has been called
+    fn set_interrupt(&mut self) {
+        self.tdes0 |= TXDESC_0_IC;
     }
 
     #[allow(unused)]
@@ -105,14 +122,45 @@ impl TxDescriptor {
         (self.desc.read(0) & TXDESC_0_ES) == TXDESC_0_ES
     }
 
+    /// Is owned by the DMA engine?
+    pub fn is_owned(&self) -> bool {
+        (self.desc.read(0) & TXDESC_0_OWN) == TXDESC_0_OWN
+    }
+
+    fn is_last(tdes0: u32) -> bool {
+        tdes0 & TXDESC_0_LS == TXDESC_0_LS
+    }
+
+    /// Pass ownership to the DMA engine
+    fn set_owned(&mut self) {
+        let timestamping_mask = if self.timestamping {
+            TXDESC_0_TIMESTAMP_ENABLE
+        } else {
+            TXDESC_0_MASK_NONE
+        };
+        self.timestamping = false;
+
+        self.write_buffer1();
+        self.write_buffer2();
+
+        // "Preceding reads and writes cannot be moved past subsequent writes."
+        #[cfg(feature = "fence")]
+        atomic::fence(Ordering::Release);
+        atomic::compiler_fence(Ordering::Release);
+
+        self.write_tdes0(TXDESC_0_OWN | timestamping_mask);
+
+        // Used to flush the store buffer as fast as possible to make the buffer available for the
+        // DMA.
+        #[cfg(feature = "fence")]
+        atomic::fence(Ordering::SeqCst);
+    }
+
     /// Rewrite buffer1 to the last value we wrote to it
     ///
     /// In our case, the address of the data buffer for this descriptor
     fn write_buffer1(&mut self) {
-        let buffer_addr = self
-            .buffer_address
-            .expect("Writing buffer2 of a TX descriptor, but `buffer_address` is None");
-
+        let buffer_addr = self.buffer_address;
         unsafe {
             self.desc.write(2, buffer_addr);
         }
@@ -130,22 +178,11 @@ impl TxDescriptor {
     ///
     /// In our case, the address of the next descriptor (may be zero)
     fn write_buffer2(&mut self) {
-        let next_descriptor = self
-            .next_descriptor
-            .expect("Writing buffer2 of a TX descriptor, but `next_descriptor` is None");
-        unsafe {
-            self.desc.write(3, next_descriptor);
-        }
-    }
+        let value = self.next_descriptor;
 
-    fn set_end_of_ring(&mut self) {
         unsafe {
-            self.desc.modify(0, |w| w | TXDESC_0_TER);
+            self.desc.write(3, value);
         }
-    }
-
-    fn is_last(tdes0: u32) -> bool {
-        tdes0 & TXDESC_0_LS == TXDESC_0_LS
     }
 
     fn timestamp(&mut self) -> Option<Timestamp> {
@@ -171,22 +208,6 @@ impl TxDescriptor {
             None
         }
     }
-
-    /// Enable PTP timestamping
-    fn set_timestamping(&mut self) {
-        unsafe {
-            self.desc.modify(0, |w| {
-                w | TXDESC_0_TIMESTAMP_ENABLE | TXDESC_0_FS | TXDESC_0_LS
-            });
-        }
-    }
-
-    /// Enable TX interrupt
-    fn set_interrupt(&mut self) {
-        unsafe {
-            self.desc.modify(0, |w| w | TXDESC_0_IC);
-        }
-    }
 }
 
 /// A TX DMA Ring Descriptor entry
@@ -195,31 +216,23 @@ pub type TxRingEntry = RingEntry<TxDescriptor>;
 impl RingDescriptor for TxDescriptor {
     fn setup(&mut self, buffer: *const u8, _len: usize, next: Option<&Self>) {
         // Defer this initialization to this function, so we can have `RingEntry` on bss.
-        unsafe {
-            self.desc.write(
-                0,
-                TXDESC_0_TCH
-                    | TXDESC_0_IC
-                    | TXDESC_0_FS
-                    | TXDESC_0_LS
-                    | TXDESC_0_CIC0
-                    | TXDESC_0_CIC1,
-            );
-        }
 
-        self.buffer_address = Some(buffer as u32);
+        self.tdes0 |= TXDESC_0_TCH | TXDESC_0_FS | TXDESC_0_LS | TXDESC_0_CIC0 | TXDESC_0_CIC1;
+
+        self.buffer_address = buffer as u32;
         self.write_buffer1();
 
-        let buffer_addr = match next {
-            Some(next) => &next.desc as *const Descriptor as *const u8 as usize,
-            None => {
-                self.set_end_of_ring();
-                0
-            }
+        let buffer_addr = if let Some(next) = next {
+            self.tdes0 |= TXDESC_0_TER;
+            &next.desc as *const Descriptor as *const u8 as u32
+        } else {
+            0
         };
 
-        self.next_descriptor = Some(buffer_addr as u32);
+        self.next_descriptor = buffer_addr;
         self.write_buffer2();
+
+        self.write_tdes0(TXDESC_0_MASK_NONE);
     }
 }
 
