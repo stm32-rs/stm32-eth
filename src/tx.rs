@@ -64,11 +64,8 @@ pub struct TxDescriptor {
     /// the DMA may reset any of the control bits in TDES0
     /// when writing to or updating a descriptor.
     ///
-    /// Control bits are: IC, LS, FS, DC, DP, CIC[0:1], TER, TCH
+    /// Control bits are: `IC`, `LS`, `FS`, `DC`, `DP`, `CIC[0:1]`, `TER`, `TCH`
     tdes0: u32,
-
-    /// Whether or not this TxDescriptor should be timestamped
-    timestamping: bool,
 }
 
 impl Default for TxDescriptor {
@@ -86,35 +83,17 @@ impl TxDescriptor {
             cached_timestamp: None,
             buffer_address: 0,
             next_descriptor: 0,
-            tdes0: 0,
-            timestamping: false,
+            tdes0: TXDESC_0_TCH | TXDESC_0_FS | TXDESC_0_LS | TXDESC_0_CIC0 | TXDESC_0_CIC1,
         }
     }
 
     /// Write the cached `tdes0` value to the actual
     /// TDES word in memory.
-    fn write_tdes0(&mut self, extra_mask: u32) {
+    fn write_tdes0(&mut self, extra_bits: u32) {
         unsafe {
-            let tdes0 = self.tdes0 | extra_mask;
+            let tdes0 = self.tdes0 | extra_bits;
             self.desc.write(0, tdes0);
         }
-    }
-
-    /// Enable PTP timestamping on the tdes0 value
-    /// controlled by this descriptor
-    ///
-    /// The change will only take effect after `write_tdes0`
-    /// has been called
-    fn set_timestamping(&mut self) {
-        self.timestamping = true;
-    }
-
-    /// Enable TX interrupt
-    ///
-    /// The change will only take effect after `write_tdes0`
-    /// has been called
-    fn set_interrupt(&mut self) {
-        self.tdes0 |= TXDESC_0_IC;
     }
 
     #[allow(unused)]
@@ -132,14 +111,7 @@ impl TxDescriptor {
     }
 
     /// Pass ownership to the DMA engine
-    fn set_owned(&mut self) {
-        let timestamping_mask = if self.timestamping {
-            TXDESC_0_TIMESTAMP_ENABLE
-        } else {
-            TXDESC_0_MASK_NONE
-        };
-        self.timestamping = false;
-
+    fn set_owned(&mut self, extra_status_flags: u32) {
         self.write_buffer1();
         self.write_buffer2();
 
@@ -148,7 +120,7 @@ impl TxDescriptor {
         atomic::fence(Ordering::Release);
         atomic::compiler_fence(Ordering::Release);
 
-        self.write_tdes0(TXDESC_0_OWN | timestamping_mask);
+        self.write_tdes0(TXDESC_0_OWN | extra_status_flags);
 
         // Used to flush the store buffer as fast as possible to make the buffer available for the
         // DMA.
@@ -198,11 +170,6 @@ impl TxDescriptor {
 
             let timestamp = Timestamp::new(seconds, subseconds);
 
-            // Clear the timestamp status bit, because we're currently reading it
-            unsafe {
-                self.desc.write(0, tdes0 & !(TXDESC_0_TIMESTAMP_STATUS));
-            }
-
             Some(timestamp)
         } else {
             None
@@ -217,19 +184,17 @@ impl RingDescriptor for TxDescriptor {
     fn setup(&mut self, buffer: *const u8, _len: usize, next: Option<&Self>) {
         // Defer this initialization to this function, so we can have `RingEntry` on bss.
 
-        self.tdes0 |= TXDESC_0_TCH | TXDESC_0_FS | TXDESC_0_LS | TXDESC_0_CIC0 | TXDESC_0_CIC1;
-
         self.buffer_address = buffer as u32;
         self.write_buffer1();
 
-        let buffer_addr = if let Some(next) = next {
-            self.tdes0 |= TXDESC_0_TER;
+        let next_desc_addr = if let Some(next) = next {
             &next.desc as *const Descriptor as *const u8 as u32
         } else {
+            self.tdes0 |= TXDESC_0_TER;
             0
         };
 
-        self.next_descriptor = buffer_addr;
+        self.next_descriptor = next_desc_addr;
         self.write_buffer2();
 
         self.write_tdes0(TXDESC_0_MASK_NONE);
@@ -244,18 +209,21 @@ impl TxRingEntry {
         assert!(length <= self.as_slice().len());
 
         if !self.desc().is_owned() {
+            let mut extra_flags = TXDESC_0_MASK_NONE;
+
             self.desc_mut().set_buffer1_len(length);
 
             if packet_id.is_some() {
-                self.desc_mut().set_timestamping();
+                extra_flags |= TXDESC_0_TIMESTAMP_ENABLE | TXDESC_0_LS | TXDESC_0_FS;
             }
             self.desc_mut().packet_id = packet_id;
 
-            self.desc_mut().set_interrupt();
+            extra_flags |= TXDESC_0_IC;
 
             Some(TxPacket {
                 entry: self,
                 length,
+                extra_flags,
             })
         } else {
             None
@@ -266,6 +234,7 @@ impl TxRingEntry {
 pub struct TxPacket<'a> {
     entry: &'a mut TxRingEntry,
     length: usize,
+    extra_flags: u32,
 }
 
 impl<'a> Deref for TxPacket<'a> {
@@ -285,7 +254,7 @@ impl<'a> DerefMut for TxPacket<'a> {
 impl<'a> TxPacket<'a> {
     // Pass to DMA engine
     pub fn send(self) {
-        self.entry.desc_mut().set_owned();
+        self.entry.desc_mut().set_owned(self.extra_flags);
     }
 }
 

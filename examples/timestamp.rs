@@ -45,9 +45,6 @@ fn main() -> ! {
     let mut rx_ring: [RingEntry<_>; 2] = Default::default();
     let mut tx_ring: [RingEntry<_>; 2] = Default::default();
 
-    defmt::info!("TX ring addr 0: {:08X}", (&tx_ring[0]) as *const _ as usize);
-    defmt::info!("TX ring addr 1: {:08X}", (&tx_ring[1]) as *const _ as usize);
-
     let (mut eth_dma, eth_mac) = stm32_eth::new(
         ethernet.mac,
         ethernet.mmc,
@@ -107,10 +104,10 @@ fn main() -> ! {
                     }
                     Err(e) => {
                         defmt::info!("{}", e);
+                        cortex_m::asm::delay(72_000_000);
                         packet_id_tx_opt.take();
                     }
                 }
-                cortex_m::asm::delay(72_000_000);
             } else {
                 packet_id_tx_opt = Some(PacketId(packet_id_counter));
                 packet_id_counter += 1;
