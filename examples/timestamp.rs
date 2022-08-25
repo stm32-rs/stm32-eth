@@ -92,6 +92,16 @@ fn main() -> ! {
             const TARGET_MAC: [u8; 6] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
             const TARGET_IP: [u8; 4] = [0x0A, 0x00, 0x00, 0x02]; // 10.0.0.2
 
+            packet_id_counter += 1;
+            let rx_packet_id = Some(PacketId(packet_id_counter));
+            if eth_dma.recv_next(rx_packet_id.clone()).is_ok() {
+                if let Ok(ts) = eth_dma.get_timestamp_for_id(rx_packet_id.unwrap()) {
+                    defmt::info!("RX timestamp: {}.{:09}", ts.seconds(), ts.nanos());
+                } else {
+                    defmt::info!("Could not find RX timestamp");
+                }
+            }
+
             if let Some(packet_id_tx) = &packet_id_tx_opt {
                 eth_dma.collect_timestamps();
 
@@ -99,18 +109,20 @@ fn main() -> ! {
 
                 match ts {
                     Ok(ts) => {
-                        defmt::error!("Found timestamp: {}", ts);
+                        defmt::error!("Found timestamp: {}.{:09}", ts.seconds(), ts.nanos());
+                        defmt::error!("{}", ts);
                         packet_id_tx_opt.take();
                     }
                     Err(e) => {
-                        defmt::info!("{}", e);
-                        cortex_m::asm::delay(72_000_000);
+                        defmt::info!("Failed to find TX timestamp: {}", e);
                         packet_id_tx_opt.take();
                     }
                 }
             } else {
-                packet_id_tx_opt = Some(PacketId(packet_id_counter));
+                cortex_m::asm::delay(72_000_000 - 100_000);
+
                 packet_id_counter += 1;
+                packet_id_tx_opt = Some(PacketId(packet_id_counter));
 
                 let r = eth_dma.send(SIZE, packet_id_tx_opt.clone(), |buf| {
                     buf[0..6].copy_from_slice(&DST_MAC);
@@ -135,6 +147,8 @@ fn main() -> ! {
                     }
                     Err(TxError::WouldBlock) => defmt::info!("ARP failed"),
                 }
+
+                cortex_m::asm::delay(100_000);
             }
         } else {
             defmt::info!("Down");
