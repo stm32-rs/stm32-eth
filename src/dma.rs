@@ -46,13 +46,13 @@ impl Timestamp {
         // the signedness of the system time. We should probably deal with that
         // in the future.
 
-        #[cfg(not(feature = "stm32f107"))]
+        #[cfg(not(feature = "stm32f1xx-hal"))]
         {
             let (seconds, nanos) = { (self.desc.read(7), self.desc.read(6)) };
             Timestamp::new(seconds, nanos)
         }
 
-        #[cfg(feature = "stm32f107")]
+        #[cfg(feature = "stm32f1xx-hal")]
         {
             let (seconds, subseconds) = { (desc.read(3) as u64, desc.read(2) as u64) };
             Timestamp::new(seconds << 31 | subseconds)
@@ -122,7 +122,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         eth_dma.dmabmr.modify(|_, w| {
             // For any non-f107 chips, we must use enhanced descriptor format to support checksum
             // offloading and/or timestamps.
-            #[cfg(not(feature = "stm32f107"))]
+            #[cfg(not(feature = "stm32f1xx-hal"))]
             let w = w.edfe().set_bit();
 
             unsafe {

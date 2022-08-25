@@ -3,10 +3,10 @@ use core::ops::{Deref, DerefMut};
 use aligned::{Aligned, A8};
 use volatile_register::{RO, RW};
 
-#[cfg(not(feature = "stm32f107"))]
+#[cfg(not(feature = "stm32f1xx-hal"))]
 const DESC_SIZE: usize = 8;
 
-#[cfg(feature = "stm32f107")]
+#[cfg(feature = "stm32f1xx-hal")]
 const DESC_SIZE: usize = 4;
 
 #[repr(C)]
