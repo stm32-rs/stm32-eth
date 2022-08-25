@@ -115,14 +115,7 @@ impl RxDescriptor {
     /// Get PTP timestamps if available
     pub fn timestamp(&self) -> Option<Timestamp> {
         if self.desc.read(0) & RXDESC_0_TIMESTAMP == RXDESC_0_TIMESTAMP && self.is_last() {
-            #[cfg(not(feature = "stm32f107"))]
-            let (seconds, subseconds) = { (self.desc.read(7), self.desc.read(6)) };
-            #[cfg(feature = "stm32f107")]
-            let (seconds, subseconds) = { (self.desc.read(3), self.desc.read(2)) };
-
-            let timestamp = Timestamp::new(seconds, subseconds);
-
-            Some(timestamp)
+            Some(Timestamp::from_descriptor(&self.desc))
         } else {
             None
         }

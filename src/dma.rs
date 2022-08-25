@@ -1,6 +1,7 @@
 use cortex_m::peripheral::NVIC;
 
 use crate::{
+    desc::Descriptor,
     packet_id::IntoPacketId,
     rx::{RxPacket, RxRing},
     stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC},
@@ -11,31 +12,51 @@ use crate::{
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug)]
 pub struct Timestamp {
-    seconds: u32,
-    subseconds: u32,
+    nanos: u64,
 }
 
 impl Timestamp {
-    pub const NANO_ROLLOVER: u32 = 999_999_999;
-    pub const NORMAL_ROLLOVER: u32 = 0x7FFF_FFFF;
-    pub const NANOS_PER_SECOND: u32 = 1_000_000_000;
+    pub const NANO_ROLLOVER: u64 = 999_999_999;
+    pub const NORMAL_ROLLOVER: u64 = 0x7FFF_FFFF;
+    pub const NANOS_PER_SECOND: u64 = 1_000_000_000;
 
-    pub fn new(seconds: u32, subseconds: u32) -> Self {
+    #[cfg(not(feature = "stm32f1xx-hal"))]
+    fn new(seconds: u32, nanos: u32) -> Self {
         Self {
-            seconds,
-            subseconds,
+            nanos: (seconds as u64 * Self::NANOS_PER_SECOND) + nanos as u64,
         }
     }
 
-    pub fn seconds(&self) -> u32 {
-        let seconds_in_subseconds = self.subseconds / Self::NANOS_PER_SECOND;
+    #[cfg(feature = "stm32f1xx-hal")]
+    fn new(nanos: u64) -> Self {
+        Self { nanos }
+    }
 
-        self.seconds + seconds_in_subseconds
+    pub fn seconds(&self) -> u32 {
+        (self.nanos / Self::NANOS_PER_SECOND) as u32
     }
 
     pub fn nanos(&self) -> u32 {
-        let nanos = self.subseconds % Self::NANOS_PER_SECOND;
-        nanos
+        let nanos = self.nanos % Self::NANOS_PER_SECOND;
+        nanos as u32
+    }
+
+    pub fn from_descriptor(desc: &Descriptor) -> Self {
+        // NOTE: The Bit 31 of the `subseconds`/`nanos` value indicates
+        // the signedness of the system time. We should probably deal with that
+        // in the future.
+
+        #[cfg(not(feature = "stm32f107"))]
+        {
+            let (seconds, nanos) = { (self.desc.read(7), self.desc.read(6)) };
+            Timestamp::new(seconds, nanos)
+        }
+
+        #[cfg(feature = "stm32f107")]
+        {
+            let (seconds, subseconds) = { (desc.read(3) as u64, desc.read(2) as u64) };
+            Timestamp::new(seconds << 31 | subseconds)
+        }
     }
 }
 
