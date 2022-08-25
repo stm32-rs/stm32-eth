@@ -56,6 +56,12 @@ pub struct RxDescriptor {
     next_descriptor: Option<u32>,
 }
 
+impl Default for RxDescriptor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RxDescriptor {
     /// Creates an zeroed RxDescriptor.
     pub const fn new() -> Self {
