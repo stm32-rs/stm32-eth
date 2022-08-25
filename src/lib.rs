@@ -139,7 +139,7 @@ where
     // generated if the order is reversed.
     let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
-    setup_ptp(&eth_mac, eth_ptp);
+    setup_ptp(&eth_mac, eth_ptp, clocks);
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 
@@ -203,7 +203,7 @@ where
     // generated if the order is reversed.
     let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
-    setup_ptp(&eth_mac, eth_ptp);
+    setup_ptp(&eth_mac, eth_ptp, clocks);
 
     let speed = initial_speed.unwrap_or(Speed::FullDuplexBase100Tx);
 

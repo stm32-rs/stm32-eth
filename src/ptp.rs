@@ -1,5 +1,6 @@
 use crate::{
     desc::Descriptor,
+    hal::rcc::Clocks,
     stm32::{ETHERNET_MAC, ETHERNET_PTP},
 };
 
@@ -72,7 +73,7 @@ impl Timestamp {
     }
 }
 
-pub(crate) fn setup_ptp(_eth_mac: &ETHERNET_MAC, eth_ptp: ETHERNET_PTP) {
+pub(crate) fn setup_ptp(_eth_mac: &ETHERNET_MAC, eth_ptp: ETHERNET_PTP, clocks: Clocks) {
     // Mask timestamp interrupt register, required for stm32f107 according to AN3411
     #[cfg(feature = "stm32f1xx-hal")]
     _eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
@@ -88,7 +89,15 @@ pub(crate) fn setup_ptp(_eth_mac: &ETHERNET_MAC, eth_ptp: ETHERNET_PTP) {
 
         // Set sub-second increment to 20ns and initial addend to HCLK/(1/20ns) (HCLK=100MHz)
         eth_ptp.ptpssir.write(|w| unsafe { w.stssi().bits(20) });
-        eth_ptp.ptptsar.write(|w| unsafe { w.tsa().bits(1 << 31) });
+
+        // TSA = 2^32 / (HCLK / sub-second-increment-in-hz)
+        //     = 2^32 / (HCLK / 50_000_000)
+        //     = (50_000_000 * 2^32) / HCLK
+        //     = (50_000_000 << 32) / HCLK
+        const NOM: u64 = 50_000_000 << 32;
+        let tsa = (NOM / clocks.hclk().to_Hz() as u64) as u32;
+
+        eth_ptp.ptptsar.write(|w| unsafe { w.tsa().bits(tsa) });
 
         #[cfg(feature = "stm32f1xx-hal")]
         {
