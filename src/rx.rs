@@ -279,7 +279,6 @@ impl<'a> RxRing<'a> {
     pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
         for entry in self.entries.iter_mut() {
             if let Some((packet_id, timestamp)) = &mut entry.desc_mut().timestamp_info {
-                defmt::info!("Looking through {}", packet_id);
                 if packet_id == &id {
                     let ts = *timestamp;
                     entry.desc_mut().timestamp_info.take();
