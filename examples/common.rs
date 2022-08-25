@@ -6,7 +6,7 @@
 
 use stm32_eth::{
     hal::{gpio::GpioExt, rcc::Clocks},
-    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
+    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC, ETHERNET_PTP},
 };
 
 pub use pins::{setup_pins, Gpio};

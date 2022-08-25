@@ -96,6 +96,10 @@ required-features = [ "defmt" ]
 name = "rtic-echo"
 required-features = [ "rtic-echo-example" ]
 
+[[example]]
+name = "timestamp"
+required-features = [ "defmt" ]
+
 [profile.release]
 debug = 2
 lto = true

@@ -168,7 +168,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     pub fn interrupt_handler(&mut self) -> InterruptReasonSummary {
         let status = eth_interrupt_handler(&self.eth_dma);
         eth_interrupt_handler(&self.eth_dma);
-        self.tx_ring.collect_timestamps();
+        self.collect_timestamps();
         status
     }
 
@@ -221,6 +221,12 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         tx_ring
             .get_timestamp_for_id(internal_packet_id.clone())
             .or_else(|_| rx_ring.get_timestamp_for_id(internal_packet_id))
+    }
+
+    /// Collect the timestamps from the TX descriptor
+    /// ring
+    pub fn collect_timestamps(&mut self) {
+        self.tx_ring.collect_timestamps();
     }
 }
 
