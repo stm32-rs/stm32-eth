@@ -1,80 +1,22 @@
 use cortex_m::peripheral::NVIC;
 
 use crate::{
-    desc::Descriptor,
     packet_id::IntoPacketId,
+    ptp::Timestamp,
     rx::{RxPacket, RxRing},
     stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC},
     tx::TxRing,
     PacketId, RxError, RxRingEntry, TxError, TxRingEntry,
 };
 
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Clone, Copy, Debug)]
-pub struct Timestamp {
-    nanos: u64,
-}
-
-impl Timestamp {
-    pub const NANO_ROLLOVER: u64 = 999_999_999;
-    pub const NORMAL_ROLLOVER: u64 = 0x7FFF_FFFF;
-    pub const NANOS_PER_SECOND: u64 = 1_000_000_000;
-
-    #[cfg(not(feature = "stm32f1xx-hal"))]
-    fn new(seconds: u32, nanos: u32) -> Self {
-        Self {
-            nanos: (seconds as u64 * Self::NANOS_PER_SECOND) + nanos as u64,
-        }
-    }
-
-    #[cfg(feature = "stm32f1xx-hal")]
-    fn new(nanos: u64) -> Self {
-        Self { nanos }
-    }
-
-    pub fn seconds(&self) -> u32 {
-        (self.nanos / Self::NANOS_PER_SECOND) as u32
-    }
-
-    pub fn nanos(&self) -> u32 {
-        let nanos = self.nanos % Self::NANOS_PER_SECOND;
-        nanos as u32
-    }
-
-    /// Create a timestamp from the given descriptor
-    ///
-    /// # Safety
-    /// On non-f1 parts, the caller must ensure that the timestamp data
-    /// is valid.
-    pub unsafe fn from_descriptor(desc: &Descriptor) -> Option<Self> {
-        // NOTE: The Bit 31 of the `subseconds`/`nanos` value indicates
-        // the signedness of the system time. We should probably deal with that
-        // in the future.
-
-        #[cfg(not(feature = "stm32f1xx-hal"))]
-        {
-            let (seconds, nanos) = { (self.desc.read(7), self.desc.read(6)) };
-            Some(Timestamp::new(seconds, nanos))
-        }
-
-        #[cfg(feature = "stm32f1xx-hal")]
-        {
-            let (seconds, subseconds) = { (desc.read(3), desc.read(2)) };
-
-            // The timestamp registers are written to all-ones if
-            // timestamping was no succesfull
-            if seconds == 0xFFFF_FFFF && subseconds == 0xFFFF_FFFF {
-                None
-            } else {
-                Some(Timestamp::new((seconds as u64) << 31 | subseconds as u64))
-            }
-        }
-    }
-}
-
+/// An error that can occur when retrieving a timestamp from an
+/// RX or TX descriptor
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum TimestampError {
+    /// The descriptor with the given packet ID has not been
+    /// timestamped yet.
     NotYetTimestamped,
+    /// No active descriptors have the given packet ID.
     IdNotFound,
 }
 

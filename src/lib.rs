@@ -44,7 +44,7 @@ mod desc;
 #[cfg(feature = "device-selected")]
 mod dma;
 #[cfg(feature = "device-selected")]
-pub use dma::{eth_interrupt_handler, EthernetDMA};
+pub use dma::{eth_interrupt_handler, EthernetDMA, TimestampError};
 
 #[cfg(feature = "device-selected")]
 mod ring;
@@ -75,6 +75,8 @@ pub use setup::EthPins;
 mod ptp;
 #[cfg(feature = "device-selected")]
 use ptp::setup_ptp;
+#[cfg(feature = "device-selected")]
+pub use ptp::Timestamp;
 
 #[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 pub use smoltcp;
