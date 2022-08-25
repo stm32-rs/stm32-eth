@@ -41,7 +41,12 @@ impl Timestamp {
         nanos as u32
     }
 
-    pub fn from_descriptor(desc: &Descriptor) -> Self {
+    /// Create a timestamp from the given descriptor
+    ///
+    /// # Safety
+    /// On non-f1 parts, the caller must ensure that the timestamp data
+    /// is valid.
+    pub unsafe fn from_descriptor(desc: &Descriptor) -> Option<Self> {
         // NOTE: The Bit 31 of the `subseconds`/`nanos` value indicates
         // the signedness of the system time. We should probably deal with that
         // in the future.
@@ -49,13 +54,20 @@ impl Timestamp {
         #[cfg(not(feature = "stm32f1xx-hal"))]
         {
             let (seconds, nanos) = { (self.desc.read(7), self.desc.read(6)) };
-            Timestamp::new(seconds, nanos)
+            Some(Timestamp::new(seconds, nanos))
         }
 
         #[cfg(feature = "stm32f1xx-hal")]
         {
-            let (seconds, subseconds) = { (desc.read(3) as u64, desc.read(2) as u64) };
-            Timestamp::new(seconds << 31 | subseconds)
+            let (seconds, subseconds) = { (desc.read(3), desc.read(2)) };
+
+            // The timestamp registers are written to all-ones if
+            // timestamping was no succesfull
+            if seconds == 0xFFFF_FFFF && subseconds == 0xFFFF_FFFF {
+                None
+            } else {
+                Some(Timestamp::new((seconds as u64) << 31 | subseconds as u64))
+            }
         }
     }
 }

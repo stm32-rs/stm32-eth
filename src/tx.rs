@@ -163,7 +163,7 @@ impl TxDescriptor {
         let contains_timestamp = (tdes0 & TXDESC_0_TIMESTAMP_STATUS) == TXDESC_0_TIMESTAMP_STATUS;
 
         if !self.is_owned() && contains_timestamp && Self::is_last(tdes0) {
-            Some(Timestamp::from_descriptor(&self.desc))
+            unsafe { Timestamp::from_descriptor(&self.desc) }
         } else {
             None
         }

@@ -31,8 +31,6 @@ const RXDESC_0_OWN: u32 = 1 << 31;
 const RXDESC_0_FS: u32 = 1 << 9;
 /// Last descriptor
 const RXDESC_0_LS: u32 = 1 << 8;
-/// RX timestamp
-const RXDESC_0_TIMESTAMP: u32 = 1 << 7;
 /// Error summary
 const RXDESC_0_ES: u32 = 1 << 15;
 /// Frame length
@@ -114,8 +112,20 @@ impl RxDescriptor {
 
     /// Get PTP timestamps if available
     pub fn timestamp(&self) -> Option<Timestamp> {
-        if self.desc.read(0) & RXDESC_0_TIMESTAMP == RXDESC_0_TIMESTAMP && self.is_last() {
-            Some(Timestamp::from_descriptor(&self.desc))
+        #[cfg(not(feature = "stm32f1xx-hal"))]
+        let mut is_valid = {
+            /// RX timestamp
+            const RXDESC_0_TIMESTAMP_VALID: u32 = 1 << 7;
+            self.desc.read(0) & RXDESC_0_TIMESTAMP_VALID == RXDESC_0_TIMESTAMP_VALID
+        };
+
+        #[cfg(feature = "stm32f1xx-hal")]
+        // There is no "timestamp valid" indicator bit
+        // on STM32F1XX
+        let is_valid = true;
+
+        if is_valid && self.is_last() {
+            unsafe { Timestamp::from_descriptor(&self.desc) }
         } else {
             None
         }
@@ -273,6 +283,7 @@ impl<'a> RxRing<'a> {
     pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
         for entry in self.entries.iter_mut() {
             if let Some((packet_id, timestamp)) = &mut entry.desc_mut().timestamp_info {
+                defmt::info!("Looking through {}", packet_id);
                 if packet_id == &id {
                     let ts = *timestamp;
                     entry.desc_mut().timestamp_info.take();
@@ -373,9 +384,7 @@ impl<'a> RxRing<'a> {
                     (Some(packet_id), Some(timestamp)) => {
                         entry.entry.desc_mut().timestamp_info = Some((packet_id, timestamp))
                     }
-                    _ => {
-                        entry.entry.desc_mut().timestamp_info.take();
-                    }
+                    _ => {}
                 }
             }
         }
