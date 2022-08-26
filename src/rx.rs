@@ -109,7 +109,7 @@ impl RxDescriptor {
     /// Get PTP timestamps if available
     pub fn timestamp(&self) -> Option<Timestamp> {
         #[cfg(not(feature = "stm32f1xx-hal"))]
-        let mut is_valid = {
+        let is_valid = {
             /// RX timestamp
             const RXDESC_0_TIMESTAMP_VALID: u32 = 1 << 7;
             self.desc.read(0) & RXDESC_0_TIMESTAMP_VALID == RXDESC_0_TIMESTAMP_VALID

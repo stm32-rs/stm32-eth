@@ -54,7 +54,7 @@ impl Timestamp {
 
         #[cfg(not(feature = "stm32f1xx-hal"))]
         {
-            let (seconds, nanos) = { (self.desc.read(7), self.desc.read(6)) };
+            let (seconds, nanos) = { (desc.read(7), desc.read(6)) };
             Some(Timestamp::new(seconds, nanos))
         }
 
