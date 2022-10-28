@@ -72,6 +72,11 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
                 .set_bit()
         });
 
+        // Add extra delay for possible consecutive writes to the same register.
+        // See: ES0182 Rev 13, section 2.11.5
+        #[cfg(feature = "stm32f4xx-hal")]
+        cortex_m::asm::delay(100);
+
         // bus mode register
         eth_dma.dmabmr.modify(|_, w| {
             // For any non-f107 chips, we must use enhanced descriptor format to support checksum
@@ -120,6 +125,11 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// clear interrupt pending bits. Otherwise the interrupt will
     /// reoccur immediately.
     pub fn enable_interrupt(&self) {
+        // Add extra delay for possible consecutive writes to the same register.
+        // See: ES0182 Rev 13, section 2.11.5
+        #[cfg(feature = "stm32f4xx-hal")]
+        cortex_m::asm::delay(100);
+
         self.eth_dma.dmaier.modify(|_, w| {
             w
                 // Normal interrupt summary enable

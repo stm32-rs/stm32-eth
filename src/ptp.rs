@@ -99,6 +99,11 @@ pub(crate) fn setup_ptp(_eth_mac: &ETHERNET_MAC, eth_ptp: ETHERNET_PTP, clocks: 
 
         eth_ptp.ptptsar.write(|w| unsafe { w.tsa().bits(tsa) });
 
+        // Add extra delay for possible consecutive writes to the same register.
+        // See: ES0182 Rev 13, section 2.11.5
+        #[cfg(feature = "stm32f4xx-hal")]
+        cortex_m::asm::delay(100);
+
         #[cfg(feature = "stm32f1xx-hal")]
         {
             eth_ptp.ptptscr.modify(|_, w| w.tsaru().set_bit());
@@ -110,6 +115,11 @@ pub(crate) fn setup_ptp(_eth_mac: &ETHERNET_MAC, eth_ptp: ETHERNET_PTP, clocks: 
             eth_ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
             while eth_ptp.ptptscr.read().ttsaru().bit_is_set() {}
         }
+
+        // Add extra delay for possible consecutive writes to the same register.
+        // See: ES0182 Rev 13, section 2.11.5
+        #[cfg(feature = "stm32f4xx-hal")]
+        cortex_m::asm::delay(100);
 
         // Initialise timestamp
         eth_ptp.ptptscr.modify(|_, w| w.tssti().set_bit());

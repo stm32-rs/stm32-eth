@@ -28,7 +28,10 @@ fn miim_wait_ready(iar: &MACMIIAR) {
 
 #[inline(always)]
 fn miim_write(eth_mac: &mut ETHERNET_MAC, phy: u8, reg: u8, data: u16) {
+    miim_wait_ready(&eth_mac.macmiiar);
     eth_mac.macmiidr.write(|w| w.md().bits(data));
+
+    miim_wait_ready(&eth_mac.macmiiar);
 
     eth_mac.macmiiar.modify(|_, w| {
         w.pa()
@@ -46,6 +49,7 @@ fn miim_write(eth_mac: &mut ETHERNET_MAC, phy: u8, reg: u8, data: u16) {
 
 #[inline(always)]
 fn miim_read(eth_mac: &mut ETHERNET_MAC, phy: u8, reg: u8) -> u16 {
+    miim_wait_ready(&eth_mac.macmiiar);
     eth_mac.macmiiar.modify(|_, w| {
         w.pa()
             .bits(phy)

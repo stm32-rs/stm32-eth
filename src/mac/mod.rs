@@ -139,6 +139,11 @@ impl EthernetMAC {
             .mmctimr
             .write(|w| w.tgfm().set_bit().tgfmscm().set_bit().tgfscm().set_bit());
 
+        // Add extra delay for possible consecutive writes to the same register.
+        // See: ES0182 Rev 13, section 2.11.5
+        #[cfg(feature = "stm32f4xx-hal")]
+        cortex_m::asm::delay(100);
+
         // Fix incorrect TGFM bit position until https://github.com/stm32-rs/stm32-rs/pull/689
         // is released and used by HALs.
         eth_mmc
