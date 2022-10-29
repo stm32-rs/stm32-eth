@@ -2,11 +2,7 @@
 
 use core::ops::{Deref, DerefMut};
 
-use crate::{
-    hal::rcc::Clocks,
-    stm32::{ETHERNET_MAC, ETHERNET_MMC},
-    EthernetDMA,
-};
+use crate::{hal::rcc::Clocks, peripherals::ETHERNET_MAC, stm32::ETHERNET_MMC, EthernetDMA};
 
 mod miim;
 pub use miim::*;

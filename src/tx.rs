@@ -1,4 +1,4 @@
-use crate::stm32::ETHERNET_DMA;
+use crate::peripherals::ETHERNET_DMA;
 
 use core::{
     ops::{Deref, DerefMut},

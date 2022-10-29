@@ -67,6 +67,9 @@ use setup::{
     AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1, RmiiTxEN,
 };
 
+#[cfg(feature = "device-selected")]
+mod peripherals;
+
 #[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 pub use smoltcp;
 #[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
@@ -123,11 +126,13 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    let eth_mac = eth_mac.into();
+
     // Congfigure and start up the ethernet DMA.
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
     // generated if the order is reversed.
-    let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma.into(), &eth_mac, rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
     let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, Speed::FullDuplexBase100Tx)?;
@@ -184,11 +189,13 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    let eth_mac = eth_mac.into();
+
     // Congfigure and start up the ethernet DMA.
     // Note: this _must_ happen before configuring the MAC.
     // It's not entirely clear why, but no interrupts are
     // generated if the order is reversed.
-    let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma.into(), &eth_mac, rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
     let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, Speed::FullDuplexBase100Tx)?

@@ -2,10 +2,7 @@ pub use ieee802_3_miim::Miim;
 
 pub use ieee802_3_miim::*;
 
-use crate::{
-    stm32::{ethernet_mac::MACMIIAR, ETHERNET_MAC},
-    EthernetMAC,
-};
+use crate::{peripherals::ETHERNET_MAC, stm32::ethernet_mac::MACMIIAR, EthernetMAC};
 
 /// MDIO pin types.
 ///
