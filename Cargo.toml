@@ -68,11 +68,11 @@ example-nucleo-pins = [ ]
 rtic-echo-example = [ "defmt", "smoltcp-phy", "smoltcp/defmt", "smoltcp/medium-ethernet", "smoltcp/socket-tcp" ]
 
 [dev-dependencies]
-cortex-m = "0.7"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 fugit = "0.3"
 cortex-m-rtic = "1.0"
-defmt-rtt = "0.3"
+defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
 
