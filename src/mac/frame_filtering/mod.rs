@@ -183,7 +183,14 @@ impl FrameFiltering {
                             .bits(addr.address.high())
                     });
 
-                    eth_mac.$regl.write(|w| w.$al().bits(addr.address.low()));
+                    // This operation is only unsafe for register maca2lr STM32F107
+                    //
+                    // NOTE(safety): this operation is only unsafe for a single one
+                    // of the lower-address-part registers, so this should be fine.
+                    #[allow(unused_unsafe)]
+                    eth_mac
+                        .$regl
+                        .write(|w| unsafe { w.$al().bits(addr.address.low()) });
                 }
             };
         }

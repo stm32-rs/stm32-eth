@@ -222,7 +222,6 @@ impl<'a> TxRing<'a> {
         // Register TxDescriptor
         eth_dma
             .dmatdlar
-            // Note: unsafe block required for `stm32f107`.
             .write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
