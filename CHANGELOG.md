@@ -2,8 +2,10 @@
 * General
     * Remove the `smi` feature and always enable miim/smi. Use `ieee802_3_miim` for SMI access
     * Split MAC and DMA setup into their own separate modules
+    * Update stm32f1xx-hal and stm32f4xx-hal to their latests version as of 15-12-2022.
 * CI
     * Test compilability of examples more extensively
+    * Move away from actions-rs
 * Examples:
     * Switch to `defmt` as logger
     * Use `probe-run` as runner
