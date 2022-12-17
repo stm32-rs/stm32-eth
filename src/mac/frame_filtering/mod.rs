@@ -88,6 +88,33 @@ pub struct FrameFiltering {
 }
 
 impl FrameFiltering {
+    /// Create a new basic [`FrameFiltering`] that:
+    /// * Does not filter out frames destined for `station_addr` or an address
+    /// contained in `extra_address.
+    /// * Does not filter out multicast frames.
+    /// * Does not filter out broadcast frames.
+    /// * Filters out all control frames.
+    pub fn filter_destinations(station_addr: Mac, extra_addresses: Vec<Mac, 3>) -> Self {
+        let extra_addrs = extra_addresses
+            .into_iter()
+            .map(|a| MacAddressFilter::new(a, MacAddressFilterMask::empty()))
+            .collect();
+
+        FrameFiltering {
+            address: station_addr,
+            destination_address_filter: DestinationAddressFiltering {
+                perfect_filtering: PerfectDestinationAddressFiltering::Normal(extra_addrs),
+                hash_table_filtering: false,
+            },
+            source_address_filter: SourceAddressFiltering::Ignore,
+            multicast_address_filter: MulticastAddressFiltering::PassAll,
+            control_filter: ControlFrameFiltering::BlockAll,
+            hash_table_value: HashTableValue::new(),
+            filter_broadcast: false,
+            receive_all: false,
+        }
+    }
+
     fn configure(&self, eth_mac: &ETHERNET_MAC) {
         let FrameFiltering {
             address,
@@ -112,7 +139,7 @@ impl FrameFiltering {
         let empty_vec = Vec::new();
 
         let (saf, saif, source_addrs) = match &source_address_filter {
-            SourceAddressFiltering::PassAll => (false, false, &empty_vec),
+            SourceAddressFiltering::Ignore => (false, false, &empty_vec),
             SourceAddressFiltering::Normal(addrs) => (true, false, addrs),
             SourceAddressFiltering::Inverse(addrs) => (true, true, addrs),
         };
@@ -241,6 +268,13 @@ pub struct MacAddressFilter {
     /// out specific parts of the to-be-compared address
     /// for comparison.
     pub mask: MacAddressFilterMask,
+}
+
+impl MacAddressFilter {
+    /// Create a new MAC address filter.
+    pub fn new(address: Mac, mask: MacAddressFilterMask) -> Self {
+        Self { address, mask }
+    }
 }
 
 bitflags::bitflags! {

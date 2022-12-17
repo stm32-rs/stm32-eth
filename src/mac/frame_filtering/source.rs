@@ -7,9 +7,8 @@ use super::MacAddressFilter;
 #[derive(Debug, Clone)]
 
 pub enum SourceAddressFiltering {
-    /// All received frames are passed to the application,
-    /// ignoring all frame filtering settings.
-    PassAll,
+    /// Source address filtering never fails.
+    Ignore,
     /// Filter frames by their Source Address, based on
     /// the provided addresses.
     Normal(Vec<MacAddressFilter, 3>),
