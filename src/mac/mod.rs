@@ -206,6 +206,7 @@ impl EthernetMAC {
     }
 
     /// Configure the frame filtering performed by this MAC.
+    #[inline(always)]
     pub fn configure_filtering(&self, filtering_config: &FrameFilteringMode) {
         filtering_config.configure(&self.eth_mac);
     }
