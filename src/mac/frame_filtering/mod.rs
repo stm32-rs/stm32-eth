@@ -90,7 +90,7 @@ pub struct FrameFiltering {
 impl FrameFiltering {
     /// Create a new basic [`FrameFiltering`] that:
     /// * Does not filter out frames destined for `station_addr` or an address
-    /// contained in `extra_address.
+    /// contained in `extra_address`.
     /// * Does not filter out multicast frames.
     /// * Does not filter out broadcast frames.
     /// * Filters out all control frames.
@@ -244,6 +244,25 @@ impl Mac {
         Self(address)
     }
 
+    /// Get the raw bytes of this MAC address.
+    pub fn raw(&self) -> &[u8; 6] {
+        &self.0
+    }
+    /// Returns `true` if this MAC is locally administred, i.e. it has the I/G bit set.
+    pub fn is_multicast(&self) -> bool {
+        (self.0[0] & 0b1) == 0b1
+    }
+
+    /// Returns `true` if this MAC is locally administred, i.e. it has the U/L bit set.
+    pub fn is_locally_administred(&self) -> bool {
+        (self.0[0] & 0b10) == 0b10
+    }
+
+    /// Returns `true` if this MAC is the broadcast address.
+    pub fn is_broadcast(&self) -> bool {
+        self.0.iter().all(|v| v == &0xFF)
+    }
+
     /// Return bytes in a form that can be put into the high portion
     /// of a MAC address register by converting them to little-endian
     fn high(&self) -> u16 {
@@ -262,6 +281,23 @@ impl Mac {
 impl From<[u8; 6]> for Mac {
     fn from(value: [u8; 6]) -> Self {
         Self::new(value)
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for Mac {
+    fn format(&self, fmt: defmt::Formatter) {
+        let addr = self.0;
+        defmt::write!(
+            fmt,
+            "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+            addr[0],
+            addr[1],
+            addr[2],
+            addr[3],
+            addr[4],
+            addr[5]
+        )
     }
 }
 
