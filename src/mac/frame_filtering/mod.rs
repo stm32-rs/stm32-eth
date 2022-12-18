@@ -164,6 +164,7 @@ impl FrameFiltering {
 
         let mut dest_addrs = dest_addrs.iter();
         let mut source_addrs = source_addrs.iter();
+        let mut multicast_addrs = multicast_addrs.iter();
 
         macro_rules! next_addr_reg {
             ($regh:ident, $regl:ident, $ah:ident, $al:ident) => {
@@ -171,6 +172,7 @@ impl FrameFiltering {
                     .next()
                     .map(|v| (v, false))
                     .or(source_addrs.next().map(|v| (v, true)))
+                    .or(multicast_addrs.next().map(|v| (v, false)))
                 {
                     eth_mac.$regh.write(|w| {
                         w.ae()
