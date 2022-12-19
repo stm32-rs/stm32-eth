@@ -1,7 +1,3 @@
-use heapless::Vec;
-
-use super::MacAddressFilter;
-
 /// Multicast address filtering
 #[derive(Debug, Clone)]
 pub enum MulticastAddressFiltering {
@@ -15,7 +11,7 @@ pub enum MulticastAddressFiltering {
     /// Only multicast frames whose destination address
     /// is equal to one of the provided destination addresses
     /// are passed to the application.
-    DestinationAddress(Vec<MacAddressFilter, 3>),
+    DestinationAddress,
 }
 
 impl MulticastAddressFiltering {

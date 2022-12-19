@@ -1,13 +1,9 @@
-use heapless::Vec;
-
-use super::MacAddressFilter;
-
 /// The type of filtering that the MAC should apply to
 /// frames that are to be transmitted.
 #[derive(Debug, Clone)]
 pub struct DestinationAddressFiltering {
     /// Filtering to be performed based on perfect address matches.
-    pub perfect_filtering: PerfectDestinationAddressFiltering,
+    pub perfect_filtering: PerfectDestinationAddressFilteringMode,
     /// Enable or disable hash table filtering for destination
     /// addresses.
     pub hash_table_filtering: bool,
@@ -18,7 +14,7 @@ impl DestinationAddressFiltering {
     /// not filter any frames.
     pub const fn new() -> Self {
         Self {
-            perfect_filtering: PerfectDestinationAddressFiltering::new(),
+            perfect_filtering: PerfectDestinationAddressFilteringMode::new(),
             hash_table_filtering: false,
         }
     }
@@ -34,24 +30,29 @@ impl Default for DestinationAddressFiltering {
 /// the MAC should apply to frames.
 #[derive(Debug, Clone)]
 
-pub enum PerfectDestinationAddressFiltering {
+pub enum PerfectDestinationAddressFilteringMode {
     /// Filter frames by their Destination Address, based on
-    /// the provided addresses.
-    Normal(Vec<MacAddressFilter, 3>),
+    /// the addresses configured with [`AddressFilterType::Destination`].
+    ///
+    /// [`AddressFilterType::Destination`]: `super::AddressFilterType::Destination`
+    Normal,
     /// Filter frames by their Destination Address, based on
-    /// the inverse of the provided addresses.
-    Inverse(Vec<MacAddressFilter, 3>),
+    /// the inverse of the addresses configured with
+    /// [`AddressFilterType::Destination`].
+    ///
+    /// [`AddressFilterType::Destination`]: `super::AddressFilterType::Destination`
+    Inverse,
 }
 
-impl PerfectDestinationAddressFiltering {
-    /// Create a new [`PerfectDestinationAddressFiltering`] that filters
+impl PerfectDestinationAddressFilteringMode {
+    /// Create a new [`PerfectDestinationAddressFilteringMode`] that filters
     /// out all frames.
     pub const fn new() -> Self {
-        Self::Normal(Vec::new())
+        Self::Normal
     }
 }
 
-impl Default for PerfectDestinationAddressFiltering {
+impl Default for PerfectDestinationAddressFilteringMode {
     fn default() -> Self {
         Self::new()
     }

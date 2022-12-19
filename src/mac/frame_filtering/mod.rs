@@ -1,7 +1,6 @@
 //! Hardware filtering of Ethernet frames
 
 use crate::hal::pac::ETHERNET_MAC;
-use heapless::Vec;
 
 mod destination;
 pub use destination::*;
@@ -53,7 +52,10 @@ impl FrameFilteringMode {
 pub struct FrameFiltering {
     /// The MAC address of this station. This address is always
     /// used for Destination Address filtering.
-    pub address: Mac,
+    pub base_address: Mac,
+
+    /// Extra address filters to be used.
+    pub address_filters: [Option<MacAddressFilter>; 3],
 
     /// Frame filtering applied to frames based on
     /// their destination address.
@@ -94,16 +96,30 @@ impl FrameFiltering {
     /// * Does not filter out multicast frames.
     /// * Does not filter out broadcast frames.
     /// * Filters out all control frames.
-    pub fn filter_destinations(station_addr: Mac, extra_addresses: Vec<Mac, 3>) -> Self {
-        let extra_addrs = extra_addresses
-            .into_iter()
-            .map(|a| MacAddressFilter::new(a, MacAddressFilterMask::empty()))
-            .collect();
+    pub const fn filter_destinations(station_addr: Mac, extra_addresses: &[Mac]) -> Self {
+        assert!(extra_addresses.len() <= 3);
+
+        let mut address_filters = [None, None, None];
+
+        let mut i = 0;
+        loop {
+            address_filters[i] = Some(MacAddressFilter::new(
+                AddressFilterType::Destination,
+                extra_addresses[i],
+                MacAddressFilterMask::empty(),
+            ));
+
+            i += 1;
+            if i == 3 || i == extra_addresses.len() {
+                break;
+            }
+        }
 
         FrameFiltering {
-            address: station_addr,
+            base_address: station_addr,
+            address_filters,
             destination_address_filter: DestinationAddressFiltering {
-                perfect_filtering: PerfectDestinationAddressFiltering::Normal(extra_addrs),
+                perfect_filtering: PerfectDestinationAddressFilteringMode::Normal,
                 hash_table_filtering: false,
             },
             source_address_filter: SourceAddressFiltering::Ignore,
@@ -117,7 +133,8 @@ impl FrameFiltering {
 
     fn configure(&self, eth_mac: &ETHERNET_MAC) {
         let FrameFiltering {
-            address,
+            base_address,
+            address_filters,
             destination_address_filter,
             source_address_filter,
             multicast_address_filter,
@@ -127,27 +144,29 @@ impl FrameFiltering {
             receive_all,
         } = self;
 
-        eth_mac.maca0hr.write(|w| w.maca0h().bits(address.high()));
-        eth_mac.maca0lr.write(|w| w.maca0l().bits(address.low()));
+        eth_mac
+            .maca0hr
+            .write(|w| w.maca0h().bits(base_address.high()));
+        eth_mac
+            .maca0lr
+            .write(|w| w.maca0l().bits(base_address.low()));
 
-        let (daif, dest_addrs) = match &destination_address_filter.perfect_filtering {
-            PerfectDestinationAddressFiltering::Normal(addrs) => (false, addrs),
-            PerfectDestinationAddressFiltering::Inverse(addrs) => (true, addrs),
+        let daif = match &destination_address_filter.perfect_filtering {
+            PerfectDestinationAddressFilteringMode::Normal => false,
+            PerfectDestinationAddressFilteringMode::Inverse => true,
         };
         let hu = destination_address_filter.hash_table_filtering;
 
-        let empty_vec = Vec::new();
-
-        let (saf, saif, source_addrs) = match &source_address_filter {
-            SourceAddressFiltering::Ignore => (false, false, &empty_vec),
-            SourceAddressFiltering::Normal(addrs) => (true, false, addrs),
-            SourceAddressFiltering::Inverse(addrs) => (true, true, addrs),
+        let (saf, saif) = match &source_address_filter {
+            SourceAddressFiltering::Ignore => (false, false),
+            SourceAddressFiltering::Normal => (true, false),
+            SourceAddressFiltering::Inverse => (true, true),
         };
 
-        let (pam, hm, multicast_addrs) = match &multicast_address_filter {
-            MulticastAddressFiltering::PassAll => (true, false, &empty_vec),
-            MulticastAddressFiltering::DestinationAddressHash => (false, true, &empty_vec),
-            MulticastAddressFiltering::DestinationAddress(addrs) => (false, false, addrs),
+        let (pam, hm) = match &multicast_address_filter {
+            MulticastAddressFiltering::PassAll => (true, false),
+            MulticastAddressFiltering::DestinationAddressHash => (false, true),
+            MulticastAddressFiltering::DestinationAddress => (false, false),
         };
 
         let pcf = match &control_filter {
@@ -157,32 +176,23 @@ impl FrameFiltering {
             ControlFrameFiltering::AddressFilter => 0b11,
         };
 
-        assert!(
-            source_addrs.len() + dest_addrs.len() + multicast_addrs.len() <= 3,
-            "A maximum of 3 combined source, destination, and multicast address filters may be configured at any time."
-        );
-
-        let mut dest_addrs = dest_addrs.iter();
-        let mut source_addrs = source_addrs.iter();
-        let mut multicast_addrs = multicast_addrs.iter();
-
         macro_rules! next_addr_reg {
-            ($regh:ident, $regl:ident, $ah:ident, $al:ident) => {
-                if let Some((addr, sa)) = dest_addrs
-                    .next()
-                    .map(|v| (v, false))
-                    .or(source_addrs.next().map(|v| (v, true)))
-                    .or(multicast_addrs.next().map(|v| (v, false)))
-                {
+            ($idx:literal, $regh:ident, $regl:ident, $ah:ident, $al:ident) => {
+                if let Some(filter) = &address_filters[$idx] {
+                    let sa = match filter.ty {
+                        AddressFilterType::Destination => false,
+                        AddressFilterType::Source => true,
+                    };
+
                     eth_mac.$regh.write(|w| {
                         w.ae()
                             .set_bit()
                             .sa()
                             .bit(sa)
                             .mbc()
-                            .bits(addr.mask.bits())
+                            .bits(filter.mask.bits())
                             .$ah()
-                            .bits(addr.address.high())
+                            .bits(filter.address.high())
                     });
 
                     // This operation is only unsafe for register maca2lr STM32F107
@@ -192,14 +202,16 @@ impl FrameFiltering {
                     #[allow(unused_unsafe)]
                     eth_mac
                         .$regl
-                        .write(|w| unsafe { w.$al().bits(addr.address.low()) });
+                        .write(|w| unsafe { w.$al().bits(filter.address.low()) });
+                } else {
+                    eth_mac.$regh.write(|w| w.ae().clear_bit());
                 }
             };
         }
 
-        next_addr_reg!(maca1hr, maca1lr, maca1h, maca1l);
-        next_addr_reg!(maca2hr, maca2lr, maca2h, maca2l);
-        next_addr_reg!(maca3hr, maca3lr, maca3h, maca3l);
+        next_addr_reg!(0, maca1hr, maca1lr, maca1h, maca1l);
+        next_addr_reg!(1, maca2hr, maca2lr, maca2h, maca2l);
+        next_addr_reg!(2, maca3hr, maca3lr, maca3h, maca3l);
 
         eth_mac.macffr.write(|w| {
             w.hpf()
@@ -237,7 +249,7 @@ impl FrameFiltering {
 }
 
 /// A big-endian MAC address.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Mac([u8; 6]);
 
 impl Mac {
@@ -303,10 +315,22 @@ impl defmt::Format for Mac {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+/// The type of an address filter.
+pub enum AddressFilterType {
+    /// Filter based on Source Address.
+    Source,
+    /// Filter based on Destination address.
+    Destination,
+}
+
 /// A MAC address filter
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 
 pub struct MacAddressFilter {
+    /// The address on which this filter
+    /// should operate.
+    pub ty: AddressFilterType,
     /// The address that this filter should use.
     pub address: Mac,
     /// The byte mask that should be used to mask
@@ -317,8 +341,8 @@ pub struct MacAddressFilter {
 
 impl MacAddressFilter {
     /// Create a new MAC address filter.
-    pub fn new(address: Mac, mask: MacAddressFilterMask) -> Self {
-        Self { address, mask }
+    pub const fn new(ty: AddressFilterType, address: Mac, mask: MacAddressFilterMask) -> Self {
+        Self { ty, address, mask }
     }
 }
 
