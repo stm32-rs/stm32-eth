@@ -315,6 +315,20 @@ impl defmt::Format for Mac {
     }
 }
 
+#[cfg(feature = "smoltcp-phy")]
+impl From<smoltcp::wire::EthernetAddress> for Mac {
+    fn from(value: smoltcp::wire::EthernetAddress) -> Self {
+        Self::new(value.0)
+    }
+}
+
+#[cfg(feature = "smoltcp-phy")]
+impl From<Mac> for smoltcp::wire::EthernetAddress {
+    fn from(value: Mac) -> Self {
+        smoltcp::wire::EthernetAddress::from_bytes(&value.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 /// The type of an address filter.
 pub enum AddressFilterType {
