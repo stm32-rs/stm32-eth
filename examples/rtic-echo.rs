@@ -25,9 +25,10 @@ mod app {
 
     use crate::common::EthernetPhy;
 
+    use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
 
-    use stm32_eth::{EthernetDMA, RxRingEntry, TxRingEntry};
+    use stm32_eth::{mac::Speed, EthernetDMA, RxRingEntry, TxRingEntry};
 
     use smoltcp::{
         iface::{self, Interface, SocketHandle},
@@ -131,8 +132,20 @@ mod app {
             );
 
             phy.phy_init();
+
+            if let Some(speed) = phy.speed().map(|s| match s {
+                PhySpeed::HalfDuplexBase10T => Speed::HalfDuplexBase10T,
+                PhySpeed::FullDuplexBase10T => Speed::FullDuplexBase10T,
+                PhySpeed::HalfDuplexBase100Tx => Speed::HalfDuplexBase100Tx,
+                PhySpeed::FullDuplexBase100Tx => Speed::FullDuplexBase100Tx,
+            }) {
+                phy.get_miim().set_speed(speed);
+                defmt::info!("Detected link speed: {}", speed);
+            } else {
+                defmt::warn!("Failed to detect link speed.");
+            }
         } else {
-            defmt::info!("Not resetting unsupported PHY.");
+            defmt::info!("Not resetting unsupported PHY. Cannot detect link speed.");
         }
 
         defmt::info!("Setup done. Listening at {}", crate::ADDRESS);

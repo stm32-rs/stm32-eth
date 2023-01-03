@@ -4,6 +4,7 @@
 #![no_std]
 #![deny(missing_docs)]
 
+use mac::Speed;
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -87,6 +88,9 @@ const MTU: usize = 1522;
 /// and configures the ETH MAC and DMA peripherals.
 /// Automatically sets slew rate to VeryHigh.
 ///
+/// The speed of the MAC is set to [`Speed::FullDuplexBase100Tx`].
+/// This can be changed using [`EthernetMAC::set_speed`].
+///
 /// This method does not initialise the external PHY. Interacting with a PHY
 /// can be done by using the struct returned from [`EthernetMAC::mii`].
 ///
@@ -127,7 +131,7 @@ where
     let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks)?;
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, Speed::FullDuplexBase100Tx)?;
 
     Ok((dma, mac))
 }
@@ -140,6 +144,9 @@ where
 /// Automatically sets slew rate to VeryHigh.
 ///
 /// This method does not initialise the external PHY.
+///
+/// The speed of the MAC is set to [`Speed::FullDuplexBase100Tx`].
+/// This can be changed using [`EthernetMAC::set_speed`].
 ///
 /// The MII for the external PHY can be accessed through the
 /// returned [`EthernetMACWithMii`], .
@@ -185,7 +192,8 @@ where
     let dma = EthernetDMA::new(eth_dma, &eth_mac, rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks)?.with_mii(mdio, mdc);
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, Speed::FullDuplexBase100Tx)?
+        .with_mii(mdio, mdc);
 
     Ok((dma, mac))
 }

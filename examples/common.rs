@@ -252,7 +252,11 @@ pub enum EthernetPhy<M: Miim> {
 
 impl<M: Miim> Phy<M> for EthernetPhy<M> {
     fn best_supported_advertisement(&self) -> ieee802_3_miim::AutoNegotiationAdvertisement {
-        unimplemented!()
+        match self {
+            EthernetPhy::LAN8720A(phy) => phy.best_supported_advertisement(),
+            EthernetPhy::LAN8742A(phy) => phy.best_supported_advertisement(),
+            EthernetPhy::KSZ8081R(phy) => phy.best_supported_advertisement(),
+        }
     }
 
     fn get_miim(&mut self) -> &mut M {
@@ -307,6 +311,15 @@ impl<M: Miim> EthernetPhy<M> {
             EthernetPhy::KSZ8081R(phy) => {
                 phy.set_autonegotiation_advertisement(phy.best_supported_advertisement());
             }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn speed(&mut self) -> Option<ieee802_3_miim::phy::PhySpeed> {
+        match self {
+            EthernetPhy::LAN8720A(phy) => phy.link_speed(),
+            EthernetPhy::LAN8742A(phy) => phy.link_speed(),
+            EthernetPhy::KSZ8081R(phy) => phy.link_speed(),
         }
     }
 }

@@ -103,12 +103,12 @@ To run or build them, the following steps should be taken:
 
 Besides the feature selecting the correct MCU to be used when building and/or running an example, the following additional features are required:
 
-| Example       | Additional required features                         |
-| ------------- | ---------------------------------------------------- |
-| `arp`         | `defmt`                                              |
-| `ip`          | `defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp` |
-| `pktgen`      | `defmt`                                              |
-| `rtic-echo`   | `rtic-echo-example`                                  |
+| Example     | Additional required features                         |
+| ----------- | ---------------------------------------------------- |
+| `arp`       | `defmt`                                              |
+| `ip`        | `defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp` |
+| `pktgen`    | `defmt`                                              |
+| `rtic-echo` | `rtic-echo-example`                                  |
 
 #### 144-pin nucleo boards
 
