@@ -1,6 +1,6 @@
 //! Ethernet MAC driver implementation
 
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 
 use crate::{
     hal::rcc::Clocks,
@@ -258,6 +258,16 @@ where
 
     fn deref(&self) -> &Self::Target {
         &self.eth_mac
+    }
+}
+
+impl<MDIO, MDC> DerefMut for EthernetMACWithMii<MDIO, MDC>
+where
+    MDIO: MdioPin,
+    MDC: MdcPin,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.eth_mac
     }
 }
 
