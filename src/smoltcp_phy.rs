@@ -4,7 +4,7 @@ use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, Tx
 use smoltcp::time::Instant;
 use smoltcp::Error;
 
-/// Use this Ethernet driver with [smoltcp](https://github.com/m-labs/smoltcp)
+/// Use this Ethernet driver with [smoltcp](https://github.com/smoltcp-rs/smoltcp)
 impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
     type RxToken = EthRxToken<'a>;
     type TxToken = EthTxToken<'a>;
