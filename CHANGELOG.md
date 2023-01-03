@@ -3,6 +3,7 @@
     * Remove the `smi` feature and always enable miim/smi. Use `ieee802_3_miim` for SMI access
     * Split MAC and DMA setup into their own separate modules
     * Update stm32f1xx-hal and stm32f4xx-hal to their latests version as of 15-12-2022.
+    * Allow for configuration of MAC speed. ([#53](https://github.com/stm32-rs/stm32-eth/pull/53), fixes [#24](https://github.com/stm32-rs/stm32-eth/pull/24))
 * CI
     * Test compilability of examples more extensively
     * Move away from actions-rs
