@@ -32,7 +32,6 @@ defmt = { version = "0.3", optional = true }
 [dependencies.smoltcp]
 version = "0.8"
 default-features = false
-features = ["medium-ethernet", "proto-ipv4"]
 optional = true
 
 [features]
@@ -75,6 +74,7 @@ cortex-m-rtic = "1.0"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
+smoltcp = { version = "0.8", features = [ "medium-ethernet", "proto-ipv4", "socket-udp" ], default-features = false }
 
 [[example]]
 name = "pktgen"
