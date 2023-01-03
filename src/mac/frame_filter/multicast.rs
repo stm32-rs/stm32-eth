@@ -1,6 +1,6 @@
 /// Multicast address filtering
 #[derive(Debug, Clone)]
-pub enum MulticastAddressFiltering {
+pub enum MulticastAddressFilter {
     /// All received multicast frames are passed to the
     /// application.
     PassAll,
@@ -14,7 +14,7 @@ pub enum MulticastAddressFiltering {
     DestinationAddress,
 }
 
-impl MulticastAddressFiltering {
+impl MulticastAddressFilter {
     /// Create a new MulticastAddressFiltering that does not
     /// filter any multicast frames.
     pub const fn new() -> Self {
@@ -22,7 +22,7 @@ impl MulticastAddressFiltering {
     }
 }
 
-impl Default for MulticastAddressFiltering {
+impl Default for MulticastAddressFilter {
     fn default() -> Self {
         Self::new()
     }

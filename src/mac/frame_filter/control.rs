@@ -2,7 +2,7 @@
 /// on received control frames,
 #[derive(Debug, Clone)]
 
-pub enum ControlFrameFiltering {
+pub enum ControlFrameFilter {
     /// Prevent all control frames from reaching
     /// the application.
     BlockAll,
@@ -16,15 +16,15 @@ pub enum ControlFrameFiltering {
     AddressFilter,
 }
 
-impl ControlFrameFiltering {
-    /// Create a new [`ControlFrameFiltering`] that filters out
+impl ControlFrameFilter {
+    /// Create a new [`ControlFrameFilter`] that filters out
     /// all control frames.
     pub const fn new() -> Self {
         Self::BlockAll
     }
 }
 
-impl Default for ControlFrameFiltering {
+impl Default for ControlFrameFilter {
     fn default() -> Self {
         Self::new()
     }

@@ -11,7 +11,7 @@ use crate::{
 mod miim;
 pub use miim::*;
 
-pub mod frame_filtering;
+pub mod frame_filter;
 
 /// Speeds at which this MAC can be configured
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -39,7 +39,7 @@ mod consts {
     /* For HCLK over 150 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_102: u8 = 4;
 }
-use self::{consts::*, frame_filtering::FrameFilteringMode};
+use self::{consts::*, frame_filter::Filter};
 
 /// HCLK must be at least 25MHz to use the ethernet peripheral.
 /// This (empty) struct is returned to indicate that it is not set
@@ -139,7 +139,7 @@ impl EthernetMAC {
             .mmctimr
             .modify(|r, w| unsafe { w.bits(r.bits() | (1 << 21)) });
 
-        FrameFilteringMode::Promiscuous.configure(&eth_mac);
+        Filter::Promiscuous.configure(&eth_mac);
 
         let mut me = Self { eth_mac };
 
@@ -207,8 +207,8 @@ impl EthernetMAC {
 
     /// Configure the frame filtering performed by this MAC.
     #[inline(always)]
-    pub fn configure_filtering(&self, filtering_config: &FrameFilteringMode) {
-        filtering_config.configure(&self.eth_mac);
+    pub fn configure_frame_filter(&self, filter_config: &Filter) {
+        filter_config.configure(&self.eth_mac);
     }
 }
 

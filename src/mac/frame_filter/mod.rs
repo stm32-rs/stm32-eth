@@ -20,25 +20,25 @@ pub use control::*;
 /// The frame filtering that the MAC should apply to
 /// received Ethernet frames.
 #[derive(Debug, Clone)]
-pub enum FrameFilteringMode {
+pub enum Filter {
     /// No frame filtering on any frames.
     Promiscuous,
     /// Perform frame filtering based on the provided
     /// configuration.
-    Filter(FrameFiltering),
+    Filter(FilterConfig),
 }
 
-impl Default for FrameFilteringMode {
+impl Default for Filter {
     fn default() -> Self {
         Self::Promiscuous
     }
 }
 
-impl FrameFilteringMode {
+impl Filter {
     pub(crate) fn configure(&self, eth_mac: &ETHERNET_MAC) {
         match self {
-            FrameFilteringMode::Promiscuous => eth_mac.macffr.write(|w| w.pm().set_bit()),
-            FrameFilteringMode::Filter(config) => config.configure(eth_mac),
+            Filter::Promiscuous => eth_mac.macffr.write(|w| w.pm().set_bit()),
+            Filter::Filter(config) => config.configure(eth_mac),
         }
     }
 }
@@ -49,7 +49,7 @@ impl FrameFilteringMode {
 /// The total amount of [`MacAddressFilter`]s in this configuration object may
 /// be at most 3.
 #[derive(Debug, Clone)]
-pub struct FrameFiltering {
+pub struct FilterConfig {
     /// The MAC address of this station. This address is always
     /// used for Destination Address filtering.
     pub base_address: Mac,
@@ -59,18 +59,18 @@ pub struct FrameFiltering {
 
     /// Frame filtering applied to frames based on
     /// their destination address.
-    pub destination_address_filter: DestinationAddressFiltering,
+    pub destination_address_filter: DaFilter,
 
     /// Frame filtering applied to frames based on
     /// their source address.
-    pub source_address_filter: SourceAddressFiltering,
+    pub source_address_filter: SaFilter,
 
     /// Frame filtering applied to frames based on
     /// whether they have a multicast address or not.
-    pub multicast_address_filter: MulticastAddressFiltering,
+    pub multicast_address_filter: MulticastAddressFilter,
 
     /// Control frame filtering mode,
-    pub control_filter: ControlFrameFiltering,
+    pub control_filter: ControlFrameFilter,
 
     /// Hash table configuration.
     pub hash_table_value: HashTableValue,
@@ -89,8 +89,8 @@ pub struct FrameFiltering {
     pub receive_all: bool,
 }
 
-impl FrameFiltering {
-    /// Create a new basic [`FrameFiltering`] that:
+impl FilterConfig {
+    /// Create a new basic [`FilterConfig`] that:
     /// * Does not filter out frames destined for `station_addr` or an address
     /// contained in `extra_address`.
     /// * Does not filter out multicast frames.
@@ -115,16 +115,16 @@ impl FrameFiltering {
             }
         }
 
-        FrameFiltering {
+        FilterConfig {
             base_address: station_addr,
             address_filters,
-            destination_address_filter: DestinationAddressFiltering {
-                perfect_filtering: PerfectDestinationAddressFilteringMode::Normal,
+            destination_address_filter: DaFilter {
+                perfect_filtering: PerfectDaFilterMode::Normal,
                 hash_table_filtering: false,
             },
-            source_address_filter: SourceAddressFiltering::Ignore,
-            multicast_address_filter: MulticastAddressFiltering::PassAll,
-            control_filter: ControlFrameFiltering::BlockAll,
+            source_address_filter: SaFilter::Ignore,
+            multicast_address_filter: MulticastAddressFilter::PassAll,
+            control_filter: ControlFrameFilter::BlockAll,
             hash_table_value: HashTableValue::new(),
             filter_broadcast: false,
             receive_all: false,
@@ -132,7 +132,7 @@ impl FrameFiltering {
     }
 
     fn configure(&self, eth_mac: &ETHERNET_MAC) {
-        let FrameFiltering {
+        let FilterConfig {
             base_address,
             address_filters,
             destination_address_filter,
@@ -152,28 +152,28 @@ impl FrameFiltering {
             .write(|w| w.maca0l().bits(base_address.low()));
 
         let daif = match &destination_address_filter.perfect_filtering {
-            PerfectDestinationAddressFilteringMode::Normal => false,
-            PerfectDestinationAddressFilteringMode::Inverse => true,
+            PerfectDaFilterMode::Normal => false,
+            PerfectDaFilterMode::Inverse => true,
         };
         let hu = destination_address_filter.hash_table_filtering;
 
         let (saf, saif) = match &source_address_filter {
-            SourceAddressFiltering::Ignore => (false, false),
-            SourceAddressFiltering::Normal => (true, false),
-            SourceAddressFiltering::Inverse => (true, true),
+            SaFilter::Ignore => (false, false),
+            SaFilter::Normal => (true, false),
+            SaFilter::Inverse => (true, true),
         };
 
         let (pam, hm) = match &multicast_address_filter {
-            MulticastAddressFiltering::PassAll => (true, false),
-            MulticastAddressFiltering::DestinationAddressHash => (false, true),
-            MulticastAddressFiltering::DestinationAddress => (false, false),
+            MulticastAddressFilter::PassAll => (true, false),
+            MulticastAddressFilter::DestinationAddressHash => (false, true),
+            MulticastAddressFilter::DestinationAddress => (false, false),
         };
 
         let pcf = match &control_filter {
-            ControlFrameFiltering::BlockAll => 0b00,
-            ControlFrameFiltering::NoPause => 0b01,
-            ControlFrameFiltering::AllowAll => 0b10,
-            ControlFrameFiltering::AddressFilter => 0b11,
+            ControlFrameFilter::BlockAll => 0b00,
+            ControlFrameFilter::NoPause => 0b01,
+            ControlFrameFilter::AllowAll => 0b10,
+            ControlFrameFilter::AddressFilter => 0b11,
         };
 
         macro_rules! next_addr_reg {

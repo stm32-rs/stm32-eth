@@ -1,36 +1,36 @@
-/// The type of filtering that the MAC should apply to
-/// frames that are to be transmitted.
+/// The type of destination address filtering that
+/// the MAC should apply to incoming frames.
 #[derive(Debug, Clone)]
-pub struct DestinationAddressFiltering {
+pub struct DaFilter {
     /// Filtering to be performed based on perfect address matches.
-    pub perfect_filtering: PerfectDestinationAddressFilteringMode,
+    pub perfect_filtering: PerfectDaFilterMode,
     /// Enable or disable hash table filtering for destination
     /// addresses.
     pub hash_table_filtering: bool,
 }
 
-impl DestinationAddressFiltering {
-    /// Create a new [`DestinationAddressFiltering`] that does
+impl DaFilter {
+    /// Create a new [`DaFilter`] that does
     /// not filter any frames.
     pub const fn new() -> Self {
         Self {
-            perfect_filtering: PerfectDestinationAddressFilteringMode::new(),
+            perfect_filtering: PerfectDaFilterMode::new(),
             hash_table_filtering: false,
         }
     }
 }
 
-impl Default for DestinationAddressFiltering {
+impl Default for DaFilter {
     fn default() -> Self {
         Self::new()
     }
 }
 
 /// The type of destination address filtering that
-/// the MAC should apply to frames.
+/// the MAC should apply to incoming frames.
 #[derive(Debug, Clone)]
 
-pub enum PerfectDestinationAddressFilteringMode {
+pub enum PerfectDaFilterMode {
     /// Filter frames by their Destination Address, based on
     /// the addresses configured with [`AddressFilterType::Destination`].
     ///
@@ -44,15 +44,15 @@ pub enum PerfectDestinationAddressFilteringMode {
     Inverse,
 }
 
-impl PerfectDestinationAddressFilteringMode {
-    /// Create a new [`PerfectDestinationAddressFilteringMode`] that filters
+impl PerfectDaFilterMode {
+    /// Create a new [`PerfectDaFilterMode`] that filters
     /// out all frames.
     pub const fn new() -> Self {
         Self::Normal
     }
 }
 
-impl Default for PerfectDestinationAddressFilteringMode {
+impl Default for PerfectDaFilterMode {
     fn default() -> Self {
         Self::new()
     }

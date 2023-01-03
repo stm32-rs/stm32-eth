@@ -17,7 +17,7 @@ use cortex_m_rt::{entry, exception};
 use cortex_m::interrupt::Mutex;
 use stm32_eth::{
     mac::{
-        frame_filtering::{FrameFiltering, FrameFilteringMode, Mac},
+        frame_filter::{Filter, FilterConfig, Mac},
         phy::BarePhy,
         Phy,
     },
@@ -63,12 +63,12 @@ fn main() -> ! {
 
     let some_mac = if eth_dma.tx_is_running() { 1 } else { 0 };
 
-    let frame_filtering = FrameFiltering::filter_destinations(
+    let filter_config = FilterConfig::filter_destinations(
         Mac::new([some_mac, some_mac, some_mac, some_mac, some_mac, some_mac]),
         &[],
     );
 
-    eth_mac.configure_filtering(&FrameFilteringMode::Filter(frame_filtering));
+    eth_mac.configure_frame_filter(&Filter::Filter(filter_config));
 
     let mut last_link_up = false;
 

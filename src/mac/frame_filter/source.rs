@@ -1,8 +1,8 @@
-/// The type of frame filtering that the MAC should perform
-/// on received frames.
+/// The type of source address frame filtering that
+/// the MAC should perform to received frames.
 #[derive(Debug, Clone)]
 
-pub enum SourceAddressFiltering {
+pub enum SaFilter {
     /// Source address filtering never fails.
     Ignore,
     /// Filter frames by their Source Address, based on
@@ -17,15 +17,15 @@ pub enum SourceAddressFiltering {
     Inverse,
 }
 
-impl SourceAddressFiltering {
-    /// Create a new [`SourceAddressFiltering`] that
+impl SaFilter {
+    /// Create a new [`SaFilter`] that
     /// does not filter any frames.
     pub const fn new() -> Self {
         Self::Inverse
     }
 }
 
-impl Default for SourceAddressFiltering {
+impl Default for SaFilter {
     fn default() -> Self {
         Self::new()
     }
