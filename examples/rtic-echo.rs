@@ -133,6 +133,12 @@ mod app {
 
             phy.phy_init();
 
+            defmt::info!("Waiting for link up.");
+
+            while !phy.phy_link_up() {}
+
+            defmt::info!("Link up.");
+
             if let Some(speed) = phy.speed().map(|s| match s {
                 PhySpeed::HalfDuplexBase10T => Speed::HalfDuplexBase10T,
                 PhySpeed::FullDuplexBase10T => Speed::FullDuplexBase10T,
