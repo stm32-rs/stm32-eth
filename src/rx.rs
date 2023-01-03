@@ -34,6 +34,8 @@ const RXDESC_0_ES: u32 = 1 << 15;
 const RXDESC_0_FL_MASK: u32 = 0x3FFF;
 const RXDESC_0_FL_SHIFT: usize = 16;
 
+const RXDESC_0_SAF: u32 = 1 << 13;
+
 const RXDESC_1_RBS_SHIFT: usize = 0;
 const RXDESC_1_RBS_MASK: u32 = 0x0fff << RXDESC_1_RBS_SHIFT;
 /// Second address chained
@@ -123,6 +125,10 @@ impl RxDescriptor {
     fn get_frame_len(&self) -> usize {
         ((self.desc.read(0) >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize
     }
+
+    fn failed_saf(&self) -> bool {
+        (self.desc.read(0) & RXDESC_0_SAF) == RXDESC_0_SAF
+    }
 }
 
 /// An RX DMA Ring Descriptor entry
@@ -202,6 +208,11 @@ impl<'a> RxPacket<'a> {
     // Pass back to DMA engine
     pub fn free(self) {
         drop(self)
+    }
+
+    // Whether or not the packet failed the source address filter.
+    pub fn failed_source_address_filter(&self) -> bool {
+        self.entry.desc().failed_saf()
     }
 }
 

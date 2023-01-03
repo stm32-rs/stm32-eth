@@ -16,7 +16,11 @@ use cortex_m_rt::{entry, exception};
 
 use cortex_m::interrupt::Mutex;
 use stm32_eth::{
-    mac::{phy::BarePhy, Phy},
+    mac::{
+        frame_filter::{Filter, FilterConfig, Mac},
+        phy::BarePhy,
+        Phy,
+    },
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
 };
 
@@ -56,6 +60,15 @@ fn main() -> ! {
     )
     .unwrap();
     eth_dma.enable_interrupt();
+
+    let some_mac = if eth_dma.tx_is_running() { 1 } else { 0 };
+
+    let filter_config = FilterConfig::filter_destinations(
+        Mac::new([some_mac, some_mac, some_mac, some_mac, some_mac, some_mac]),
+        &[],
+    );
+
+    eth_mac.configure_frame_filter(&Filter::Filter(filter_config));
 
     let mut last_link_up = false;
 
@@ -111,6 +124,15 @@ fn main() -> ! {
                 }
                 Err(TxError::WouldBlock) => defmt::info!("ARP failed"),
             }
+
+            // while let Ok(message) = eth_dma.recv_next() {
+            //     let mut chunks = message.chunks(6);
+
+            //     let dst_mac = Mac::try_from(chunks.next().unwrap()).ok().unwrap();
+            //     let src_mac = Mac::try_from(chunks.next().unwrap()).ok().unwrap();
+
+            //     defmt::warn!("DA: {}, SA: {}", dst_mac, src_mac);
+            // }
         } else {
             defmt::info!("Down");
         }
