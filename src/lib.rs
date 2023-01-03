@@ -4,7 +4,6 @@
 #![no_std]
 #![deny(missing_docs)]
 
-use mac::Speed;
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -47,7 +46,7 @@ mod desc;
 #[cfg(feature = "device-selected")]
 pub mod mac;
 #[cfg(feature = "device-selected")]
-pub use mac::{EthernetMAC, EthernetMACWithMii, WrongClock};
+pub use mac::{EthernetMAC, EthernetMACWithMii, Speed, WrongClock};
 
 #[cfg(feature = "device-selected")]
 mod rx;
