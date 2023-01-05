@@ -63,9 +63,10 @@ fn main() {
         mac: p.ETHERNET_MAC,
         mmc: p.ETHERNET_MMC,
         dma: p.ETHERNET_DMA,
+        ptp: p.ETHERNET_PTP,
     };
 
-    let stm32_eth::Parts { dma: mut eth_dma, mac: _ } = stm32_eth::new(
+    let stm32_eth::Parts { dma: mut eth_dma, mac: _, ptp: _ } = stm32_eth::new(
         parts,
         &mut rx_ring[..],
         &mut tx_ring[..],
@@ -75,12 +76,12 @@ fn main() {
     .unwrap();
     eth_dma.enable_interrupt();
 
-    if let Ok(pkt) = eth_dma.recv_next() {
+    if let Ok(pkt) = eth_dma.recv_next(None) {
         // handle received pkt
     }
 
     let size = 42;
-    eth_dma.send(size, |buf| {
+    eth_dma.send(size, None, |buf| {
         // write up to `size` bytes into buf before it is being sent
     }).expect("send");
 }

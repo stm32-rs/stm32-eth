@@ -44,7 +44,12 @@ fn main() -> ! {
 
     let mut rx_ring: [RxRingEntry; 2] = Default::default();
     let mut tx_ring: [TxRingEntry; 2] = Default::default();
-    let Parts { mut dma, mac } = stm32_eth::new(
+    let Parts {
+        mut dma,
+        mac,
+        #[cfg(feature = "ptp")]
+            ptp: _,
+    } = stm32_eth::new(
         ethernet,
         &mut rx_ring[..],
         &mut tx_ring[..],
@@ -106,7 +111,7 @@ fn main() -> ! {
         // handle rx packet
         {
             let mut recvd = 0usize;
-            while let Ok(pkt) = dma.recv_next() {
+            while let Ok(pkt) = dma.recv_next(None) {
                 rx_bytes += pkt.len();
                 rx_pkts += 1;
                 pkt.free();
@@ -126,7 +131,7 @@ fn main() -> ! {
         const SIZE: usize = 1500;
         if phy.phy_link_up() {
             'egress: loop {
-                let r = dma.send(SIZE, |buf| {
+                let r = dma.send(SIZE, None, |buf| {
                     buf[0..6].copy_from_slice(&DST_MAC);
                     buf[6..12].copy_from_slice(&SRC_MAC);
                     buf[12..14].copy_from_slice(&ETH_TYPE);

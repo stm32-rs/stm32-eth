@@ -47,7 +47,12 @@ fn main() -> ! {
 
     let mut rx_ring: [RxRingEntry; 2] = Default::default();
     let mut tx_ring: [TxRingEntry; 2] = Default::default();
-    let Parts { mut dma, mac: _ } = stm32_eth::new(
+    let Parts {
+        mut dma,
+        mac: _,
+        #[cfg(feature = "ptp")]
+            ptp: _,
+    } = stm32_eth::new(
         ethernet,
         &mut rx_ring[..],
         &mut tx_ring[..],

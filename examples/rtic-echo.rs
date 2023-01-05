@@ -82,8 +82,12 @@ mod app {
 
         defmt::info!("Configuring ethernet");
 
-        let Parts { dma, mac } =
-            stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
+        let Parts {
+            dma,
+            mac,
+            #[cfg(feature = "ptp")]
+                ptp: _,
+        } = stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
         let dma = cx.local.dma.write(dma);
 

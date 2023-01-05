@@ -31,14 +31,15 @@ log = { version = "0.4", optional = true }
 defmt = { version = "0.3", optional = true }
 
 [dependencies.smoltcp]
-version = "0.8"
+version = "0.8.2"
 default-features = false
 optional = true
 
 [features]
-default = [ "defmt" ]
+default = [ "defmt", "ptp" ]
 device-selected = []
 fence = []
+ptp = [ ]
 
 stm32f107 = ["stm32f1xx-hal/stm32f107", "device-selected"]
 
@@ -88,6 +89,10 @@ required-features = [ "defmt" ]
 [[example]]
 name = "rtic-echo"
 required-features = [ "defmt" , "smoltcp-phy" ]
+
+[[example]]
+name = "rtic-timestamp"
+required-features = [ "defmt", "ptp" ]
 
 [profile.release]
 debug = 2

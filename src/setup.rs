@@ -1,4 +1,4 @@
-//! Pin definitions and setup functionality
+//! Pin definitions and setup functionality.
 //!
 //! This module contains the unsafe traits that determine
 //! which pins can have a specific function, and provides
@@ -20,6 +20,7 @@ use stm32f4xx_hal::{
 
 #[cfg(feature = "stm32f7xx-hal")]
 use cortex_m::interrupt;
+
 #[cfg(feature = "stm32f7xx-hal")]
 use stm32f7xx_hal::{
     gpio::{
@@ -34,9 +35,12 @@ use stm32f7xx_hal::{
 };
 
 use crate::{
+    dma::EthernetDMA,
     stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
-    EthernetDMA,
 };
+
+#[cfg(feature = "ptp")]
+use crate::{ptp::EthernetPTP, stm32::ETHERNET_PTP};
 
 // Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
 pub(crate) fn setup() {
@@ -130,6 +134,8 @@ pub(crate) fn setup() {
                 .set_bit()
                 .ethmacrxen()
                 .set_bit()
+                .ethmacen()
+                .set_bit()
         });
 
         // Reset pulse.
@@ -185,6 +191,8 @@ pub struct PartsIn {
     pub mac: ETHERNET_MAC,
     pub mmc: ETHERNET_MMC,
     pub dma: ETHERNET_DMA,
+    #[cfg(feature = "ptp")]
+    pub ptp: ETHERNET_PTP,
 }
 
 /// Access to all configured parts of the ethernet peripheral.
@@ -193,6 +201,9 @@ pub struct Parts<'rx, 'tx, T> {
     pub mac: T,
     /// Access to and control over the ethernet DMA.
     pub dma: EthernetDMA<'rx, 'tx>,
+    /// Access to and control over the ethernet PTP module.
+    #[cfg(feature = "ptp")]
+    pub ptp: EthernetPTP,
 }
 
 /// A struct that represents a combination of pins to be used

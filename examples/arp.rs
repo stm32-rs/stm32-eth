@@ -46,7 +46,12 @@ fn main() -> ! {
     let mut rx_ring: [RxRingEntry; 2] = Default::default();
     let mut tx_ring: [TxRingEntry; 2] = Default::default();
 
-    let Parts { mut dma, mac } = stm32_eth::new(
+    let Parts {
+        mut dma,
+        mac,
+        #[cfg(feature = "ptp")]
+            ptp: _,
+    } = stm32_eth::new(
         ethernet,
         &mut rx_ring[..],
         &mut tx_ring[..],
@@ -87,7 +92,7 @@ fn main() -> ! {
             const TARGET_MAC: [u8; 6] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
             const TARGET_IP: [u8; 4] = [0x0A, 0x00, 0x00, 0x02]; // 10.0.0.2
 
-            let r = dma.send(SIZE, |buf| {
+            let r = dma.send(SIZE, None, |buf| {
                 buf[0..6].copy_from_slice(&DST_MAC);
                 buf[6..12].copy_from_slice(&SRC_MAC);
                 buf[12..14].copy_from_slice(&ETH_TYPE);

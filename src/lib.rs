@@ -4,27 +4,23 @@
 #![no_std]
 #![deny(missing_docs)]
 
+#[cfg(not(feature = "device-selected"))]
+compile_error!("No device was selected! Exactly one stm32fxxx feature must be selected.");
+
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
-/// Re-export
-#[cfg(feature = "stm32f7xx-hal")]
-pub use stm32f7xx_hal::pac as stm32;
 
 /// Re-export
 #[cfg(feature = "stm32f4xx-hal")]
 pub use stm32f4xx_hal as hal;
-/// Re-export
-#[cfg(feature = "stm32f4xx-hal")]
-pub use stm32f4xx_hal::pac as stm32;
 
 /// Re-export
 #[cfg(feature = "stm32f1xx-hal")]
 pub use stm32f1xx_hal as hal;
-/// Re-export
-#[cfg(feature = "stm32f1xx-hal")]
-pub use stm32f1xx_hal::pac as stm32;
 
+#[cfg(feature = "device-selected")]
+pub use hal::pac as stm32;
 #[cfg(feature = "device-selected")]
 use hal::rcc::Clocks;
 
@@ -32,31 +28,33 @@ use hal::rcc::Clocks;
 pub mod dma;
 #[cfg(feature = "device-selected")]
 pub use dma::eth_interrupt_handler;
-#[cfg(feature = "device-selected")]
-use dma::{EthernetDMA, RxRingEntry, TxRingEntry};
 
 #[cfg(feature = "device-selected")]
 pub mod mac;
-#[cfg(feature = "device-selected")]
-use mac::{EthernetMAC, EthernetMACWithMii, Speed, WrongClock};
 
 #[cfg(feature = "device-selected")]
 pub mod setup;
 #[cfg(feature = "device-selected")]
-use setup::{
-    AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1, RmiiTxEN,
-};
-#[cfg(feature = "device-selected")]
 pub use setup::{EthPins, Parts, PartsIn};
 
 #[cfg(feature = "device-selected")]
-mod peripherals;
+pub(crate) mod peripherals;
 
-#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
+#[cfg(feature = "ptp")]
+pub mod ptp;
+
+#[cfg(feature = "smoltcp-phy")]
 pub use smoltcp;
 
-#[cfg(not(feature = "device-selected"))]
-compile_error!("No device was selected! Exactly one stm32fxxx feature must be selected.");
+#[cfg(feature = "device-selected")]
+use {
+    dma::{EthernetDMA, RxRingEntry, TxRingEntry},
+    mac::{EthernetMAC, EthernetMACWithMii, MdcPin, MdioPin, Speed, WrongClock},
+    setup::*,
+};
+
+#[cfg(all(feature = "device-selected", feature = "ptp"))]
+use ptp::EthernetPTP;
 
 /// Create and initialise the ethernet driver.
 ///
@@ -99,18 +97,26 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    let eth_mac = parts.mac.into();
+
+    // Configure the ethernet PTP
+    #[cfg(feature = "ptp")]
+    let ptp = EthernetPTP::new(&eth_mac, parts.ptp.into(), clocks);
+
     // Congfigure and start up the ethernet DMA.
     let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(
-        parts.mac.into(),
-        parts.mmc,
-        clocks,
-        Speed::FullDuplexBase100Tx,
-    )?;
+    let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx)?;
 
-    Ok(Parts { dma, mac })
+    let parts = Parts {
+        mac,
+        dma,
+        #[cfg(feature = "ptp")]
+        ptp,
+    };
+
+    Ok(parts)
 }
 
 /// Create and initialise the ethernet driver.
@@ -151,8 +157,8 @@ where
     TXD1: RmiiTxD1 + AlternateVeryHighSpeed,
     RXD0: RmiiRxD0 + AlternateVeryHighSpeed,
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
-    MDIO: mac::MdioPin,
-    MDC: mac::MdcPin,
+    MDIO: MdioPin,
+    MDC: MdcPin,
 {
     // Configure all of the pins correctly
     pins.setup_pins();
@@ -160,19 +166,27 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    let eth_mac = parts.mac.into();
+
+    // Configure the ethernet PTP
+    #[cfg(feature = "ptp")]
+    let ptp = EthernetPTP::new(&eth_mac, parts.ptp.into(), clocks);
+
     // Congfigure and start up the ethernet DMA.
     let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(
-        parts.mac.into(),
-        parts.mmc,
-        clocks,
-        Speed::FullDuplexBase100Tx,
-    )?
-    .with_mii(mdio, mdc);
+    let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx)?
+        .with_mii(mdio, mdc);
 
-    Ok(Parts { dma, mac })
+    let parts = Parts {
+        mac,
+        dma,
+        #[cfg(feature = "ptp")]
+        ptp,
+    };
+
+    Ok(parts)
 }
 
 /// This block ensures that README.md is checked when `cargo test` is run.

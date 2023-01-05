@@ -24,6 +24,8 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Par
         dma: p.ETHERNET_DMA,
         mac: p.ETHERNET_MAC,
         mmc: p.ETHERNET_MMC,
+        #[cfg(feature = "ptp")]
+        ptp: p.ETHERNET_PTP,
     };
 
     #[cfg(any(feature = "stm32f7xx-hal", feature = "stm32f4xx-hal"))]
