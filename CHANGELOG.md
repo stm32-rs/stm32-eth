@@ -4,6 +4,7 @@
     * Split MAC and DMA setup into their own separate modules
     * Update stm32f1xx-hal and stm32f4xx-hal to their latests version as of 15-12-2022.
     * Allow for configuration of MAC speed. ([#53](https://github.com/stm32-rs/stm32-eth/pull/53), fixes [#24](https://github.com/stm32-rs/stm32-eth/pull/24))
+    * Fix [#57](https://github.com/stm32-rs/stm32-eth/issues/57). ([#58](https://github.com/stm32-rs/stm32-eth/pull/58))
 * CI
     * Test compilability of examples more extensively
     * Move away from actions-rs

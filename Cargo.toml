@@ -23,6 +23,7 @@ volatile-register = "0.2"
 aligned = "0.4"
 stm32f7xx-hal = { version = "0.7.0", optional = true }
 stm32f4xx-hal = { version = "0.14", optional = true }
+stm32f4 = { version = "0.15", optional = true }
 stm32f1xx-hal = { version = "0.10", optional = true }
 ieee802_3_miim = "0.7"
 cortex-m = "0.7"
@@ -41,14 +42,14 @@ fence = []
 
 stm32f107 = ["stm32f1xx-hal/stm32f107", "device-selected"]
 
-stm32f407 = ["stm32f4xx-hal/stm32f407", "device-selected"]
-stm32f417 = ["stm32f4xx-hal/stm32f417", "device-selected"]
-stm32f427 = ["stm32f4xx-hal/stm32f427", "device-selected"]
-stm32f429 = ["stm32f4xx-hal/stm32f429", "device-selected"]
-stm32f437 = ["stm32f4xx-hal/stm32f437", "device-selected"]
-stm32f439 = ["stm32f4xx-hal/stm32f439", "device-selected"]
-stm32f469 = ["stm32f4xx-hal/stm32f469", "device-selected"]
-stm32f479 = ["stm32f4xx-hal/stm32f479", "device-selected"]
+stm32f407 = ["stm32f4xx-hal/stm32f407", "stm32f4", "device-selected"]
+stm32f417 = ["stm32f4xx-hal/stm32f417", "stm32f4", "device-selected"]
+stm32f427 = ["stm32f4xx-hal/stm32f427", "stm32f4", "device-selected"]
+stm32f429 = ["stm32f4xx-hal/stm32f429", "stm32f4", "device-selected"]
+stm32f437 = ["stm32f4xx-hal/stm32f437", "stm32f4", "device-selected"]
+stm32f439 = ["stm32f4xx-hal/stm32f439", "stm32f4", "device-selected"]
+stm32f469 = ["stm32f4xx-hal/stm32f469", "stm32f4", "device-selected"]
+stm32f479 = ["stm32f4xx-hal/stm32f479", "stm32f4", "device-selected"]
 
 stm32f745 = ["stm32f7xx-hal/stm32f745", "device-selected", "fence"]
 stm32f746 = ["stm32f7xx-hal/stm32f746", "device-selected", "fence"]

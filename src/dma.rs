@@ -1,8 +1,11 @@
+use core::borrow::Borrow;
+
 use cortex_m::peripheral::NVIC;
 
 use crate::{
+    peripherals::{ETHERNET_DMA, ETHERNET_MAC},
     rx::{RxPacket, RxRing},
-    stm32::{Interrupt, ETHERNET_DMA, ETHERNET_MAC},
+    stm32::Interrupt,
     tx::TxRing,
     RxError, RxRingEntry, TxError, TxRingEntry,
 };
@@ -128,8 +131,9 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 
     /// Calls [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html)
     pub fn interrupt_handler(&self) -> InterruptReasonSummary {
-        let status = eth_interrupt_handler(&self.eth_dma);
-        eth_interrupt_handler(&self.eth_dma);
+        let eth_dma = &self.eth_dma;
+        let status = eth_interrupt_handler_impl(eth_dma);
+        eth_interrupt_handler_impl(eth_dma);
         status
     }
 
@@ -181,7 +185,12 @@ pub struct InterruptReasonSummary {
 ///
 /// * Via the [`EthernetDMA`](struct.EthernetDMA.html) driver instance that your interrupt handler has access to.
 /// * By unsafely getting `Peripherals`.
-pub fn eth_interrupt_handler(eth_dma: &ETHERNET_DMA) -> InterruptReasonSummary {
+pub fn eth_interrupt_handler(eth_dma: &crate::hal::pac::ETHERNET_DMA) -> InterruptReasonSummary {
+    let eth_dma: &ETHERNET_DMA = eth_dma.borrow();
+    eth_interrupt_handler_impl(eth_dma)
+}
+
+fn eth_interrupt_handler_impl(eth_dma: &ETHERNET_DMA) -> InterruptReasonSummary {
     let status = eth_dma.dmasr.read();
 
     let status = InterruptReasonSummary {
