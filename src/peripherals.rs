@@ -135,6 +135,7 @@ mod pac_override_impl {
         }
     }
 
+    #[repr(C)]
     pub struct MacRegisterBlock {
         #[doc = "0x00 - Ethernet MAC configuration register"]
         pub maccr: DelayedReg<maccr::MACCR_SPEC>,
@@ -207,6 +208,7 @@ mod pac_override_impl {
         }
     }
 
+    #[repr(C)]
     pub struct DmaRegisterBlock {
         #[doc = "0x00 - Ethernet DMA bus mode register"]
         pub dmabmr: DelayedReg<dmabmr::DMABMR_SPEC>,
@@ -274,6 +276,7 @@ mod pac_override_impl {
         }
     }
 
+    #[repr(C)]
     pub struct PtpRegisterBlock {
         #[doc = "0x00 - Ethernet PTP time stamp control register"]
         pub ptptscr: DelayedReg<ptptscr::PTPTSCR_SPEC>,
