@@ -58,10 +58,15 @@ fn main() {
 
     let mut rx_ring: [RxRingEntry; 16] = Default::default();
     let mut tx_ring: [TxRingEntry; 8] = Default::default();
-    let (mut eth_dma, _eth_mac) = stm32_eth::new(
-        p.ETHERNET_MAC,
-        p.ETHERNET_MMC,
-        p.ETHERNET_DMA,
+
+    let parts = stm32_eth::PartsIn {
+        mac: p.ETHERNET_MAC,
+        mmc: p.ETHERNET_MMC,
+        dma: p.ETHERNET_DMA,
+    };
+
+    let stm32_eth::Parts { dma: mut eth_dma, mac: _ } = stm32_eth::new(
+        parts,
         &mut rx_ring[..],
         &mut tx_ring[..],
         clocks,

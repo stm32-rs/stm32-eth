@@ -33,6 +33,11 @@ use stm32f7xx_hal::{
     pac::{RCC, SYSCFG},
 };
 
+use crate::{
+    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
+    EthernetDMA,
+};
+
 // Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
 pub(crate) fn setup() {
     #[cfg(feature = "stm32f4xx-hal")]
@@ -171,6 +176,23 @@ pin_trait!(
 pub trait AlternateVeryHighSpeed {
     /// Puts the pin in the Alternate Function 11 with Very High Speed.
     fn into_af11_very_high_speed(self);
+}
+
+/// A struct that contains all parts required to configure
+/// the ethernet peripheral.
+#[allow(missing_docs)]
+pub struct PartsIn {
+    pub mac: ETHERNET_MAC,
+    pub mmc: ETHERNET_MMC,
+    pub dma: ETHERNET_DMA,
+}
+
+/// Access to all configured parts of the ethernet peripheral.
+pub struct Parts<'rx, 'tx, T> {
+    /// Access to and control over the ethernet MAC.
+    pub mac: T,
+    /// Access to and control over the ethernet DMA.
+    pub dma: EthernetDMA<'rx, 'tx>,
 }
 
 /// A struct that represents a combination of pins to be used

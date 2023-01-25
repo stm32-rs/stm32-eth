@@ -31,6 +31,7 @@ mod app {
     use stm32_eth::{
         dma::{EthernetDMA, RxRingEntry, TxRingEntry},
         mac::Speed,
+        Parts,
     };
 
     use smoltcp::{
@@ -81,18 +82,8 @@ mod app {
 
         defmt::info!("Configuring ethernet");
 
-        let (dma, mac) = stm32_eth::new_with_mii(
-            ethernet.mac,
-            ethernet.mmc,
-            ethernet.dma,
-            rx_ring,
-            tx_ring,
-            clocks,
-            pins,
-            mdio,
-            mdc,
-        )
-        .unwrap();
+        let Parts { dma, mac } =
+            stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
         let dma = cx.local.dma.write(dma);
 

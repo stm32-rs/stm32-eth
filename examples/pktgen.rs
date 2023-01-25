@@ -15,6 +15,7 @@ use cortex_m::interrupt::Mutex;
 use stm32_eth::{
     mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
+    Parts,
 };
 
 use stm32_eth::dma::{RxRingEntry, TxError, TxRingEntry};
@@ -43,17 +44,15 @@ fn main() -> ! {
 
     let mut rx_ring: [RxRingEntry; 2] = Default::default();
     let mut tx_ring: [TxRingEntry; 2] = Default::default();
-    let (mut eth_dma, eth_mac) = stm32_eth::new(
-        ethernet.mac,
-        ethernet.mmc,
-        ethernet.dma,
+    let Parts { mut dma, mac } = stm32_eth::new(
+        ethernet,
         &mut rx_ring[..],
         &mut tx_ring[..],
         clocks,
         eth_pins,
     )
     .unwrap();
-    eth_dma.enable_interrupt();
+    dma.enable_interrupt();
 
     // Main loop
     let mut last_stats_time = 0usize;
@@ -63,7 +62,7 @@ fn main() -> ! {
     let mut tx_pkts = 0usize;
     let mut last_link_up = false;
 
-    let mut phy = BarePhy::new(eth_mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
+    let mut phy = BarePhy::new(mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
 
     loop {
         let time: usize = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
@@ -107,7 +106,7 @@ fn main() -> ! {
         // handle rx packet
         {
             let mut recvd = 0usize;
-            while let Ok(pkt) = eth_dma.recv_next() {
+            while let Ok(pkt) = dma.recv_next() {
                 rx_bytes += pkt.len();
                 rx_pkts += 1;
                 pkt.free();
@@ -119,7 +118,7 @@ fn main() -> ! {
                 }
             }
         }
-        if !eth_dma.rx_is_running() {
+        if !dma.rx_is_running() {
             defmt::info!("RX stopped");
         }
 
@@ -127,7 +126,7 @@ fn main() -> ! {
         const SIZE: usize = 1500;
         if phy.phy_link_up() {
             'egress: loop {
-                let r = eth_dma.send(SIZE, |buf| {
+                let r = dma.send(SIZE, |buf| {
                     buf[0..6].copy_from_slice(&DST_MAC);
                     buf[6..12].copy_from_slice(&SRC_MAC);
                     buf[12..14].copy_from_slice(&ETH_TYPE);

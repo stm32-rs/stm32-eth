@@ -26,10 +26,7 @@ pub use stm32f1xx_hal as hal;
 pub use stm32f1xx_hal::pac as stm32;
 
 #[cfg(feature = "device-selected")]
-use {
-    hal::rcc::Clocks,
-    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
-};
+use hal::rcc::Clocks;
 
 #[cfg(feature = "device-selected")]
 pub mod dma;
@@ -46,11 +43,11 @@ use mac::{EthernetMAC, EthernetMACWithMii, Speed, WrongClock};
 #[cfg(feature = "device-selected")]
 pub mod setup;
 #[cfg(feature = "device-selected")]
-pub use setup::EthPins;
-#[cfg(feature = "device-selected")]
 use setup::{
     AlternateVeryHighSpeed, RmiiCrsDv, RmiiRefClk, RmiiRxD0, RmiiRxD1, RmiiTxD0, RmiiTxD1, RmiiTxEN,
 };
+#[cfg(feature = "device-selected")]
+pub use setup::{EthPins, Parts, PartsIn};
 
 #[cfg(feature = "device-selected")]
 mod peripherals;
@@ -81,14 +78,12 @@ compile_error!("No device was selected! Exactly one stm32fxxx feature must be se
 /// - HCLK must be at least 25 MHz.
 #[cfg(feature = "device-selected")]
 pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
-    eth_mac: ETHERNET_MAC,
-    eth_mmc: ETHERNET_MMC,
-    eth_dma: ETHERNET_DMA,
+    parts: PartsIn,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMAC), WrongClock>
+) -> Result<Parts<'rx, 'tx, EthernetMAC>, WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
@@ -104,15 +99,18 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
-    let eth_mac = eth_mac.into();
-
     // Congfigure and start up the ethernet DMA.
-    let dma = EthernetDMA::new(eth_dma.into(), rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, Speed::FullDuplexBase100Tx)?;
+    let mac = EthernetMAC::new(
+        parts.mac.into(),
+        parts.mmc,
+        clocks,
+        Speed::FullDuplexBase100Tx,
+    )?;
 
-    Ok((dma, mac))
+    Ok(Parts { dma, mac })
 }
 
 /// Create and initialise the ethernet driver.
@@ -137,16 +135,14 @@ where
 /// - HCLK must be at least 25 MHz.
 #[cfg(feature = "device-selected")]
 pub fn new_with_mii<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
-    eth_mac: ETHERNET_MAC,
-    eth_mmc: ETHERNET_MMC,
-    eth_dma: ETHERNET_DMA,
+    parts: PartsIn,
     rx_buffer: &'rx mut [RxRingEntry],
     tx_buffer: &'tx mut [TxRingEntry],
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
     mdio: MDIO,
     mdc: MDC,
-) -> Result<(EthernetDMA<'rx, 'tx>, EthernetMACWithMii<MDIO, MDC>), WrongClock>
+) -> Result<Parts<'rx, 'tx, EthernetMACWithMii<MDIO, MDC>>, WrongClock>
 where
     REFCLK: RmiiRefClk + AlternateVeryHighSpeed,
     CRS: RmiiCrsDv + AlternateVeryHighSpeed,
@@ -164,16 +160,19 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
-    let eth_mac = eth_mac.into();
-
     // Congfigure and start up the ethernet DMA.
-    let dma = EthernetDMA::new(eth_dma.into(), rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac =
-        EthernetMAC::new(eth_mac, eth_mmc, clocks, Speed::FullDuplexBase100Tx)?.with_mii(mdio, mdc);
+    let mac = EthernetMAC::new(
+        parts.mac.into(),
+        parts.mmc,
+        clocks,
+        Speed::FullDuplexBase100Tx,
+    )?
+    .with_mii(mdio, mdc);
 
-    Ok((dma, mac))
+    Ok(Parts { dma, mac })
 }
 
 /// This block ensures that README.md is checked when `cargo test` is run.

@@ -6,7 +6,7 @@
 
 use stm32_eth::{
     hal::{gpio::GpioExt, rcc::Clocks},
-    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
+    PartsIn,
 };
 
 pub use pins::{setup_pins, Gpio};
@@ -14,19 +14,13 @@ pub use pins::{setup_pins, Gpio};
 use fugit::RateExtU32;
 use stm32_eth::hal::rcc::RccExt;
 
-pub struct EthernetPeripherals {
-    pub dma: ETHERNET_DMA,
-    pub mac: ETHERNET_MAC,
-    pub mmc: ETHERNET_MMC,
-}
-
 /// Setup the clocks and return clocks and a GPIO struct that
 /// can be used to set up all of the pins.
 ///
 /// This configures HCLK to be at least 25 MHz, which is the minimum required
 /// for ethernet operation to be valid.
-pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, EthernetPeripherals) {
-    let ethernet = EthernetPeripherals {
+pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, PartsIn) {
+    let ethernet = PartsIn {
         dma: p.ETHERNET_DMA,
         mac: p.ETHERNET_MAC,
         mmc: p.ETHERNET_MMC,
