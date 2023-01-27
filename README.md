@@ -120,6 +120,9 @@ Run the following command:
 cargo build --release --example <example> --features <MCU feature>,<additional required features> --target <MCU compilation target>
 ```
 
+Additionally, if the board you're developing for has a High Speed External oscillator connected to the correct pins, the HSE configuration can be activated
+by setting the `EXAMPLE_HSE` environment variable to one of `oscillator` or `bypass` when executing the build command.
+
 For example, if we wish to build the `ip` example for an `stm32f429`, we should run the following command:
 
 ```bash
@@ -137,6 +140,9 @@ Then, run the following command:
 ```bash
 DEFMT_LOG=info PROBE_RUN_CHIP=<probe-run chip> cargo run --release --example <example> --features <MCU feature>,<additional required features> --target <MCU compilation target>
 ```
+
+Additionally, if the board you're developing for has a High Speed External oscillator connected to the correct pins, the HSE configuration can be activated
+by setting the `EXAMPLE_HSE` environment variable to one of `oscillator` or `bypass` when executing the run command.
 
 For example, if we wish to run the `rtic-echo` example on an `STM32F107RCT6`, we should run the following command:
 
