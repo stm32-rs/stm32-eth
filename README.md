@@ -101,7 +101,9 @@ If the board you're developing for uses the nucleo pinout (PG11 and PG13 instead
 ### Building examples
 To build an example, run the following command:
 ```bash
-cargo build --release --example <example> --features <MCU feature>,<additional required features> --target <MCU compilation target>
+cargo build --release --example <example> \
+    --features <MCU feature>,<additional required features> \
+    --target <MCU compilation target>
 ```
 
 For example, if we wish to build the `ip` example for an `stm32f429`, we should run the following command:
@@ -138,7 +140,8 @@ cargo run --release --example <example> \
 For example, if we wish to run the `rtic-echo` example on an `STM32F107RCT6`, we should run the following command:
 
 ```bash
-DEFMT_LOG=info PROBE_RUN_CHIP=STM32F107RC cargo run --release --example rtic-echo \
+DEFMT_LOG=info PROBE_RUN_CHIP=STM32F107RC \
+cargo run --release --example rtic-echo \
     --features stm32f107,smoltcp-phy \
     --target thumbv7m-none-eabi
 ```
@@ -147,7 +150,7 @@ Or, if we want to run the `arp` example on a Nucleo-F767ZI with a HSE oscillator
 
 ```bash
 DEFMT_LOG=info PROBE_RUN_CHIP=STM32F767ZGTx \
-STM32_ETH_EXAMPLE_PINS=nucleo STM32_ETH_EXAMPLE_HSE=oscillator  \
+STM32_ETH_EXAMPLE_PINS=nucleo STM32_ETH_EXAMPLE_HSE=oscillator \
 cargo run --release --example arp \
     --features stm32f767 \
     --target thumbv7em-none-eabihf
