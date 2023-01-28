@@ -108,7 +108,7 @@ For example, if we wish to build the `ip` example for an `stm32f429`, we should 
 
 ```bash
 cargo build --release --example ip \
-        --features stm32f429,defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp \
+        --features stm32f429,smoltcp-phy \
         --target thumbv7em-none-eabihf
 ```
 
@@ -139,7 +139,7 @@ For example, if we wish to run the `rtic-echo` example on an `STM32F107RCT6`, we
 
 ```bash
 DEFMT_LOG=info PROBE_RUN_CHIP=STM32F107RC cargo run --release --example rtic-echo \
-    --features stm32f107,rtic-echo-example \
+    --features stm32f107,smoltcp-phy \
     --target thumbv7m-none-eabi
 ```
 

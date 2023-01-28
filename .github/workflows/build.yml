@@ -97,21 +97,14 @@ jobs:
     strategy:
       matrix:
         example:
-          - name: arp
-            example: arp
-            features: defmt
-          - name: ip
-            example: ip
-            features: defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp
-          - name: pktgen
-            example: pktgen
-            features: defmt
-          - name: rtic-echo
-            example: rtic-echo
-            features: rtic-echo-example
-          - name: rtic-echo with nucleo pins
-            example: rtic-echo
-            features: rtic-echo-example,example-nucleo-pins
+          - example: arp
+            features: ""
+          - example: ip
+            features: smoltcp-phy
+          - example: pktgen
+            features: ""
+          - example: rtic-echo
+            features: smoltcp-phy
         mcu:
           - stm32f107
           - stm32f429
@@ -130,7 +123,7 @@ jobs:
           rustup override set ${{ matrix.toolchain }}
           rustup target add ${{ matrix.target }}
 
-      - name: Build example ${{ matrix.example.name }} for ${{ matrix.mcu }}
+      - name: Build example ${{ matrix.example.example }} for ${{ matrix.mcu }}
         run: |
           cargo build --release --target=${{ matrix.target }} --example ${{ matrix.example.example}} --features ${{ matrix.mcu }},${{ matrix.example.features }}
 
