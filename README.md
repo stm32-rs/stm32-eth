@@ -94,9 +94,9 @@ The examples use `defmt` and `defmt_rtt` for logging, and `panic_probe` over `de
 
 ##### Alternative pin configuration & HSE
 
-If the board you're developing for has a High Speed External oscillator connected to the correct pins, the HSE configuration can be activated by setting the `EXAMPLE_HSE` environment variable to one of `oscillator` or `bypass` when compiling.
+If the board you're developing for has a High Speed External oscillator connected to the correct pins, the HSE configuration can be activated by setting the `STM32_ETH_EXAMPLE_HSE` environment variable to one of `oscillator` or `bypass` when compiling.
 
-If the board you're developing for uses the nucleo pinout (PG11 and PG13 instead of PB11 and PB12), the pin configuration can be changed by setting the `EXAMPLE_PINS` environment variable to `nucleo` when compiling.
+If the board you're developing for uses the nucleo pinout (PG11 and PG13 instead of PB11 and PB12), the pin configuration can be changed by setting the `STM32_ETH_EXAMPLE_PINS` environment variable to `nucleo` when compiling.
 
 ### Building examples
 To build an example, run the following command:
@@ -115,7 +115,7 @@ cargo build --release --example ip \
 If we wish to build the `arp` example for a Nucleo-F767ZI with a HSE oscillator:
 
 ```bash
-EXAMPLE_HSE=bypass EXAMPLE_PINS=nucleo \
+STM32_ETH_EXAMPLE_HSE=bypass STM32_ETH_EXAMPLE_PINS=nucleo \
 cargo build --release --example arp \
     --features stm32f767
 ```
@@ -147,7 +147,7 @@ Or, if we want to run the `arp` example on a Nucleo-F767ZI with a HSE oscillator
 
 ```bash
 DEFMT_LOG=info PROBE_RUN_CHIP=STM32F767ZGTx \
-EXAMPLE_PINS=nucleo EXAMPLE_HSE=oscillator  \
+STM32_ETH_EXAMPLE_PINS=nucleo STM32_ETH_EXAMPLE_HSE=oscillator  \
 cargo run --release --example arp \
     --features stm32f767 \
     --target thumbv7em-none-eabihf
