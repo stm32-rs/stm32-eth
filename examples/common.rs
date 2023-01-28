@@ -124,14 +124,14 @@ mod pins {
     pub type RxD0 = PC4<Input>;
     pub type RxD1 = PC5<Input>;
 
-    #[cfg(not(feature = "example-nucleo-pins"))]
+    #[cfg(not(pins = "nucleo"))]
     pub type TxEn = PB11<Input>;
-    #[cfg(not(feature = "example-nucleo-pins"))]
+    #[cfg(not(pins = "nucleo"))]
     pub type TxD0 = PB12<Input>;
 
-    #[cfg(all(feature = "example-nucleo-pins"))]
+    #[cfg(pins = "nucleo")]
     pub type TxEn = PG11<Input>;
-    #[cfg(feature = "example-nucleo-pins")]
+    #[cfg(pins = "nucleo")]
     pub type TxD0 = PG13<Input>;
 
     pub type Mdio = PA2<Alternate<11>>;
@@ -158,13 +158,13 @@ mod pins {
         let rx_d0 = gpioc.pc4.into_floating_input();
         let rx_d1 = gpioc.pc5.into_floating_input();
 
-        #[cfg(not(feature = "example-nucleo-pins"))]
+        #[cfg(not(pins = "nucleo"))]
         let (tx_en, tx_d0) = (
             gpiob.pb11.into_floating_input(),
             gpiob.pb12.into_floating_input(),
         );
 
-        #[cfg(feature = "example-nucleo-pins")]
+        #[cfg(pins = "nucleo")]
         let (tx_en, tx_d0) = {
             (
                 gpiog.pg11.into_floating_input(),

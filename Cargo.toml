@@ -64,7 +64,6 @@ stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 smoltcp-phy = ["smoltcp"]
 
 # Example features
-example-nucleo-pins = [ ]
 rtic-echo-example = [ "defmt", "smoltcp-phy", "smoltcp/defmt", "smoltcp/medium-ethernet", "smoltcp/socket-tcp" ]
 
 [dev-dependencies]
