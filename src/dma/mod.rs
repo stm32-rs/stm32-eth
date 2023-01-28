@@ -1,14 +1,33 @@
+//! Ethernet DMA access and configuration.
+
 use core::borrow::Borrow;
 
 use cortex_m::peripheral::NVIC;
 
 use crate::{
     peripherals::{ETHERNET_DMA, ETHERNET_MAC},
-    rx::{RxPacket, RxRing},
     stm32::Interrupt,
-    tx::TxRing,
-    RxError, RxRingEntry, TxError, TxRingEntry,
 };
+
+#[cfg(feature = "smoltcp-phy")]
+mod smoltcp_phy;
+#[cfg(feature = "smoltcp-phy")]
+pub use smoltcp_phy::*;
+
+pub(crate) mod desc;
+
+pub(crate) mod ring;
+
+mod rx;
+use rx::RxRing;
+pub use rx::{RxError, RxPacket, RxRingEntry};
+
+mod tx;
+use tx::TxRing;
+pub use tx::{TxError, TxRingEntry};
+
+/// From the datasheet: *VLAN Frame maxsize = 1522*
+pub(crate) const MTU: usize = 1522;
 
 /// Ethernet DMA.
 pub struct EthernetDMA<'rx, 'tx> {
@@ -173,8 +192,11 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone, Copy)]
 pub struct InterruptReasonSummary {
+    /// The interrupt was caused by an RX event.
     pub is_rx: bool,
+    /// The interrupt was caused by an TX event.
     pub is_tx: bool,
+    /// The interrupt was caused by an error event.
     pub is_error: bool,
 }
 

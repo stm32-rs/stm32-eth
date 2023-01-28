@@ -6,7 +6,7 @@ use core::{
     sync::atomic::{self, Ordering},
 };
 
-use crate::{
+use super::{
     desc::Descriptor,
     ring::{RingDescriptor, RingEntry},
 };
@@ -173,6 +173,7 @@ impl RxRingEntry {
     }
 }
 
+/// A received packet.
 pub struct RxPacket<'a> {
     entry: &'a mut RxRingEntry,
     length: usize,
@@ -199,7 +200,7 @@ impl<'a> Drop for RxPacket<'a> {
 }
 
 impl<'a> RxPacket<'a> {
-    // Pass back to DMA engine
+    /// Pass the received packet back to the DMA engine
     pub fn free(self) {
         drop(self)
     }

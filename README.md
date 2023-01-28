@@ -29,7 +29,7 @@ use stm32_eth::{
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::Peripherals,
-    RingEntry,
+    dma::{RxRingEntry, TxRingEntry},
     EthPins,
 };
 use fugit::RateExtU32;
@@ -56,8 +56,8 @@ fn main() {
         rx_d1: gpioc.pc5,
     };
 
-    let mut rx_ring: [RingEntry<_>; 16] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 8] = Default::default();
+    let mut rx_ring: [RxRingEntry; 16] = Default::default();
+    let mut tx_ring: [TxRingEntry; 8] = Default::default();
     let (mut eth_dma, _eth_mac) = stm32_eth::new(
         p.ETHERNET_MAC,
         p.ETHERNET_MMC,

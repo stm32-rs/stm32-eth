@@ -22,7 +22,7 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
 pub mod common;
 
-use stm32_eth::RingEntry;
+use stm32_eth::dma::{RxRingEntry, TxRingEntry};
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
@@ -42,8 +42,8 @@ fn main() -> ! {
 
     let (eth_pins, _mdio, _mdc) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RingEntry<_>; 2] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
+    let mut rx_ring: [RxRingEntry; 2] = Default::default();
+    let mut tx_ring: [TxRingEntry; 2] = Default::default();
     let (mut eth_dma, _eth_mac) = stm32_eth::new(
         ethernet.mac,
         ethernet.mmc,

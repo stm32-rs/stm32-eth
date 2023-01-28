@@ -5,7 +5,7 @@ use core::{
     sync::atomic::{self, Ordering},
 };
 
-use crate::{
+use super::{
     desc::Descriptor,
     ring::{RingDescriptor, RingEntry},
 };

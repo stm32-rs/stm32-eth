@@ -32,31 +32,16 @@ use {
 };
 
 #[cfg(feature = "device-selected")]
-mod dma;
+pub mod dma;
 #[cfg(feature = "device-selected")]
-pub use dma::{eth_interrupt_handler, EthernetDMA};
-
+pub use dma::eth_interrupt_handler;
 #[cfg(feature = "device-selected")]
-mod ring;
-#[cfg(feature = "device-selected")]
-pub use ring::RingEntry;
-
-mod desc;
+use dma::{EthernetDMA, RxRingEntry, TxRingEntry};
 
 #[cfg(feature = "device-selected")]
 pub mod mac;
 #[cfg(feature = "device-selected")]
-pub use mac::{EthernetMAC, EthernetMACWithMii, Speed, WrongClock};
-
-#[cfg(feature = "device-selected")]
-mod rx;
-#[cfg(feature = "device-selected")]
-pub use rx::{RxDescriptor, RxError, RxRingEntry};
-
-#[cfg(feature = "device-selected")]
-mod tx;
-#[cfg(feature = "device-selected")]
-pub use tx::{TxDescriptor, TxError, TxRingEntry};
+use mac::{EthernetMAC, EthernetMACWithMii, Speed, WrongClock};
 
 #[cfg(feature = "device-selected")]
 pub mod setup;
@@ -72,16 +57,9 @@ mod peripherals;
 
 #[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
 pub use smoltcp;
-#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
-mod smoltcp_phy;
-#[cfg(all(feature = "smoltcp-phy", feature = "device-selected"))]
-pub use smoltcp_phy::{EthRxToken, EthTxToken};
 
 #[cfg(not(feature = "device-selected"))]
 compile_error!("No device was selected! Exactly one stm32fxxx feature must be selected.");
-
-/// From the datasheet: *VLAN Frame maxsize = 1522*
-const MTU: usize = 1522;
 
 /// Create and initialise the ethernet driver.
 ///

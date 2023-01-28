@@ -22,7 +22,7 @@ use stm32_eth::{
 
 pub mod common;
 
-use stm32_eth::{RingEntry, TxError};
+use stm32_eth::dma::{RxRingEntry, TxError, TxRingEntry};
 
 const PHY_ADDR: u8 = 0;
 
@@ -42,8 +42,8 @@ fn main() -> ! {
 
     let (eth_pins, mdio, mdc) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RingEntry<_>; 2] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
+    let mut rx_ring: [RxRingEntry; 2] = Default::default();
+    let mut tx_ring: [TxRingEntry; 2] = Default::default();
 
     let (mut eth_dma, eth_mac) = stm32_eth::new(
         ethernet.mac,

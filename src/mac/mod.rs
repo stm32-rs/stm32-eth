@@ -1,4 +1,4 @@
-//! Ethernet MAC driver implementation
+//! Ethernet MAC access and configuration.
 
 use core::ops::{Deref, DerefMut};
 

@@ -1,7 +1,7 @@
 use aligned::{Aligned, A8};
 use core::ops::{Deref, DerefMut};
 
-use crate::{RxDescriptor, TxDescriptor, MTU};
+use super::{rx::RxDescriptor, tx::TxDescriptor, MTU};
 
 pub trait RingDescriptor {
     fn setup(&mut self, buffer: *const u8, len: usize, next: Option<&Self>);

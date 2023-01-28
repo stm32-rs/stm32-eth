@@ -1,4 +1,4 @@
-use crate::{rx::RxPacket, tx::TxError, EthernetDMA};
+use super::{rx::RxPacket, tx::TxError, EthernetDMA};
 use core::intrinsics::transmute;
 use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;

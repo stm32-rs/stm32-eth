@@ -28,7 +28,10 @@ mod app {
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
 
-    use stm32_eth::{mac::Speed, EthernetDMA, RxRingEntry, TxRingEntry};
+    use stm32_eth::{
+        dma::{EthernetDMA, RxRingEntry, TxRingEntry},
+        mac::Speed,
+    };
 
     use smoltcp::{
         iface::{self, Interface, SocketHandle},
