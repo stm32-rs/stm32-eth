@@ -113,11 +113,14 @@ jobs:
           - stable
         target:
           - thumbv7m-none-eabi
+        pins:
+          - nucleo
+          - default
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install Rust ${{ matrix.toolchain }} with target (${{ matrix.target }})
+      - name: Install Rust ${{ matrix.toolchain }} with target (${{ matrix.target }}) and pins ${{ matrix.pins }}
         run: |
           rustup set profile minimal
           rustup override set ${{ matrix.toolchain }}
@@ -125,7 +128,7 @@ jobs:
 
       - name: Build example ${{ matrix.example.example }} for ${{ matrix.mcu }}
         run: |
-          cargo build --release --target=${{ matrix.target }} --example ${{ matrix.example.example}} --features ${{ matrix.mcu }},${{ matrix.example.features }}
+          STM32_ETH_EXAMPLE_PINS=${{ matrix.pins }} cargo build --release --target=${{ matrix.target }} --example ${{ matrix.example.example}} --features ${{ matrix.mcu }},${{ matrix.example.features }}
 
   # Refs: https://github.com/rust-lang/crater/blob/9ab6f9697c901c4a44025cf0a39b73ad5b37d198/.github/workflows/bors.yml#L125-L149
   #
