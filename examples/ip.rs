@@ -3,8 +3,8 @@
 
 //! For build and run instructions, see README.md
 //!
-//! This example starts a TCP listening server that should transmit `Hello` to
-//! any connecting client, and then close the connection.
+//! This example starts a TCP listening server at the address 10.0.0.1/24, on port 80, that
+//!  should transmit `Hello` to any connecting client, and then close the connection.
 
 use defmt_rtt as _;
 use panic_probe as _;
@@ -78,33 +78,40 @@ fn main() -> ! {
     );
     let server_handle = iface.add_socket(server_socket);
 
-    defmt::info!("Ready, listening at {}", ip_addr);
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
         cortex_m::interrupt::free(|cs| {
             let mut eth_pending = ETH_PENDING.borrow(cs).borrow_mut();
             *eth_pending = false;
         });
-        match iface.poll(Instant::from_millis(time as i64)) {
-            Ok(true) => {
-                let socket = iface.get_socket::<TcpSocket>(server_handle);
-                if !socket.is_open() {
-                    if let Err(e) = socket.listen(80) {
-                        defmt::error!("TCP listen error: {:?}", e)
-                    }
-                }
 
-                if socket.can_send() {
-                    if let Err(e) = socket.send_slice(b"hello\n").map(|_| socket.close()) {
-                        defmt::info!("TCP send error: {:?}", e);
-                    }
-                }
+        iface.poll(Instant::from_millis(time as i64)).ok();
+
+        let socket = iface.get_socket::<TcpSocket>(server_handle);
+
+        if !socket.is_listening() && !socket.is_open() {
+            socket.abort();
+            if let Err(e) = socket.listen(80) {
+                defmt::error!("TCP listen error: {:?}", e)
+            } else {
+                defmt::info!("Listening at {}:80...", ip_addr);
             }
-            Ok(false) => {}
-            Err(e) =>
-            // Ignore malformed packets
-            {
-                defmt::info!("Error: {:?}", e);
+        } else {
+            match socket.send_slice(b"hello\n") {
+                Ok(_) => {
+                    while iface.get_socket::<TcpSocket>(server_handle).send_queue() != 0 {
+                        // Poll to get the message out of the door
+                        iface.poll(Instant::from_millis(time as i64 + 1)).ok();
+                    }
+
+                    // Abort the connection
+                    let socket = iface.get_socket::<TcpSocket>(server_handle);
+                    socket.abort();
+                    defmt::info!("Transmitted hello! Closing socket...");
+
+                    iface.poll(Instant::from_millis(time as i64 + 1)).ok();
+                }
+                Err(_) => {}
             }
         }
     }
