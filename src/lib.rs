@@ -107,13 +107,10 @@ where
     let eth_mac = eth_mac.into();
 
     // Congfigure and start up the ethernet DMA.
-    // Note: this _must_ happen before configuring the MAC.
-    // It's not entirely clear why, but no interrupts are
-    // generated if the order is reversed.
-    let dma = EthernetDMA::new(eth_dma.into(), &eth_mac, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma.into(), rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, Speed::FullDuplexBase100Tx)?;
+    let mac = EthernetMAC::new(eth_mac, eth_mmc, clocks, Speed::FullDuplexBase100Tx)?;
 
     Ok((dma, mac))
 }
@@ -170,14 +167,11 @@ where
     let eth_mac = eth_mac.into();
 
     // Congfigure and start up the ethernet DMA.
-    // Note: this _must_ happen before configuring the MAC.
-    // It's not entirely clear why, but no interrupts are
-    // generated if the order is reversed.
-    let dma = EthernetDMA::new(eth_dma.into(), &eth_mac, rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(eth_dma.into(), rx_buffer, tx_buffer);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, eth_mmc, &dma, clocks, Speed::FullDuplexBase100Tx)?
-        .with_mii(mdio, mdc);
+    let mac =
+        EthernetMAC::new(eth_mac, eth_mmc, clocks, Speed::FullDuplexBase100Tx)?.with_mii(mdio, mdc);
 
     Ok((dma, mac))
 }

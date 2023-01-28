@@ -2,7 +2,7 @@
 
 use core::ops::{Deref, DerefMut};
 
-use crate::{hal::rcc::Clocks, peripherals::ETHERNET_MAC, stm32::ETHERNET_MMC, EthernetDMA};
+use crate::{hal::rcc::Clocks, peripherals::ETHERNET_MAC, stm32::ETHERNET_MMC};
 
 mod miim;
 pub use miim::*;
@@ -59,10 +59,6 @@ impl EthernetMAC {
     pub(crate) fn new(
         eth_mac: ETHERNET_MAC,
         eth_mmc: ETHERNET_MMC,
-        // Take a reference to EthernetDMA to ensure
-        // that `EthernetDMA` has been called before
-        // this function.
-        #[allow(unused)] eth_dma: &EthernetDMA,
         clocks: Clocks,
         initial_speed: Speed,
     ) -> Result<Self, WrongClock> {
