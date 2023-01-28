@@ -8,7 +8,7 @@
 * STM32F4xx
 * STM32F7xx
 
-Please send pull requests.
+Pull requests are welcome :)
 
 ## Usage
 
@@ -92,41 +92,32 @@ The examples should run and compile on any MCU that has an 802.3 compatible PHY 
 
 The examples use `defmt` and `defmt_rtt` for logging, and `panic_probe` over `defmt_rtt` for printing panic backtraces.
 
-To run or build them, the following steps should be taken:
+##### Alternative pin configuration & HSE
 
-1. Determine the correct compilation target for the MCU that you're using. For `stm32f107`, it is `thumbv7m-none-eabi`. For all others, it is `thumbv7em-none-eabihf`.
-2. Determine the MCU feature necessary for running on your MCU, e.g. `stm32f745`.
-3. Determine the Additional required features (see section below) necessary to build the example.
-4. Follow the rest of the instructions in the ["Building examples"](#building-examples) or ["Running examples"](#running-examples) subsections.
+If the board you're developing for has a High Speed External oscillator connected to the correct pins, the HSE configuration can be activated by setting the `EXAMPLE_HSE` environment variable to one of `oscillator` or `bypass` when compiling.
 
-### Additional required features
-
-Besides the feature selecting the correct MCU to be used when building and/or running an example, the following additional features are required:
-
-| Example     | Additional required features                         |
-| ----------- | ---------------------------------------------------- |
-| `arp`       | `defmt`                                              |
-| `ip`        | `defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp` |
-| `pktgen`    | `defmt`                                              |
-| `rtic-echo` | `rtic-echo-example`                                  |
-
-#### 144-pin nucleo boards
-
-For `stm32` 144-pin nucleo boards that contain an MCU supported by this crate the `example-nucleo-pins` feature should be activated. This causes the examples to use PG11 as TX_EN and PG13 as TXD0, instead of PB11 and PB12, which is the configuration used on these boards.
+If the board you're developing for uses the nucleo pinout (PG11 and PG13 instead of PB11 and PB12), the pin configuration can be changed by setting the `EXAMPLE_PINS` environment variable to `nucleo` when compiling.
 
 ### Building examples
-Run the following command:
+To build an example, run the following command:
 ```bash
 cargo build --release --example <example> --features <MCU feature>,<additional required features> --target <MCU compilation target>
 ```
 
-Additionally, if the board you're developing for has a High Speed External oscillator connected to the correct pins, the HSE configuration can be activated
-by setting the `EXAMPLE_HSE` environment variable to one of `oscillator` or `bypass` when executing the build command.
-
 For example, if we wish to build the `ip` example for an `stm32f429`, we should run the following command:
 
 ```bash
-cargo build --release --example ip --features stm32f429,defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp --target thumbv7em-none-eabihf
+cargo build --release --example ip \
+        --features stm32f429,defmt,smoltcp-phy,smoltcp/defmt,smoltcp/socket-tcp \
+        --target thumbv7em-none-eabihf
+```
+
+If we wish to build the `arp` example for a Nucleo-F767ZI with a HSE oscillator:
+
+```bash
+EXAMPLE_HSE=bypass EXAMPLE_PINS=nucleo \
+cargo build --release --example arp \
+    --features stm32f767
 ```
 
 ### Running examples
@@ -138,18 +129,26 @@ Ensure that `probe-run` can attach to your MCU
 
 Then, run the following command:
 ```bash
-DEFMT_LOG=info PROBE_RUN_CHIP=<probe-run chip> cargo run --release --example <example> --features <MCU feature>,<additional required features> --target <MCU compilation target>
+DEFMT_LOG=info PROBE_RUN_CHIP=<probe-run chip> \
+cargo run --release --example <example> \
+    --features <MCU feature>,<additional required features> \
+    --target <MCU compilation target>
 ```
-
-Additionally, if the board you're developing for has a High Speed External oscillator connected to the correct pins, the HSE configuration can be activated
-by setting the `EXAMPLE_HSE` environment variable to one of `oscillator` or `bypass` when executing the run command.
 
 For example, if we wish to run the `rtic-echo` example on an `STM32F107RCT6`, we should run the following command:
 
 ```bash
-DEFMT_LOG=info PROBE_RUN_CHIP=STM32F107RC cargo run --release --example rtic-echo --features stm32f107,rtic-echo-example --target thumbv7m-none-eabi
+DEFMT_LOG=info PROBE_RUN_CHIP=STM32F107RC cargo run --release --example rtic-echo \
+    --features stm32f107,rtic-echo-example \
+    --target thumbv7m-none-eabi
 ```
 
-### Other pin configurations
+Or, if we want to run the `arp` example on a Nucleo-F767ZI with a HSE oscillator:
 
-If the usage of different pins is required, the types and `setup_pins` function in `examples/common.rs` should be edited. If the pin configuration is for a `nucleo` board or other commonly used board, a PR with the changes is most welcome.
+```bash
+DEFMT_LOG=info PROBE_RUN_CHIP=STM32F767ZGTx \
+EXAMPLE_PINS=nucleo EXAMPLE_HSE=oscillator  \
+cargo run --release --example arp \
+    --features stm32f767 \
+    --target thumbv7em-none-eabihf
+```
