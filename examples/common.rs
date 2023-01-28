@@ -36,7 +36,37 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Eth
     {
         let rcc = p.RCC.constrain();
 
-        let clocks = rcc.cfgr.sysclk(100.MHz()).hclk(100.MHz()).freeze();
+        let clocks = rcc.cfgr.sysclk(100.MHz()).hclk(100.MHz());
+
+        #[cfg(feature = "stm32f4xx-hal")]
+        let clocks = {
+            if cfg!(hse = "bypass") {
+                clocks.use_hse(8.MHz()).bypass_hse_oscillator()
+            } else if cfg!(hse = "oscillator") {
+                clocks.use_hse(8.MHz())
+            } else {
+                clocks
+            }
+        };
+
+        #[cfg(feature = "stm32f7xx-hal")]
+        let clocks = {
+            if cfg!(hse = "bypass") {
+                clocks.hse(stm32_eth::hal::rcc::HSEClock::new(
+                    8.MHz(),
+                    stm32_eth::hal::rcc::HSEClockMode::Bypass,
+                ))
+            } else if cfg!(hse = "oscillator") {
+                clocks.hse(stm32_eth::hal::rcc::HSEClock::new(
+                    8.MHz(),
+                    stm32_eth::hal::rcc::HSEClockMode::Oscillator,
+                ))
+            } else {
+                clocks
+            }
+        };
+
+        let clocks = clocks.freeze();
 
         let gpio = Gpio {
             gpioa: p.GPIOA.split(),
@@ -55,11 +85,15 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Eth
         let rcc = p.RCC.constrain();
         let mut flash = p.FLASH.constrain();
 
-        let clocks = rcc
-            .cfgr
-            .sysclk(72.MHz())
-            .hclk(72.MHz())
-            .freeze(&mut flash.acr);
+        let clocks = rcc.cfgr.sysclk(72.MHz()).hclk(72.MHz());
+
+        let clocks = if cfg!(hse = "bypass") || cfg!(hse = "oscillator") {
+            clocks.use_hse(8.MHz())
+        } else {
+            clocks
+        };
+
+        let clocks = clocks.freeze(&mut flash.acr);
 
         let gpio = Gpio {
             gpioa: p.GPIOA.split(),
@@ -90,14 +124,14 @@ mod pins {
     pub type RxD0 = PC4<Input>;
     pub type RxD1 = PC5<Input>;
 
-    #[cfg(not(feature = "example-nucleo-pins"))]
+    #[cfg(not(pins = "nucleo"))]
     pub type TxEn = PB11<Input>;
-    #[cfg(not(feature = "example-nucleo-pins"))]
+    #[cfg(not(pins = "nucleo"))]
     pub type TxD0 = PB12<Input>;
 
-    #[cfg(all(feature = "example-nucleo-pins"))]
+    #[cfg(pins = "nucleo")]
     pub type TxEn = PG11<Input>;
-    #[cfg(feature = "example-nucleo-pins")]
+    #[cfg(pins = "nucleo")]
     pub type TxD0 = PG13<Input>;
 
     pub type Mdio = PA2<Alternate<11>>;
@@ -124,13 +158,13 @@ mod pins {
         let rx_d0 = gpioc.pc4.into_floating_input();
         let rx_d1 = gpioc.pc5.into_floating_input();
 
-        #[cfg(not(feature = "example-nucleo-pins"))]
+        #[cfg(not(pins = "nucleo"))]
         let (tx_en, tx_d0) = (
             gpiob.pb11.into_floating_input(),
             gpiob.pb12.into_floating_input(),
         );
 
-        #[cfg(feature = "example-nucleo-pins")]
+        #[cfg(pins = "nucleo")]
         let (tx_en, tx_d0) = {
             (
                 gpiog.pg11.into_floating_input(),

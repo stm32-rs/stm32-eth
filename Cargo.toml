@@ -63,10 +63,6 @@ stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 
 smoltcp-phy = ["smoltcp"]
 
-# Example features
-example-nucleo-pins = [ ]
-rtic-echo-example = [ "defmt", "smoltcp-phy", "smoltcp/defmt", "smoltcp/medium-ethernet", "smoltcp/socket-tcp" ]
-
 [dev-dependencies]
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
@@ -75,7 +71,7 @@ cortex-m-rtic = "1.0"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
-smoltcp = { version = "0.8", features = [ "medium-ethernet", "proto-ipv4", "socket-udp" ], default-features = false }
+smoltcp = { version = "0.8", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
 
 [[example]]
 name = "pktgen"
@@ -83,9 +79,7 @@ required-features = [ "defmt" ]
 
 [[example]]
 name = "ip"
-required-features = [
-    "defmt", "smoltcp-phy", "smoltcp/defmt", "smoltcp/socket-tcp"
-    ]
+required-features = [ "defmt", "smoltcp-phy" ]
 
 [[example]]
 name = "arp"
@@ -93,7 +87,7 @@ required-features = [ "defmt" ]
 
 [[example]]
 name = "rtic-echo"
-required-features = [ "rtic-echo-example" ]
+required-features = [ "defmt" , "smoltcp-phy" ]
 
 [profile.release]
 debug = 2
