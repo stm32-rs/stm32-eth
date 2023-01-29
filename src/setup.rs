@@ -184,7 +184,7 @@ pub trait AlternateVeryHighSpeed {
     fn into_af11_very_high_speed(self);
 }
 
-/// A struct that contains all parts required to configure
+/// A struct that contains all peripheral parts required to configure
 /// the ethernet peripheral.
 #[allow(missing_docs)]
 pub struct PartsIn {
@@ -193,6 +193,29 @@ pub struct PartsIn {
     pub dma: ETHERNET_DMA,
     #[cfg(feature = "ptp")]
     pub ptp: ETHERNET_PTP,
+}
+
+#[cfg(feature = "ptp")]
+impl From<(ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA, ETHERNET_PTP)> for PartsIn {
+    fn from(value: (ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA, ETHERNET_PTP)) -> Self {
+        Self {
+            mac: value.0,
+            mmc: value.1,
+            dma: value.2,
+            ptp: value.3,
+        }
+    }
+}
+
+#[cfg(not(feature = "ptp"))]
+impl From<(ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA)> for PartsIn {
+    fn from(value: (ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA)) -> Self {
+        Self {
+            mac: value.0,
+            mmc: value.1,
+            dma: value.2,
+        }
+    }
 }
 
 /// Access to all configured parts of the ethernet peripheral.
@@ -204,6 +227,22 @@ pub struct Parts<'rx, 'tx, T> {
     /// Access to and control over the ethernet PTP module.
     #[cfg(feature = "ptp")]
     pub ptp: EthernetPTP,
+}
+
+#[cfg(feature = "ptp")]
+impl<'rx, 'tx, T> Parts<'rx, 'tx, T> {
+    /// Split this [`Parts`] into its components.
+    pub fn split(self) -> (T, EthernetDMA<'rx, 'tx>, EthernetPTP) {
+        (self.mac, self.dma, self.ptp)
+    }
+}
+
+#[cfg(not(feature = "ptp"))]
+impl<'rx, 'tx, T> Parts<'rx, 'tx, T> {
+    /// Split this [`Parts`] into its components.
+    pub fn split(self) -> (T, EthernetDMA<'rx, 'tx>) {
+        (self.mac, self.dma)
+    }
 }
 
 /// A struct that represents a combination of pins to be used

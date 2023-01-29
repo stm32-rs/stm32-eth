@@ -26,6 +26,7 @@ use hal::rcc::Clocks;
 
 #[cfg(feature = "device-selected")]
 pub mod dma;
+#[doc(inline)]
 #[cfg(feature = "device-selected")]
 pub use dma::eth_interrupt_handler;
 
@@ -34,6 +35,7 @@ pub mod mac;
 
 #[cfg(feature = "device-selected")]
 pub mod setup;
+#[doc(inline)]
 #[cfg(feature = "device-selected")]
 pub use setup::{EthPins, Parts, PartsIn};
 
