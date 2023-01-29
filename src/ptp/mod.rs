@@ -65,10 +65,9 @@ impl EthernetPTP {
         (stssi, tsa)
     }
 
-    pub(crate) fn new(_eth_mac: &ETHERNET_MAC, eth_ptp: ETHERNET_PTP, clocks: Clocks) -> Self {
-        // Mask timestamp interrupt register, required for stm32f107 according to AN3411
-        #[cfg(feature = "stm32f1xx-hal")]
-        _eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
+    pub(crate) fn new(eth_mac: &ETHERNET_MAC, eth_ptp: ETHERNET_PTP, clocks: Clocks) -> Self {
+        // Mask timestamp interrupt register
+        eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
 
         let hclk = clocks.hclk().to_Hz();
 
