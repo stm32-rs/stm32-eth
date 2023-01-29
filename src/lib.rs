@@ -101,15 +101,15 @@ where
 
     let eth_mac = parts.mac.into();
 
-    // Configure the ethernet PTP
-    #[cfg(feature = "ptp")]
-    let ptp = EthernetPTP::new(&eth_mac, parts.ptp.into(), clocks);
-
     // Congfigure and start up the ethernet DMA.
     let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
 
+    // Configure the ethernet PTP
+    #[cfg(feature = "ptp")]
+    let ptp = EthernetPTP::new(&eth_mac, parts.ptp.into(), clocks, &dma);
+
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx)?;
+    let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx, &dma)?;
 
     let parts = Parts {
         mac,
@@ -170,15 +170,15 @@ where
 
     let eth_mac = parts.mac.into();
 
-    // Configure the ethernet PTP
-    #[cfg(feature = "ptp")]
-    let ptp = EthernetPTP::new(&eth_mac, parts.ptp.into(), clocks);
-
     // Congfigure and start up the ethernet DMA.
     let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
 
+    // Configure the ethernet PTP
+    #[cfg(feature = "ptp")]
+    let ptp = EthernetPTP::new(&eth_mac, parts.ptp.into(), clocks, &dma);
+
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx)?
+    let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx, &dma)?
         .with_mii(mdio, mdc);
 
     let parts = Parts {

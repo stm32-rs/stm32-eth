@@ -45,7 +45,7 @@ mod app {
     use stm32_eth::{
         dma::{EthernetDMA, PacketId, RxRingEntry, TxRingEntry},
         mac::Speed,
-        ptp::{EthernetPTP, Timestamp},
+        ptp::{EthernetPTP, Subseconds, Timestamp},
         Parts,
     };
 
@@ -57,6 +57,7 @@ mod app {
         dma: EthernetDMA<'static, 'static>,
         ptp: EthernetPTP,
         tx_id: Option<(u32, Timestamp)>,
+        scheduled_time: Option<Timestamp>,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -88,34 +89,37 @@ mod app {
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();
 
-        if let Ok(mut phy) = EthernetPhy::from_miim(mac, 0) {
-            defmt::info!(
-                "Resetting PHY as an extra step. Type: {}",
-                phy.ident_string()
-            );
+        match EthernetPhy::from_miim(mac, 0) {
+            Ok(mut phy) => {
+                defmt::info!(
+                    "Resetting PHY as an extra step. Type: {}",
+                    phy.ident_string()
+                );
 
-            phy.phy_init();
+                phy.phy_init();
 
-            defmt::info!("Waiting for link up.");
+                defmt::info!("Waiting for link up.");
 
-            while !phy.phy_link_up() {}
+                while !phy.phy_link_up() {}
 
-            defmt::info!("Link up.");
+                defmt::info!("Link up.");
 
-            if let Some(speed) = phy.speed().map(|s| match s {
-                PhySpeed::HalfDuplexBase10T => Speed::HalfDuplexBase10T,
-                PhySpeed::FullDuplexBase10T => Speed::FullDuplexBase10T,
-                PhySpeed::HalfDuplexBase100Tx => Speed::HalfDuplexBase100Tx,
-                PhySpeed::FullDuplexBase100Tx => Speed::FullDuplexBase100Tx,
-            }) {
-                phy.get_miim().set_speed(speed);
-                defmt::info!("Detected link speed: {}", speed);
-            } else {
-                defmt::warn!("Failed to detect link speed.");
+                if let Some(speed) = phy.speed().map(|s| match s {
+                    PhySpeed::HalfDuplexBase10T => Speed::HalfDuplexBase10T,
+                    PhySpeed::FullDuplexBase10T => Speed::FullDuplexBase10T,
+                    PhySpeed::HalfDuplexBase100Tx => Speed::HalfDuplexBase100Tx,
+                    PhySpeed::FullDuplexBase100Tx => Speed::FullDuplexBase100Tx,
+                }) {
+                    phy.get_miim().set_speed(speed);
+                    defmt::info!("Detected link speed: {}", speed);
+                } else {
+                    defmt::warn!("Failed to detect link speed.");
+                }
             }
-        } else {
-            defmt::info!("Not resetting unsupported PHY. Cannot detect link speed.");
-        }
+            Err(_) => {
+                defmt::info!("Not resetting unsupported PHY. Cannot detect link speed.");
+            }
+        };
 
         sender::spawn().ok();
 
@@ -123,6 +127,7 @@ mod app {
             Shared {
                 dma,
                 tx_id: None,
+                scheduled_time: None,
                 ptp,
             },
             Local {},
@@ -130,15 +135,28 @@ mod app {
         )
     }
 
-    #[task(shared = [dma, tx_id, ptp], local = [tx_id_ctr: u32 = 0x8000_0000])]
-    fn sender(mut cx: sender::Context) {
+    #[task(shared = [dma, tx_id, ptp, scheduled_time], local = [tx_id_ctr: u32 = 0x8000_0000])]
+    fn sender(cx: sender::Context) {
         sender::spawn_after(1u64.secs()).ok();
 
         const SIZE: usize = 42;
 
         // Obtain the current time to use as the "TX time" of our frame. It is clearly
         // incorrect, but works well enough in low-activity systems (such as this example).
-        let now = cx.shared.ptp.lock(|ptp| ptp.get_time());
+        let now = (cx.shared.ptp, cx.shared.scheduled_time).lock(|ptp, sched_time| {
+            let now = ptp.get_time();
+            let in_half_sec = now
+                + Timestamp::new(
+                    false,
+                    0,
+                    Subseconds::new_from_nanos(500_000_000).unwrap().raw(),
+                )
+                .unwrap();
+            ptp.configure_target_time_interrupt(in_half_sec);
+            *sched_time = Some(now);
+
+            now
+        });
 
         const DST_MAC: [u8; 6] = [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56];
         const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
@@ -162,77 +180,94 @@ mod app {
         });
     }
 
-    #[task(binds = ETH, shared = [dma, tx_id, ptp], priority = 2)]
+    #[task(binds = ETH, shared = [dma, tx_id, ptp, scheduled_time], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
-        (cx.shared.dma, cx.shared.tx_id, cx.shared.ptp).lock(|dma, tx_id, ptp| {
-            dma.interrupt_handler();
+        (
+            cx.shared.dma,
+            cx.shared.tx_id,
+            cx.shared.ptp,
+            cx.shared.scheduled_time,
+        )
+            .lock(|dma, tx_id, ptp, sched_time| {
+                dma.interrupt_handler();
 
-            let mut packet_id = 0;
-
-            while let Ok(packet) = dma.recv_next(Some(packet_id.into())) {
-                let mut dst_mac = [0u8; 6];
-                dst_mac.copy_from_slice(&packet[..6]);
-
-                // Note that, instead of grabbing the timestamp from the `RxPacket` directly, it
-                // is also possible to retrieve a cached version of the timestamp using
-                // `EthernetDMA::get_timestamp_for_id` (in the same way as for TX timestamps).
-                let ts = if let Some(timestamp) = packet.timestamp() {
-                    timestamp
-                } else {
-                    continue;
-                };
-
-                let timestamp = if dst_mac == [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56] {
-                    let mut timestamp_data = [0u8; 8];
-                    timestamp_data.copy_from_slice(&packet[14..22]);
-                    let raw = i64::from_be_bytes(timestamp_data);
-
-                    let timestamp = Timestamp::new_raw(raw);
-                    timestamp
-                } else {
-                    continue;
-                };
-
-                defmt::debug!("RX timestamp: {}", ts);
-                defmt::debug!("Contained TX timestamp: {}", ts);
-
-                let diff = timestamp - ts;
-
-                defmt::info!("Difference between TX and RX time: {}", diff);
-
-                let addend = ptp.addend();
-                let nanos = diff.nanos() as u64;
-
-                if nanos <= 20_000 {
-                    let p1 = ((nanos * addend as u64) / 1_000_000_000) as u32;
-
-                    defmt::debug!("Addend correction value: {}", p1);
-
-                    if diff.is_negative() {
-                        ptp.set_addend(addend - p1 / 2);
-                    } else {
-                        ptp.set_addend(addend + p1 / 2);
-                    };
-                } else {
-                    defmt::warn!("Updated time.");
-                    ptp.update_time(diff);
+                if ptp.interrupt_handler() {
+                    if let Some(sched_time) = sched_time.take() {
+                        let now = ptp.get_time();
+                        defmt::info!(
+                            "Got a timestamp interrupt {} seconds after scheduling",
+                            now - sched_time
+                        );
+                    }
                 }
 
-                packet_id += 1;
-                packet_id &= !0x8000_0000;
-            }
+                let mut packet_id = 0;
 
-            if let Some((tx_id, sent_time)) = tx_id.take() {
-                if let Ok(ts) = dma.get_timestamp_for_id(PacketId(tx_id)) {
-                    defmt::info!("TX timestamp: {}", ts);
-                    defmt::debug!(
+                while let Ok(packet) = dma.recv_next(Some(packet_id.into())) {
+                    let mut dst_mac = [0u8; 6];
+                    dst_mac.copy_from_slice(&packet[..6]);
+
+                    // Note that, instead of grabbing the timestamp from the `RxPacket` directly, it
+                    // is also possible to retrieve a cached version of the timestamp using
+                    // `EthernetDMA::get_timestamp_for_id` (in the same way as for TX timestamps).
+                    let ts = if let Some(timestamp) = packet.timestamp() {
+                        timestamp
+                    } else {
+                        continue;
+                    };
+
+                    defmt::debug!("RX timestamp: {}", ts);
+
+                    let timestamp = if dst_mac == [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56] {
+                        let mut timestamp_data = [0u8; 8];
+                        timestamp_data.copy_from_slice(&packet[14..22]);
+                        let raw = i64::from_be_bytes(timestamp_data);
+
+                        let timestamp = Timestamp::new_raw(raw);
+                        timestamp
+                    } else {
+                        continue;
+                    };
+
+                    defmt::debug!("Contained TX timestamp: {}", ts);
+
+                    let diff = timestamp - ts;
+
+                    defmt::info!("Difference between TX and RX time: {}", diff);
+
+                    let addend = ptp.addend();
+                    let nanos = diff.nanos() as u64;
+
+                    if nanos <= 20_000 {
+                        let p1 = ((nanos * addend as u64) / 1_000_000_000) as u32;
+
+                        defmt::debug!("Addend correction value: {}", p1);
+
+                        if diff.is_negative() {
+                            ptp.set_addend(addend - p1 / 2);
+                        } else {
+                            ptp.set_addend(addend + p1 / 2);
+                        };
+                    } else {
+                        defmt::warn!("Updated time.");
+                        ptp.update_time(diff);
+                    }
+
+                    packet_id += 1;
+                    packet_id &= !0x8000_0000;
+                }
+
+                if let Some((tx_id, sent_time)) = tx_id.take() {
+                    if let Ok(ts) = dma.get_timestamp_for_id(PacketId(tx_id)) {
+                        defmt::info!("TX timestamp: {}", ts);
+                        defmt::debug!(
                         "Diff between TX timestamp and the time that was put into the packet: {}",
                         ts - sent_time
                     );
-                } else {
-                    defmt::warn!("Failed to retrieve TX timestamp");
+                    } else {
+                        defmt::warn!("Failed to retrieve TX timestamp");
+                    }
                 }
-            }
-        });
+            });
     }
 }

@@ -2,7 +2,7 @@
 
 use core::ops::{Deref, DerefMut};
 
-use crate::{hal::rcc::Clocks, peripherals::ETHERNET_MAC, stm32::ETHERNET_MMC};
+use crate::{dma::EthernetDMA, hal::rcc::Clocks, peripherals::ETHERNET_MAC, stm32::ETHERNET_MMC};
 
 mod miim;
 pub use miim::*;
@@ -42,8 +42,11 @@ use self::consts::*;
 pub struct WrongClock;
 
 /// Ethernet media access control (MAC).
+///
+// impl note: access to the MACIMR register should _only_ be performed
+// atomically.
 pub struct EthernetMAC {
-    pub(crate) eth_mac: ETHERNET_MAC,
+    eth_mac: ETHERNET_MAC,
 }
 
 impl EthernetMAC {
@@ -61,6 +64,10 @@ impl EthernetMAC {
         eth_mmc: ETHERNET_MMC,
         clocks: Clocks,
         initial_speed: Speed,
+        // Note(_dma): this field exists to ensure that the MAC is not
+        // initialized before the DMA. If MAC is started before the DMA,
+        // it doesn't work.
+        _dma: &EthernetDMA,
     ) -> Result<Self, WrongClock> {
         let clock_frequency = clocks.hclk().to_Hz();
 
@@ -201,6 +208,18 @@ impl EthernetMAC {
             (true, false) => Speed::HalfDuplexBase100Tx,
             (true, true) => Speed::FullDuplexBase100Tx,
         }
+    }
+
+    pub(crate) fn mask_timestamp_trigger_interrupt() {
+        // SAFETY: MACIMR only receives atomic writes.
+        let mac = &unsafe { &*ETHERNET_MAC::ptr() };
+        mac.macimr.write(|w| w.tstim().set_bit());
+    }
+
+    pub(crate) fn unmask_timestamp_trigger_interrupt() {
+        // SAFETY: MACIMR only receives atomic writes.
+        let macimr = &unsafe { &*ETHERNET_MAC::ptr() }.macimr;
+        macimr.write(|w| w.tstim().clear_bit());
     }
 }
 
