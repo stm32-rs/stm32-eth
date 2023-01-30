@@ -2,12 +2,7 @@
 //!
 //! See [`EthernetPTP`] for a more details.
 
-use crate::{
-    dma::EthernetDMA,
-    hal::rcc::Clocks,
-    mac::EthernetMAC,
-    peripherals::{ETHERNET_MAC, ETHERNET_PTP},
-};
+use crate::{dma::EthernetDMA, hal::rcc::Clocks, mac::EthernetMAC, peripherals::ETHERNET_PTP};
 
 mod timestamp;
 pub use timestamp::Timestamp;
@@ -68,7 +63,6 @@ impl EthernetPTP {
     }
 
     pub(crate) fn new(
-        eth_mac: &ETHERNET_MAC,
         eth_ptp: ETHERNET_PTP,
         clocks: Clocks,
         // Note(_dma): this field exists to ensure that the PTP is not
@@ -77,7 +71,7 @@ impl EthernetPTP {
         _dma: &EthernetDMA,
     ) -> Self {
         // Mask timestamp interrupt register
-        eth_mac.macimr.modify(|_, w| w.tstim().set_bit());
+        EthernetMAC::mask_timestamp_trigger_interrupt();
 
         let hclk = clocks.hclk().to_Hz();
 
@@ -197,7 +191,13 @@ impl EthernetPTP {
             }
         }
     }
+}
 
+/// Setting and configuring target time interrupts on the STM32F107 does not
+/// make any sense: we can generate the interrupt, but it is impossible to
+/// clear the flag as the register required to do so does not exist.
+#[cfg(not(feature = "stm32f1xx-hal"))]
+impl EthernetPTP {
     /// Configure the target time.
     fn set_target_time(&mut self, timestamp: Timestamp) {
         let (high, low) = (timestamp.seconds(), timestamp.subseconds_signed());
@@ -223,27 +223,7 @@ impl EthernetPTP {
     /// was caused by a Timestamp trigger and clears the interrupt
     /// flag.
     pub fn interrupt_handler(&mut self) -> bool {
-        #[cfg(not(feature = "stm32f1xx-hal"))]
         let is_tsint = self.eth_ptp.ptptssr.read().tsttr().bit_is_set();
-
-        #[cfg(feature = "stm32f1xx-hal")]
-        // This is quite unsafe: the stm32f1xx user manual only mentions the
-        // ETH_PTPTSSR register when describing the Time Stamp Trigger status
-        // of the ETH_MACSR register. Given that this register exists at the
-        // offset described below on F4 and F7, and testing has shown that this
-        // register does indeed exist, we assume that the missing register is
-        // simply inadequately documented.
-        let is_tsint = {
-            const PTPSSR_OFFSET: usize = 10;
-            const TSTTR_MASK: u32 = 0x0000_0002;
-
-            let register_value = unsafe {
-                core::ptr::read_volatile((ETHERNET_PTP::ptr() as *const u32).add(PTPSSR_OFFSET))
-            };
-
-            register_value & TSTTR_MASK == TSTTR_MASK
-        };
-
         if is_tsint {
             EthernetMAC::mask_timestamp_trigger_interrupt();
         }

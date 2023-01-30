@@ -45,7 +45,7 @@ mod app {
     use stm32_eth::{
         dma::{EthernetDMA, PacketId, RxRingEntry, TxRingEntry},
         mac::Speed,
-        ptp::{EthernetPTP, Subseconds, Timestamp},
+        ptp::{EthernetPTP, Timestamp},
         Parts,
     };
 
@@ -145,14 +145,19 @@ mod app {
         // incorrect, but works well enough in low-activity systems (such as this example).
         let now = (cx.shared.ptp, cx.shared.scheduled_time).lock(|ptp, sched_time| {
             let now = ptp.get_time();
-            let in_half_sec = now
-                + Timestamp::new(
-                    false,
-                    0,
-                    Subseconds::new_from_nanos(500_000_000).unwrap().raw(),
-                )
-                .unwrap();
-            ptp.configure_target_time_interrupt(in_half_sec);
+            #[cfg(not(feature = "stm32f107"))]
+            {
+                let in_half_sec = now
+                    + Timestamp::new(
+                        false,
+                        0,
+                        stm32_eth::ptp::Subseconds::new_from_nanos(500_000_000)
+                            .unwrap()
+                            .raw(),
+                    )
+                    .unwrap();
+                ptp.configure_target_time_interrupt(in_half_sec);
+            }
             *sched_time = Some(now);
 
             now
@@ -188,16 +193,19 @@ mod app {
             cx.shared.ptp,
             cx.shared.scheduled_time,
         )
-            .lock(|dma, tx_id, ptp, sched_time| {
+            .lock(|dma, tx_id, ptp, _sched_time| {
                 dma.interrupt_handler();
 
-                if ptp.interrupt_handler() {
-                    if let Some(sched_time) = sched_time.take() {
-                        let now = ptp.get_time();
-                        defmt::info!(
-                            "Got a timestamp interrupt {} seconds after scheduling",
-                            now - sched_time
-                        );
+                #[cfg(not(feature = "stm32f107"))]
+                {
+                    if ptp.interrupt_handler() {
+                        if let Some(_sched_time) = sched_time.take() {
+                            let now = ptp.get_time();
+                            defmt::info!(
+                                "Got a timestamp interrupt {} seconds after scheduling",
+                                now - _sched_time
+                            );
+                        }
                     }
                 }
 

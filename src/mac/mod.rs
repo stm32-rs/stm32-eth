@@ -216,6 +216,8 @@ impl EthernetMAC {
         mac.macimr.write(|w| w.tstim().set_bit());
     }
 
+    // NOTE(allow): only used on F4 and F7
+    #[allow(dead_code)]
     pub(crate) fn unmask_timestamp_trigger_interrupt() {
         // SAFETY: MACIMR only receives atomic writes.
         let macimr = &unsafe { &*ETHERNET_MAC::ptr() }.macimr;

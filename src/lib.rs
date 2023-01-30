@@ -106,7 +106,7 @@ where
 
     // Configure the ethernet PTP
     #[cfg(feature = "ptp")]
-    let ptp = EthernetPTP::new(&eth_mac, parts.ptp.into(), clocks, &dma);
+    let ptp = EthernetPTP::new(parts.ptp.into(), clocks, &dma);
 
     // Configure the ethernet MAC
     let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx, &dma)?;
@@ -175,7 +175,7 @@ where
 
     // Configure the ethernet PTP
     #[cfg(feature = "ptp")]
-    let ptp = EthernetPTP::new(&eth_mac, parts.ptp.into(), clocks, &dma);
+    let ptp = EthernetPTP::new(parts.ptp.into(), clocks, &dma);
 
     // Configure the ethernet MAC
     let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx, &dma)?
