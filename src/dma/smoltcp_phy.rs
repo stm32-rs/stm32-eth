@@ -1,4 +1,4 @@
-use crate::{rx::RxPacket, tx::TxError, EthernetDMA};
+use super::{rx::RxPacket, tx::TxError, EthernetDMA};
 use core::intrinsics::transmute;
 use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
@@ -11,7 +11,7 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
-        caps.max_transmission_unit = super::MTU;
+        caps.max_transmission_unit = crate::dma::MTU;
         caps.max_burst_size = Some(1);
         caps.checksum = ChecksumCapabilities::ignored();
         caps
@@ -23,7 +23,7 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
             transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
         };
         let eth = self_ as *mut EthernetDMA<'a, 'a>;
-        match self_.recv_next() {
+        match self_.recv_next(None) {
             Ok(packet) => {
                 let rx = EthRxToken { packet };
                 let tx = EthTxToken { eth };
@@ -73,7 +73,7 @@ impl<'a> TxToken for EthTxToken<'a> {
         F: FnOnce(&mut [u8]) -> Result<R, Error>,
     {
         let eth = unsafe { &mut *self.eth };
-        match eth.send(len, f) {
+        match eth.send(len, None, f) {
             Err(TxError::WouldBlock) => Err(Error::Exhausted),
             Ok(r) => r,
         }

@@ -1,12 +1,15 @@
+use super::PacketId;
 use crate::peripherals::ETHERNET_DMA;
 
+#[cfg(feature = "ptp")]
+use crate::{dma::TimestampError, ptp::Timestamp};
+
 use core::{
-    default::Default,
     ops::{Deref, DerefMut},
     sync::atomic::{self, Ordering},
 };
 
-use crate::{
+use super::{
     desc::Descriptor,
     ring::{RingDescriptor, RingEntry},
 };
@@ -46,6 +49,10 @@ const RXDESC_1_RER: u32 = 1 << 15;
 /// An RX DMA Descriptor
 pub struct RxDescriptor {
     desc: Descriptor,
+    buffer_address: Option<u32>,
+    next_descriptor: Option<u32>,
+    #[cfg(feature = "ptp")]
+    timestamp_info: Option<(PacketId, Timestamp)>,
 }
 
 impl Default for RxDescriptor {
@@ -59,6 +66,10 @@ impl RxDescriptor {
     pub const fn new() -> Self {
         Self {
             desc: Descriptor::new(),
+            buffer_address: None,
+            next_descriptor: None,
+            #[cfg(feature = "ptp")]
+            timestamp_info: None,
         }
     }
 
@@ -68,12 +79,17 @@ impl RxDescriptor {
     }
 
     /// Pass ownership to the DMA engine
+    ///
+    /// Overrides old timestamp data
     fn set_owned(&mut self) {
+        self.write_buffer1();
+        self.write_buffer2();
+
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]
         atomic::fence(Ordering::Release);
-
         atomic::compiler_fence(Ordering::Release);
+
         unsafe {
             self.desc.modify(0, |w| w | RXDESC_0_OWN);
         }
@@ -98,20 +114,76 @@ impl RxDescriptor {
         (self.desc.read(0) & RXDESC_0_LS) == RXDESC_0_LS
     }
 
-    fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
+    /// Get PTP timestamps if available
+    #[cfg(feature = "ptp")]
+    pub fn timestamp(&self) -> Option<Timestamp> {
+        #[cfg(not(feature = "stm32f1xx-hal"))]
+        let is_valid = {
+            /// RX timestamp
+            const RXDESC_0_TIMESTAMP_VALID: u32 = 1 << 7;
+            self.desc.read(0) & RXDESC_0_TIMESTAMP_VALID == RXDESC_0_TIMESTAMP_VALID
+        };
+
+        #[cfg(feature = "stm32f1xx-hal")]
+        // There is no "timestamp valid" indicator bit
+        // on STM32F1XX
+        let is_valid = true;
+
+        let timestamp = Timestamp::from_descriptor(&self.desc);
+
+        if is_valid && self.is_last() {
+            timestamp
+        } else {
+            None
+        }
+    }
+
+    /// Rewrite buffer1 to the last value we wrote to it
+    ///
+    /// In our case, the address of the data buffer for this descriptor
+    ///
+    /// This only has to be done on stm32f107. For f4 and f7, enhanced descriptors
+    /// must be enabled for timestamping support, which we enable by default.
+    fn write_buffer1(&mut self) {
+        let buffer_addr = self
+            .buffer_address
+            .expect("Writing buffer1 of an RX descriptor, but `buffer_address` is None");
+
         unsafe {
-            self.desc.write(2, buffer as u32);
+            self.desc.write(2, buffer_addr);
+        }
+    }
+
+    fn set_buffer1(&mut self, buffer: *const u8, len: usize) {
+        self.buffer_address = Some(buffer as u32);
+        self.write_buffer1();
+        unsafe {
             self.desc.modify(1, |w| {
                 (w & !RXDESC_1_RBS_MASK) | ((len as u32) << RXDESC_1_RBS_SHIFT)
             });
         }
     }
 
+    /// Rewrite buffer2 to the last value we wrote it to
+    ///
+    /// In our case, the address of the next descriptor (may be zero)
+    ///
+    /// This only has to be done on stm32f107. For f4 and f7, enhanced descriptors
+    /// must be enabled for timestamping support, which we enable by default.
+    fn write_buffer2(&mut self) {
+        let addr = self
+            .next_descriptor
+            .expect("Writing buffer2 of an RX descriptor, but `next_descriptor` is None");
+
+        unsafe {
+            self.desc.write(3, addr);
+        }
+    }
+
     // points to next descriptor (RCH)
     fn set_buffer2(&mut self, buffer: *const u8) {
-        unsafe {
-            self.desc.write(3, buffer as u32);
-        }
+        self.next_descriptor = Some(buffer as u32);
+        self.write_buffer2();
     }
 
     fn set_end_of_ring(&mut self) {
@@ -148,6 +220,9 @@ impl RingDescriptor for RxDescriptor {
 }
 
 impl RxRingEntry {
+    /// The initial value for an Rx Ring Entry
+    pub const RX_INIT: Self = Self::new();
+
     fn take_received(&mut self) -> Result<RxPacket, RxError> {
         if self.desc().is_owned() {
             Err(RxError::WouldBlock)
@@ -160,10 +235,15 @@ impl RxRingEntry {
             // "Subsequent reads and writes cannot be moved ahead of preceding reads."
             atomic::compiler_fence(Ordering::Acquire);
 
+            #[cfg(feature = "ptp")]
+            let timestamp = Timestamp::from_descriptor(&self.desc().desc);
+
             // TODO: obtain ethernet frame type (RDESC_1_FT)
             let pkt = RxPacket {
                 entry: self,
                 length: frame_len,
+                #[cfg(feature = "ptp")]
+                timestamp,
             };
             Ok(pkt)
         } else {
@@ -173,9 +253,27 @@ impl RxRingEntry {
     }
 }
 
+#[cfg(feature = "ptp")]
+impl RxRingEntry {
+    fn attach_timestamp(&mut self, packet_id: Option<PacketId>) {
+        match (packet_id, self.desc().timestamp()) {
+            (Some(packet_id), Some(timestamp)) => {
+                self.desc_mut().timestamp_info = Some((packet_id, timestamp))
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A received packet.
+///
+/// This packet implements [Deref<\[u8\]>](core::ops::Deref) and should be used
+/// as a slice.
 pub struct RxPacket<'a> {
     entry: &'a mut RxRingEntry,
     length: usize,
+    #[cfg(feature = "ptp")]
+    timestamp: Option<Timestamp>,
 }
 
 impl<'a> Deref for RxPacket<'a> {
@@ -199,9 +297,15 @@ impl<'a> Drop for RxPacket<'a> {
 }
 
 impl<'a> RxPacket<'a> {
-    // Pass back to DMA engine
+    /// Pass the received packet back to the DMA engine.
     pub fn free(self) {
         drop(self)
+    }
+
+    /// Get the timestamp associated with this packet
+    #[cfg(feature = "ptp")]
+    pub fn timestamp(&self) -> Option<Timestamp> {
+        self.timestamp
     }
 }
 
@@ -278,24 +382,50 @@ impl<'a> RxRing<'a> {
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
-    pub fn recv_next(&mut self, eth_dma: &ETHERNET_DMA) -> Result<RxPacket, RxError> {
+    pub fn recv_next(
+        &mut self,
+        eth_dma: &ETHERNET_DMA,
+        // NOTE(allow): packet_id is unused if ptp is disabled.
+        #[allow(unused_variables)] packet_id: Option<PacketId>,
+    ) -> Result<RxPacket, RxError> {
         if !self.running_state(eth_dma).is_running() {
             self.demand_poll(eth_dma);
         }
 
         let entries_len = self.entries.len();
-        let result = self.entries[self.next_entry].take_received();
-        match result {
-            Err(RxError::WouldBlock) => {}
-            _ => {
-                self.next_entry += 1;
-                if self.next_entry >= entries_len {
-                    self.next_entry = 0;
-                }
+        let mut result = self.entries[self.next_entry].take_received();
+
+        if result.as_mut().err() != Some(&mut RxError::WouldBlock) {
+            self.next_entry += 1;
+            if self.next_entry >= entries_len {
+                self.next_entry = 0;
+            }
+
+            // Cache the PTP timestamps if PTP is enabled.
+            #[cfg(feature = "ptp")]
+            if let Ok(entry) = &mut result {
+                entry.entry.attach_timestamp(packet_id);
             }
         }
 
         result
+    }
+}
+
+#[cfg(feature = "ptp")]
+impl<'a> RxRing<'a> {
+    pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
+        for entry in self.entries.iter_mut() {
+            if let Some((packet_id, timestamp)) = &mut entry.desc_mut().timestamp_info {
+                if packet_id == &id {
+                    let ts = *timestamp;
+                    entry.desc_mut().timestamp_info.take();
+                    return Ok(ts);
+                }
+            }
+        }
+
+        return Err(TimestampError::IdNotFound);
     }
 }
 

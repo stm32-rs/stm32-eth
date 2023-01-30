@@ -28,7 +28,11 @@ mod app {
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
 
-    use stm32_eth::{mac::Speed, EthernetDMA, RxRingEntry, TxRingEntry};
+    use stm32_eth::{
+        dma::{EthernetDMA, RxRingEntry, TxRingEntry},
+        mac::Speed,
+        Parts,
+    };
 
     use smoltcp::{
         iface::{self, Interface, SocketHandle},
@@ -78,18 +82,12 @@ mod app {
 
         defmt::info!("Configuring ethernet");
 
-        let (dma, mac) = stm32_eth::new_with_mii(
-            ethernet.mac,
-            ethernet.mmc,
-            ethernet.dma,
-            rx_ring,
-            tx_ring,
-            clocks,
-            pins,
-            mdio,
-            mdc,
-        )
-        .unwrap();
+        let Parts {
+            dma,
+            mac,
+            #[cfg(feature = "ptp")]
+                ptp: _,
+        } = stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
         let dma = cx.local.dma.write(dma);
 

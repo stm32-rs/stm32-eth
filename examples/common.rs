@@ -6,7 +6,7 @@
 
 use stm32_eth::{
     hal::{gpio::GpioExt, rcc::Clocks},
-    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
+    PartsIn,
 };
 
 pub use pins::{setup_pins, Gpio};
@@ -14,22 +14,18 @@ pub use pins::{setup_pins, Gpio};
 use fugit::RateExtU32;
 use stm32_eth::hal::rcc::RccExt;
 
-pub struct EthernetPeripherals {
-    pub dma: ETHERNET_DMA,
-    pub mac: ETHERNET_MAC,
-    pub mmc: ETHERNET_MMC,
-}
-
 /// Setup the clocks and return clocks and a GPIO struct that
 /// can be used to set up all of the pins.
 ///
 /// This configures HCLK to be at least 25 MHz, which is the minimum required
 /// for ethernet operation to be valid.
-pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, EthernetPeripherals) {
-    let ethernet = EthernetPeripherals {
+pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, PartsIn) {
+    let ethernet = PartsIn {
         dma: p.ETHERNET_DMA,
         mac: p.ETHERNET_MAC,
         mmc: p.ETHERNET_MMC,
+        #[cfg(feature = "ptp")]
+        ptp: p.ETHERNET_PTP,
     };
 
     #[cfg(any(feature = "stm32f7xx-hal", feature = "stm32f4xx-hal"))]
@@ -316,15 +312,19 @@ impl<M: Miim> EthernetPhy<M> {
     ///
     /// Returns an error if the PHY does not support the extended register
     /// set, or if the PHY's identifier does not correspond to a known PHY.
-    pub fn from_miim(miim: M, phy_addr: u8) -> Result<Self, ()> {
+    pub fn from_miim(miim: M, phy_addr: u8) -> Result<Self, M> {
         let mut bare = BarePhy::new(miim, phy_addr, Pause::NoPause);
-        let phy_ident = bare.phy_ident().ok_or(())?;
+        let phy_ident = if let Some(id) = bare.phy_ident() {
+            id.raw_u32()
+        } else {
+            return Err(bare.release());
+        };
         let miim = bare.release();
         match phy_ident & 0xFFFFFFF0 {
             0x0007C0F0 => Ok(Self::LAN8720A(LAN8720A::new(miim, phy_addr))),
             0x0007C130 => Ok(Self::LAN8742A(LAN8742A::new(miim, phy_addr))),
             0x00221560 => Ok(Self::KSZ8081R(KSZ8081R::new(miim, phy_addr))),
-            _ => Err(()),
+            _ => Err(miim),
         }
     }
 
@@ -354,6 +354,15 @@ impl<M: Miim> EthernetPhy<M> {
             EthernetPhy::LAN8720A(phy) => phy.link_speed(),
             EthernetPhy::LAN8742A(phy) => phy.link_speed(),
             EthernetPhy::KSZ8081R(phy) => phy.link_speed(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn release(self) -> M {
+        match self {
+            EthernetPhy::LAN8720A(phy) => phy.release(),
+            EthernetPhy::LAN8742A(phy) => phy.release(),
+            EthernetPhy::KSZ8081R(phy) => phy.release(),
         }
     }
 }

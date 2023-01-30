@@ -29,7 +29,7 @@ use stm32_eth::{
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::Peripherals,
-    RingEntry,
+    dma::{RxRingEntry, TxRingEntry},
     EthPins,
 };
 use fugit::RateExtU32;
@@ -56,12 +56,18 @@ fn main() {
         rx_d1: gpioc.pc5,
     };
 
-    let mut rx_ring: [RingEntry<_>; 16] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 8] = Default::default();
-    let (mut eth_dma, _eth_mac) = stm32_eth::new(
-        p.ETHERNET_MAC,
-        p.ETHERNET_MMC,
-        p.ETHERNET_DMA,
+    let mut rx_ring: [RxRingEntry; 16] = Default::default();
+    let mut tx_ring: [TxRingEntry; 8] = Default::default();
+
+    let parts = stm32_eth::PartsIn {
+        mac: p.ETHERNET_MAC,
+        mmc: p.ETHERNET_MMC,
+        dma: p.ETHERNET_DMA,
+        ptp: p.ETHERNET_PTP,
+    };
+
+    let stm32_eth::Parts { dma: mut eth_dma, mac: _, ptp: _ } = stm32_eth::new(
+        parts,
         &mut rx_ring[..],
         &mut tx_ring[..],
         clocks,
@@ -70,12 +76,12 @@ fn main() {
     .unwrap();
     eth_dma.enable_interrupt();
 
-    if let Ok(pkt) = eth_dma.recv_next() {
+    if let Ok(pkt) = eth_dma.recv_next(None) {
         // handle received pkt
     }
 
     let size = 42;
-    eth_dma.send(size, |buf| {
+    eth_dma.send(size, None, |buf| {
         // write up to `size` bytes into buf before it is being sent
     }).expect("send");
 }

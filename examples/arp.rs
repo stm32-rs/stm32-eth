@@ -18,11 +18,12 @@ use cortex_m::interrupt::Mutex;
 use stm32_eth::{
     mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
+    Parts,
 };
 
 pub mod common;
 
-use stm32_eth::{RingEntry, TxError};
+use stm32_eth::dma::{RxRingEntry, TxError, TxRingEntry};
 
 const PHY_ADDR: u8 = 0;
 
@@ -42,24 +43,27 @@ fn main() -> ! {
 
     let (eth_pins, mdio, mdc) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RingEntry<_>; 2] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
+    let mut rx_ring: [RxRingEntry; 2] = Default::default();
+    let mut tx_ring: [TxRingEntry; 2] = Default::default();
 
-    let (mut eth_dma, eth_mac) = stm32_eth::new(
-        ethernet.mac,
-        ethernet.mmc,
-        ethernet.dma,
+    let Parts {
+        mut dma,
+        mac,
+        #[cfg(feature = "ptp")]
+            ptp: _,
+    } = stm32_eth::new(
+        ethernet,
         &mut rx_ring[..],
         &mut tx_ring[..],
         clocks,
         eth_pins,
     )
     .unwrap();
-    eth_dma.enable_interrupt();
+    dma.enable_interrupt();
 
     let mut last_link_up = false;
 
-    let mut bare_phy = BarePhy::new(eth_mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
+    let mut bare_phy = BarePhy::new(mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
 
     loop {
         let link_up = bare_phy.phy_link_up();
@@ -88,7 +92,7 @@ fn main() -> ! {
             const TARGET_MAC: [u8; 6] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
             const TARGET_IP: [u8; 4] = [0x0A, 0x00, 0x00, 0x02]; // 10.0.0.2
 
-            let r = eth_dma.send(SIZE, |buf| {
+            let r = dma.send(SIZE, None, |buf| {
                 buf[0..6].copy_from_slice(&DST_MAC);
                 buf[6..12].copy_from_slice(&SRC_MAC);
                 buf[12..14].copy_from_slice(&ETH_TYPE);

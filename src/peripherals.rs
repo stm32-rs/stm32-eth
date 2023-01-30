@@ -189,7 +189,13 @@ mod pac_override_impl {
 
     impl ETHERNET_MAC {
         #[doc = r"Pointer to the register block"]
-        const PTR: *const MacRegisterBlock = 0x4002_8000 as *const _;
+        pub const PTR: *const MacRegisterBlock = 0x4002_8000 as *const _;
+
+        #[doc = r"Return the pointer to the register block"]
+        #[inline(always)]
+        pub const fn ptr() -> *const MacRegisterBlock {
+            Self::PTR
+        }
     }
 
     impl core::ops::Deref for ETHERNET_MAC {

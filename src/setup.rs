@@ -1,4 +1,4 @@
-//! Pin definitions and setup functionality
+//! Pin definitions and setup functionality.
 //!
 //! This module contains the unsafe traits that determine
 //! which pins can have a specific function, and provides
@@ -20,6 +20,7 @@ use stm32f4xx_hal::{
 
 #[cfg(feature = "stm32f7xx-hal")]
 use cortex_m::interrupt;
+
 #[cfg(feature = "stm32f7xx-hal")]
 use stm32f7xx_hal::{
     gpio::{
@@ -32,6 +33,14 @@ use stm32f7xx_hal::{
     },
     pac::{RCC, SYSCFG},
 };
+
+use crate::{
+    dma::EthernetDMA,
+    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
+};
+
+#[cfg(feature = "ptp")]
+use crate::{ptp::EthernetPTP, stm32::ETHERNET_PTP};
 
 // Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
 pub(crate) fn setup() {
@@ -125,6 +134,8 @@ pub(crate) fn setup() {
                 .set_bit()
                 .ethmacrxen()
                 .set_bit()
+                .ethmacen()
+                .set_bit()
         });
 
         // Reset pulse.
@@ -171,6 +182,67 @@ pin_trait!(
 pub trait AlternateVeryHighSpeed {
     /// Puts the pin in the Alternate Function 11 with Very High Speed.
     fn into_af11_very_high_speed(self);
+}
+
+/// A struct that contains all peripheral parts required to configure
+/// the ethernet peripheral.
+#[allow(missing_docs)]
+pub struct PartsIn {
+    pub mac: ETHERNET_MAC,
+    pub mmc: ETHERNET_MMC,
+    pub dma: ETHERNET_DMA,
+    #[cfg(feature = "ptp")]
+    pub ptp: ETHERNET_PTP,
+}
+
+#[cfg(feature = "ptp")]
+impl From<(ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA, ETHERNET_PTP)> for PartsIn {
+    fn from(value: (ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA, ETHERNET_PTP)) -> Self {
+        Self {
+            mac: value.0,
+            mmc: value.1,
+            dma: value.2,
+            ptp: value.3,
+        }
+    }
+}
+
+#[cfg(not(feature = "ptp"))]
+impl From<(ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA)> for PartsIn {
+    fn from(value: (ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA)) -> Self {
+        Self {
+            mac: value.0,
+            mmc: value.1,
+            dma: value.2,
+        }
+    }
+}
+
+/// Access to all configured parts of the ethernet peripheral.
+pub struct Parts<'rx, 'tx, T> {
+    /// Access to and control over the ethernet MAC.
+    pub mac: T,
+    /// Access to and control over the ethernet DMA.
+    pub dma: EthernetDMA<'rx, 'tx>,
+    /// Access to and control over the ethernet PTP module.
+    #[cfg(feature = "ptp")]
+    pub ptp: EthernetPTP,
+}
+
+#[cfg(feature = "ptp")]
+impl<'rx, 'tx, T> Parts<'rx, 'tx, T> {
+    /// Split this [`Parts`] into its components.
+    pub fn split(self) -> (T, EthernetDMA<'rx, 'tx>, EthernetPTP) {
+        (self.mac, self.dma, self.ptp)
+    }
+}
+
+#[cfg(not(feature = "ptp"))]
+impl<'rx, 'tx, T> Parts<'rx, 'tx, T> {
+    /// Split this [`Parts`] into its components.
+    pub fn split(self) -> (T, EthernetDMA<'rx, 'tx>) {
+        (self.mac, self.dma)
+    }
 }
 
 /// A struct that represents a combination of pins to be used

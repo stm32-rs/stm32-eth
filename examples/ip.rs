@@ -22,7 +22,10 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
 pub mod common;
 
-use stm32_eth::RingEntry;
+use stm32_eth::{
+    dma::{RxRingEntry, TxRingEntry},
+    Parts,
+};
 
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
@@ -42,19 +45,22 @@ fn main() -> ! {
 
     let (eth_pins, _mdio, _mdc) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RingEntry<_>; 2] = Default::default();
-    let mut tx_ring: [RingEntry<_>; 2] = Default::default();
-    let (mut eth_dma, _eth_mac) = stm32_eth::new(
-        ethernet.mac,
-        ethernet.mmc,
-        ethernet.dma,
+    let mut rx_ring: [RxRingEntry; 2] = Default::default();
+    let mut tx_ring: [TxRingEntry; 2] = Default::default();
+    let Parts {
+        mut dma,
+        mac: _,
+        #[cfg(feature = "ptp")]
+            ptp: _,
+    } = stm32_eth::new(
+        ethernet,
         &mut rx_ring[..],
         &mut tx_ring[..],
         clocks,
         eth_pins,
     )
     .unwrap();
-    eth_dma.enable_interrupt();
+    dma.enable_interrupt();
 
     let local_addr = Ipv4Address::new(10, 0, 0, 1);
     let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
@@ -64,7 +70,7 @@ fn main() -> ! {
     let ethernet_addr = EthernetAddress(SRC_MAC);
 
     let mut sockets: [_; 1] = Default::default();
-    let mut iface = InterfaceBuilder::new(&mut eth_dma, &mut sockets[..])
+    let mut iface = InterfaceBuilder::new(&mut dma, &mut sockets[..])
         .hardware_addr(ethernet_addr.into())
         .ip_addrs(&mut ip_addrs[..])
         .neighbor_cache(neighbor_cache)
