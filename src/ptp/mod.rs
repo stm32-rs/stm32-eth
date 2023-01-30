@@ -225,6 +225,7 @@ impl EthernetPTP {
     pub fn interrupt_handler(&mut self) -> bool {
         let is_tsint = self.eth_ptp.ptptssr.read().tsttr().bit_is_set();
         if is_tsint {
+            self.eth_ptp.ptptscr.modify(|_, w| w.tsite().clear_bit());
             EthernetMAC::mask_timestamp_trigger_interrupt();
         }
         is_tsint

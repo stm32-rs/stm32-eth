@@ -78,7 +78,7 @@ impl Timestamp {
         let mut subseconds = self.subseconds().raw();
 
         if self.0.is_negative() {
-            subseconds |= 0x8000_0000;
+            subseconds |= Self::SIGN_BIT;
         }
 
         subseconds

@@ -28,7 +28,9 @@ impl Subseconds {
     ///
     /// To obtain that representation in nanoseconds, see [`Subseconds::nanos`].
     ///
-    /// To approximate a [`Subseconds`] from nanoseconds, see [`Subseconds::new_from_nanos`]
+    /// To approximate a [`Subseconds`] from nanoseconds, see [`Subseconds::new_from_nanos`].
+    ///
+    /// Returns `None` if `value > SUBSECONDS_PER_SECOND`. (See [`SUBSECONDS_PER_SECOND`]).
     pub const fn new(value: u32) -> Option<Self> {
         if value > SUBSECONDS_PER_SECOND as u32 {
             None
@@ -45,12 +47,14 @@ impl Subseconds {
     /// To obtain that representation in nanoseconds, see [`Subseconds::nanos`].
     ///
     /// To approximate a [`Subseconds`] from nanoseconds, see [`Subseconds::new_from_nanos`]
-    pub const fn new_unchecked(value: u32) -> Self {
+    pub(crate) const fn new_unchecked(value: u32) -> Self {
         Self(value)
     }
 
     /// Create a new [`Subseconds`] from the given amount of nanoseconds,
-    /// using a round-to-closest method.
+    /// using a round-to-nearest method.
+    ///
+    /// Returns [`None`] if `nanos >= NANOS_PER_SECOND`. (See [`NANOS_PER_SECOND`])
     pub const fn new_from_nanos(nanos: u32) -> Option<Self> {
         if nanos >= NANOS_PER_SECOND as u32 {
             return None;
@@ -61,7 +65,7 @@ impl Subseconds {
         Some(Subseconds::new_unchecked(subseconds as u32))
     }
 
-    /// Convert this [`Subseconds`] to nanoseconds,  using a round-to-closest method.
+    /// Convert this [`Subseconds`] to nanoseconds, using a round-to-nearest method.
     pub const fn nanos(&self) -> u32 {
         let nanos = ((self.0 as u64 * NS_PER_S) + (SUBS_PER_S / 2)) / SUBS_PER_S;
 
@@ -118,7 +122,7 @@ mod test {
 
     use super::*;
 
-    // Assert that values produced by [`Subseconds::nearest_increment`] for all
+    // Assert that values produced by [`Subseconds::nearest_increment`] for some
     // valid frequencies are within the correct span for `stssi`
     #[test]
     fn correct_subsecond_increment() {
@@ -126,6 +130,17 @@ mod test {
             let subs = Subseconds::nearest_increment(i).raw();
             assert!(subs > 0 && subs <= 255);
         }
+    }
+
+    #[test]
+    fn from_nanos() {
+        for i in [0, 1, 2, 3, NANOS_PER_SECOND - 1] {
+            let subseconds = Subseconds::new_from_nanos(i).unwrap();
+            assert!(subseconds.raw() < SUBSECONDS_PER_SECOND);
+        }
+
+        assert!(Subseconds::new_from_nanos(NANOS_PER_SECOND).is_none());
+        assert!(Subseconds::new_from_nanos(u32::MAX).is_none());
     }
 
     #[test]
