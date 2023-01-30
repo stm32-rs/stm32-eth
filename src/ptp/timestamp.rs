@@ -23,14 +23,8 @@ impl Timestamp {
     const SIGN_BIT: u32 = 0x8000_0000;
 
     /// Create a new [`Timestamp`]
-    pub const fn new(negative: bool, seconds: u32, subseconds: u32) -> Option<Self> {
-        let subseconds = if let Some(subs) = Subseconds::new(subseconds) {
-            subs
-        } else {
-            return None;
-        };
-
-        Some(Self::new_unchecked(negative, seconds, subseconds.raw()))
+    pub const fn new(negative: bool, seconds: u32, subseconds: Subseconds) -> Self {
+        Self::new_unchecked(negative, seconds, subseconds.raw())
     }
 
     /// Create a new [`Timestamp`] from the given raw value.
@@ -158,24 +152,28 @@ impl core::ops::SubAssign<Timestamp> for Timestamp {
 mod test {
     use crate::ptp::SUBSECONDS_PER_SECOND;
 
-    use super::Timestamp;
+    use super::{Subseconds, Timestamp};
+
+    fn subs(val: u32) -> Subseconds {
+        Subseconds::new(val).unwrap()
+    }
 
     #[test]
     fn timestamp_add() {
-        let one = Timestamp::new(false, 1, 1).unwrap();
-        let one_big = Timestamp::new(false, 1, SUBSECONDS_PER_SECOND - 1).unwrap();
-        let two = Timestamp::new(false, 2, 2).unwrap();
-        let three = Timestamp::new(false, 3, 3).unwrap();
+        let one = Timestamp::new(false, 1, subs(1));
+        let one_big = Timestamp::new(false, 1, subs(SUBSECONDS_PER_SECOND - 1));
+        let two = Timestamp::new(false, 2, subs(2));
+        let three = Timestamp::new(false, 3, subs(3));
 
-        let one_neg = Timestamp::new(true, 1, 1).unwrap();
-        let one_big_neg = Timestamp::new(true, 1, SUBSECONDS_PER_SECOND - 1).unwrap();
-        let two_neg = Timestamp::new(true, 2, 2).unwrap();
-        let three_neg = Timestamp::new(true, 3, 3).unwrap();
+        let one_neg = Timestamp::new(true, 1, subs(1));
+        let one_big_neg = Timestamp::new(true, 1, subs(SUBSECONDS_PER_SECOND - 1));
+        let two_neg = Timestamp::new(true, 2, subs(2));
+        let three_neg = Timestamp::new(true, 3, subs(3));
 
-        let one_minus_two = Timestamp::new(true, 1, 1).unwrap();
-        let one_big_plus_two = Timestamp::new(false, 4, 0).unwrap();
-        let two_minus_one_big = Timestamp::new(false, 0, 4).unwrap();
-        let one_big_neg_plus_two_neg = Timestamp::new(true, 4, 0).unwrap();
+        let one_minus_two = Timestamp::new(true, 1, subs(1));
+        let one_big_plus_two = Timestamp::new(false, 4, subs(0));
+        let two_minus_one_big = Timestamp::new(false, 0, subs(4));
+        let one_big_neg_plus_two_neg = Timestamp::new(true, 4, subs(0));
 
         // +self + +rhs
         assert_eq!(one + two, three);
@@ -200,17 +198,17 @@ mod test {
 
     #[test]
     fn timestamp_sub() {
-        let one = Timestamp::new(false, 1, 1).unwrap();
-        let one_big = Timestamp::new(false, 1, SUBSECONDS_PER_SECOND - 1).unwrap();
-        let two = Timestamp::new(false, 2, 2).unwrap();
-        let three = Timestamp::new(false, 3, 3).unwrap();
+        let one = Timestamp::new(false, 1, subs(1));
+        let one_big = Timestamp::new(false, 1, subs(SUBSECONDS_PER_SECOND - 1));
+        let two = Timestamp::new(false, 2, subs(2));
+        let three = Timestamp::new(false, 3, subs(3));
 
-        let one_neg = Timestamp::new(true, 1, 1).unwrap();
-        let two_neg = Timestamp::new(true, 2, 2).unwrap();
-        let three_neg = Timestamp::new(true, 3, 3).unwrap();
+        let one_neg = Timestamp::new(true, 1, subs(1));
+        let two_neg = Timestamp::new(true, 2, subs(2));
+        let three_neg = Timestamp::new(true, 3, subs(3));
 
-        let one_minus_two = Timestamp::new(true, 1, 1).unwrap();
-        let one_minus_one_big = Timestamp::new(true, 0, SUBSECONDS_PER_SECOND - 2).unwrap();
+        let one_minus_two = Timestamp::new(true, 1, subs(1));
+        let one_minus_one_big = Timestamp::new(true, 0, subs(SUBSECONDS_PER_SECOND - 2));
 
         assert_eq!(one - one_big, one_minus_one_big);
 

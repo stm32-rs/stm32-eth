@@ -151,11 +151,8 @@ mod app {
                     + Timestamp::new(
                         false,
                         0,
-                        stm32_eth::ptp::Subseconds::new_from_nanos(500_000_000)
-                            .unwrap()
-                            .raw(),
-                    )
-                    .unwrap();
+                        stm32_eth::ptp::Subseconds::new_from_nanos(500_000_000).unwrap(),
+                    );
                 ptp.configure_target_time_interrupt(in_half_sec);
             }
             *sched_time = Some(now);
@@ -199,11 +196,11 @@ mod app {
                 #[cfg(not(feature = "stm32f107"))]
                 {
                     if ptp.interrupt_handler() {
-                        if let Some(_sched_time) = sched_time.take() {
+                        if let Some(sched_time) = _sched_time.take() {
                             let now = ptp.get_time();
                             defmt::info!(
                                 "Got a timestamp interrupt {} seconds after scheduling",
-                                now - _sched_time
+                                now - sched_time
                             );
                         }
                     }
