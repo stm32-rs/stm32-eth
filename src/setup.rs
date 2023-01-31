@@ -305,10 +305,7 @@ macro_rules! impl_pins {
     };
 }
 
-#[cfg(all(
-    feature = "device-selected",
-    any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal")
-))]
+#[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
 impl_pins!(
     RmiiRefClk: [
         PA1<Input>,

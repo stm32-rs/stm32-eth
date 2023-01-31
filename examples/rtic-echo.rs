@@ -78,7 +78,7 @@ mod app {
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
 
         defmt::info!("Setting up pins");
-        let (pins, mdio, mdc) = crate::common::setup_pins(gpio);
+        let (pins, mdio, mdc, _) = crate::common::setup_pins(gpio);
 
         defmt::info!("Configuring ethernet");
 

@@ -133,12 +133,19 @@ mod pins {
     pub type Mdio = PA2<Alternate<11>>;
     pub type Mdc = PC1<Alternate<11>>;
 
+    #[cfg(not(pps = "alternate"))]
+    pub type Pps = PB5<Output<PushPull>>;
+
+    #[cfg(pps = "alternate")]
+    pub type Pps = PG8<Output<PushPull>>;
+
     pub fn setup_pins(
         gpio: Gpio,
     ) -> (
         EthPins<RefClk, Crs, TxEn, TxD0, TxD1, RxD0, RxD1>,
         Mdio,
         Mdc,
+        Pps,
     ) {
         #[allow(unused_variables)]
         let Gpio {
@@ -183,6 +190,11 @@ mod pins {
             gpioc.pc1.into_alternate().set_speed(Speed::VeryHigh),
         );
 
+        #[cfg(not(pps = "alternate"))]
+        let pps = gpiob.pb5.into_push_pull_output();
+        #[cfg(pps = "alternate")]
+        let pps = gpiog.pg8.into_push_pull_output();
+
         (
             EthPins {
                 ref_clk,
@@ -195,6 +207,7 @@ mod pins {
             },
             mdio,
             mdc,
+            pps,
         )
     }
 }
@@ -223,12 +236,15 @@ mod pins {
     pub type Mdio = PA2<Alternate<PushPull>>;
     pub type Mdc = PC1<Alternate<PushPull>>;
 
+    pub type Pps = PB5<Output<PushPull>>;
+
     pub fn setup_pins(
         gpio: Gpio,
     ) -> (
         EthPins<RefClk, Crs, TxEn, TxD0, TxD1, RxD0, RxD1>,
         Mdio,
         Mdc,
+        Pps,
     ) {
         let Gpio {
             mut gpioa,
@@ -248,6 +264,8 @@ mod pins {
         let tx_d0 = gpiob.pb12.into_alternate_push_pull(&mut gpiob.crh);
         let tx_d1 = gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh);
 
+        let pps = gpiob.pb5.into_push_pull_output(&mut gpiob.crl);
+
         let pins = EthPins {
             ref_clk,
             crs,
@@ -258,7 +276,7 @@ mod pins {
             rx_d1,
         };
 
-        (pins, mdio, mdc)
+        (pins, mdio, mdc, pps)
     }
 }
 

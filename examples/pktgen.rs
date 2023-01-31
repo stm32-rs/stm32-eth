@@ -40,7 +40,7 @@ fn main() -> ! {
     setup_systick(&mut cp.SYST);
 
     defmt::info!("Enabling ethernet...");
-    let (eth_pins, mdio, mdc) = common::setup_pins(gpio);
+    let (eth_pins, mdio, mdc, _) = common::setup_pins(gpio);
 
     let mut rx_ring: [RxRingEntry; 2] = Default::default();
     let mut tx_ring: [TxRingEntry; 2] = Default::default();
