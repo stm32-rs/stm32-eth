@@ -1,12 +1,14 @@
 ## Unreleased
-* General
-    * Remove the `smi` feature and always enable miim/smi. Use `ieee802_3_miim` for SMI access
-    * Split MAC and DMA setup into their own separate modules
-    * Move all DMA related files into modules under `dma`
-    * Update stm32f1xx-hal and stm32f4xx-hal to their latests version as of 15-12-2022.
-    * Allow for configuration of MAC speed. ([#53](https://github.com/stm32-rs/stm32-eth/pull/53), fixes [#24](https://github.com/stm32-rs/stm32-eth/pull/24))
-    * Fix [#57](https://github.com/stm32-rs/stm32-eth/issues/57). ([#58](https://github.com/stm32-rs/stm32-eth/pull/58))
-    * Add support for the PTP peripheral
+No changes yet.
+
+## [0.4.0](https://github.com/stm32-rs/stm32-eth/tree/v0.4.0)
+* Remove the `smi` feature and always enable miim/smi. Use `ieee802_3_miim` for SMI access [#45](https://github.com/stm32-rs/stm32-eth/pull/45)
+* Update stm32f1xx-hal and stm32f4xx-hal to their latests version as of 15-12-2022.
+* Allow for configuration of MAC speed. ([#53](https://github.com/stm32-rs/stm32-eth/pull/53), fixes [#24](https://github.com/stm32-rs/stm32-eth/pull/24))
+* Fix [#57](https://github.com/stm32-rs/stm32-eth/issues/57). ([#58](https://github.com/stm32-rs/stm32-eth/pull/58))
+* Move all DMA related files into modules under `dma` ([#66](https://github.com/stm32-rs/stm32-eth/pull/66))
+* Add support for the PTP peripheral ([#66](https://github.com/stm32-rs/stm32-eth/pull/66))
+* Use `PartsIn` and `Parts` as structs for initalization & configuration ([#66](https://github.com/stm32-rs/stm32-eth/pull/66))
 * CI
     * Test compilability of examples more extensively
     * Move away from actions-rs
