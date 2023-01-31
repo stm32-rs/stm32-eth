@@ -98,11 +98,13 @@ The examples should run and compile on any MCU that has an 802.3 compatible PHY 
 
 The examples use `defmt` and `defmt_rtt` for logging, and `panic_probe` over `defmt_rtt` for printing panic backtraces.
 
-##### Alternative pin configuration & HSE
+##### Alternative pin configuration, HSE & PPS
 
 If the board you're developing for has a High Speed External oscillator connected to the correct pins, the HSE configuration can be activated by setting the `STM32_ETH_EXAMPLE_HSE` environment variable to one of `oscillator` or `bypass` when compiling.
 
 If the board you're developing for uses the nucleo pinout (PG11 and PG13 instead of PB11 and PB12), the pin configuration can be changed by setting the `STM32_ETH_EXAMPLE_PINS` environment variable to `nucleo` when compiling.
+
+If you wish to use the alternative PPS output pin (PG8 instead of PB5) for the `rtic-timestamp` example, the pin configuration can be changed by setting the `STM32_ETH_EXAMPLE_PPS_PIN` environment variable to `alternate` when compiling.
 
 ### Building examples
 To build an example, run the following command:
