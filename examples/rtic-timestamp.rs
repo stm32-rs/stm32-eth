@@ -79,12 +79,14 @@ mod app {
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
 
         defmt::info!("Setting up pins");
-        let (pins, mdio, mdc) = crate::common::setup_pins(gpio);
+        let (pins, mdio, mdc, pps) = crate::common::setup_pins(gpio);
 
         defmt::info!("Configuring ethernet");
 
-        let Parts { dma, mac, ptp } =
+        let Parts { dma, mac, mut ptp } =
             stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
+
+        ptp.enable_pps(pps);
 
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();

@@ -10,6 +10,9 @@ pub use timestamp::Timestamp;
 mod subseconds;
 pub use subseconds::{Subseconds, NANOS_PER_SECOND, SUBSECONDS_PER_SECOND, SUBSECONDS_TO_SECONDS};
 
+mod pps_pin;
+pub use pps_pin::PPSPin;
+
 /// Access to the IEEE 1508v2 PTP peripheral present on the ethernet peripheral.
 ///
 /// On STM32FXXX's, the PTP peripheral has/uses the following important parts:
@@ -191,6 +194,14 @@ impl EthernetPTP {
             }
         }
     }
+
+    /// Enable the PPS output on the provided pin.
+    pub fn enable_pps<P>(&mut self, pin: P) -> P::Output
+    where
+        P: PPSPin,
+    {
+        pin.enable()
+    }
 }
 
 /// Setting and configuring target time interrupts on the STM32F107 does not
@@ -229,6 +240,22 @@ impl EthernetPTP {
             EthernetMAC::mask_timestamp_trigger_interrupt();
         }
         is_tsint
+    }
+
+    /// Configure the PPS output frequency.
+    ///
+    /// The PPS output frequency becomes `2 ^ pps_freq`. `pps_freq` is
+    /// clamped to `[0..31]`.
+    pub fn set_pps_freq(&mut self, pps_freq: u8) {
+        let pps_freq = pps_freq.max(31);
+
+        // SAFETY: we atomically write to the PTPPPSCR register, which is
+        // not read or written to anywhere else. The SVD files are incorrectly
+        // saying that the bits in this register are read-only.
+        unsafe {
+            let ptpppscr = self.eth_ptp.ptpppscr.as_ptr() as *mut u32;
+            core::ptr::write_volatile(ptpppscr, pps_freq as u32);
+        }
     }
 }
 

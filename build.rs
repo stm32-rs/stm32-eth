@@ -24,6 +24,17 @@ fn main() {
         }
     }
 
+    let pps_pin = std::env::var("STM32_ETH_EXAMPLE_PPS_PIN");
+
+    if let Ok(pps_pin) = pps_pin {
+        if pps_pin == "alternate" {
+            println!("cargo:rustc-cfg=pps=\"alternate\"")
+        } else if pps_pin != "default" {
+            panic!("Invalid STM32_ETH_EXAMPLE_PPS_PIN value. Allowed values: alternate, default");
+        }
+    }
+
+    println!("cargo:rerun-if-env-changed=STM32_ETH_EXAMPLE_PPS_PIN");
     println!("cargo:rerun-if-env-changed=STM32_ETH_EXAMPLE_HSE");
     println!("cargo:rerun-if-env-changed=STM32_ETH_EXAMPLE_PINS");
 }
