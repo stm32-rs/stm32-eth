@@ -16,14 +16,15 @@ use cortex_m_rt::{entry, exception};
 
 use cortex_m::interrupt::Mutex;
 use stm32_eth::{
+    dma::{RxDescriptor, TxDescriptor},
     mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
-    Parts,
+    Parts, MTU,
 };
 
 pub mod common;
 
-use stm32_eth::dma::{RxRingEntry, TxError, TxRingEntry};
+use stm32_eth::dma::{RxDescriptorRing, TxDescriptorRing, TxError};
 
 const PHY_ADDR: u8 = 0;
 
@@ -43,22 +44,20 @@ fn main() -> ! {
 
     let (eth_pins, mdio, mdc, _) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RxRingEntry; 2] = Default::default();
-    let mut tx_ring: [TxRingEntry; 2] = Default::default();
+    let mut rx_descriptors: [RxDescriptor; 2] = Default::default();
+    let mut rx_buffers: [[u8; MTU]; 2] = [[0u8; MTU]; 2];
+    let rx_ring = RxDescriptorRing::new(&mut rx_descriptors, &mut rx_buffers);
+
+    let mut tx_descriptors: [TxDescriptor; 2] = Default::default();
+    let mut tx_buffers: [[u8; MTU]; 2] = [[0u8; MTU]; 2];
+    let tx_ring = TxDescriptorRing::new(&mut tx_descriptors, &mut tx_buffers);
 
     let Parts {
         mut dma,
         mac,
         #[cfg(feature = "ptp")]
             ptp: _,
-    } = stm32_eth::new(
-        ethernet,
-        &mut rx_ring[..],
-        &mut tx_ring[..],
-        clocks,
-        eth_pins,
-    )
-    .unwrap();
+    } = stm32_eth::new(ethernet, rx_ring, tx_ring, clocks, eth_pins).unwrap();
     dma.enable_interrupt();
 
     let mut last_link_up = false;
@@ -109,14 +108,32 @@ fn main() -> ! {
                 buf[38..42].copy_from_slice(&TARGET_IP);
             });
 
+            loop {
+                use core::hash::{Hash, Hasher};
+
+                if let Ok(rx_packet) = dma.recv_next(None) {
+                    let mut hasher = siphasher::sip::SipHasher::new();
+                    rx_packet.hash(&mut hasher);
+
+                    defmt::info!(
+                        "Received {} bytes. Hash: {:016X}",
+                        rx_packet.len(),
+                        hasher.finish()
+                    );
+                    break;
+                }
+            }
+
             match r {
                 Ok(()) => {
                     defmt::info!("ARP sent");
                 }
-                Err(TxError::WouldBlock) => defmt::info!("ARP failed"),
+                Err(TxError::WouldBlock) => {
+                    defmt::panic!("ARP failed. {}", dma.tx_state())
+                }
             }
         } else {
-            defmt::info!("Down");
+            // defmt::info!("Down");
         }
 
         cortex_m::interrupt::free(|cs| {

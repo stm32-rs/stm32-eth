@@ -43,7 +43,9 @@ mod app {
     use systick_monotonic::Systick;
 
     use stm32_eth::{
-        dma::{EthernetDMA, PacketId, RxRingEntry, TxRingEntry},
+        dma::{
+            EthernetDMA, PacketId, RxDescriptor, RxDescriptorRing, TxDescriptor, TxDescriptorRing,
+        },
         mac::Speed,
         ptp::{EthernetPTP, Timestamp},
         Parts,
@@ -64,16 +66,18 @@ mod app {
     type Monotonic = Systick<1000>;
 
     #[init(local = [
-        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
-        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
+        rx_desc: [RxDescriptor; 2] = [RxDescriptor::new(); 2],
+        tx_desc: [TxDescriptor; 2] = [TxDescriptor::new(); 2],
+        rx_buffers: [[u8; 1522]; 2] = [[0u8; stm32_eth::MTU]; 2],
+        tx_buffers: [[u8; 1522]; 2] = [[0u8; stm32_eth::MTU]; 2],
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
         let core = cx.core;
         let p = cx.device;
 
-        let rx_ring = cx.local.rx_ring;
-        let tx_ring = cx.local.tx_ring;
+        let rx_ring = RxDescriptorRing::new(cx.local.rx_desc, cx.local.rx_buffers);
+        let tx_ring = TxDescriptorRing::new(cx.local.tx_desc, cx.local.tx_buffers);
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());

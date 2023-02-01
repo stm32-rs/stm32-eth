@@ -210,6 +210,7 @@ impl EthernetMAC {
         }
     }
 
+    #[cfg(feature = "ptp")]
     pub(crate) fn mask_timestamp_trigger_interrupt() {
         // SAFETY: MACIMR only receives atomic writes.
         let mac = &unsafe { &*ETHERNET_MAC::ptr() };
@@ -217,6 +218,7 @@ impl EthernetMAC {
     }
 
     // NOTE(allow): only used on F4 and F7
+    #[cfg(feature = "ptp")]
     #[allow(dead_code)]
     pub(crate) fn unmask_timestamp_trigger_interrupt() {
         // SAFETY: MACIMR only receives atomic writes.

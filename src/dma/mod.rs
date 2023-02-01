@@ -11,17 +11,13 @@ mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::*;
 
-pub(crate) mod desc;
-
-pub(crate) mod ring;
+pub(crate) mod raw_descriptor;
 
 mod rx;
-use rx::RxRing;
-pub use rx::{RxError, RxPacket, RxRingEntry};
+pub use rx::{RxDescriptor, RxDescriptorRing, RxError, RxPacket};
 
 mod tx;
-use tx::TxRing;
-pub use tx::{TxError, TxRingEntry};
+pub use tx::{TxDescriptor, TxDescriptorRing, TxError};
 
 #[cfg(feature = "ptp")]
 use crate::ptp::Timestamp;
@@ -29,8 +25,26 @@ use crate::ptp::Timestamp;
 mod packet_id;
 pub use packet_id::PacketId;
 
+use rx::RxRing;
+use tx::{RunningState, TxRing};
+
+use self::raw_descriptor::DESC_SIZE;
+
+const _RXDESC_SIZE: usize = core::mem::size_of::<RxDescriptor>();
+const _TXDESC_SIZE: usize = core::mem::size_of::<TxDescriptor>();
+
+/// Assert that our descriptors have the same size.
+///
+/// This is necessary as we only have a single Descriptor Skip Length
+/// value which applies to both TX and RX descriptors.
+const _ASSERT_DESCRIPTOR_SIZES: () = assert!(_RXDESC_SIZE == _TXDESC_SIZE);
+
+const DESC_WORD_SKIP: u8 = (core::mem::size_of::<RxDescriptor>() / 4 - DESC_SIZE) as u8;
+
+/// The maximum transmission unit of this Ethernet peripheral.
+///
 /// From the datasheet: *VLAN Frame maxsize = 1522*
-pub(crate) const MTU: usize = 1522;
+pub const MTU: usize = 1522;
 
 /// An error that can occur when retrieving a timestamp from an
 /// RX or TX descriptor handled by the DMA.
@@ -60,8 +74,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// usually not accessible.
     pub(crate) fn new(
         eth_dma: ETHERNET_DMA,
-        rx_buffer: &'rx mut [RxRingEntry],
-        tx_buffer: &'tx mut [TxRingEntry],
+        rx_buffer: RxDescriptorRing<'rx>,
+        tx_buffer: TxDescriptorRing<'tx>,
     ) -> Self {
         // reset DMA bus mode register
         eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
@@ -120,6 +134,9 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
             }
         });
 
+        // Configure word skip length.
+        eth_dma.dmabmr.modify(|_, w| w.dsl().bits(DESC_WORD_SKIP));
+
         let mut dma = EthernetDMA {
             eth_dma,
             rx_ring: RxRing::new(rx_buffer),
@@ -177,6 +194,11 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// entry and to demand poll from the hardware.
     pub fn rx_is_running(&self) -> bool {
         self.rx_ring.running_state(&self.eth_dma).is_running()
+    }
+
+    ///
+    pub fn tx_state(&self) -> RunningState {
+        self.tx_ring.running_state(&self.eth_dma)
     }
 
     pub(crate) fn recv_next_impl<'rx_borrow>(

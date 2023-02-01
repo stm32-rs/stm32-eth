@@ -28,7 +28,7 @@ use hal::rcc::Clocks;
 pub mod dma;
 #[doc(inline)]
 #[cfg(feature = "device-selected")]
-pub use dma::eth_interrupt_handler;
+pub use dma::{eth_interrupt_handler, MTU};
 
 #[cfg(feature = "device-selected")]
 pub mod mac;
@@ -50,7 +50,7 @@ pub use smoltcp;
 
 #[cfg(feature = "device-selected")]
 use {
-    dma::{EthernetDMA, RxRingEntry, TxRingEntry},
+    dma::{EthernetDMA, RxDescriptorRing, TxDescriptorRing},
     mac::{EthernetMAC, EthernetMACWithMii, MdcPin, MdioPin, Speed, WrongClock},
     setup::*,
 };
@@ -79,8 +79,8 @@ use ptp::EthernetPTP;
 #[cfg(feature = "device-selected")]
 pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     parts: PartsIn,
-    rx_buffer: &'rx mut [RxRingEntry],
-    tx_buffer: &'tx mut [TxRingEntry],
+    rx_buffer: RxDescriptorRing<'rx>,
+    tx_buffer: TxDescriptorRing<'tx>,
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
 ) -> Result<Parts<'rx, 'tx, EthernetMAC>, WrongClock>
@@ -94,6 +94,7 @@ where
     RXD1: RmiiRxD1 + AlternateVeryHighSpeed,
 {
     // Configure all of the pins correctly
+
     pins.setup_pins();
 
     // Set up the clocks and reset the MAC periperhal
@@ -144,8 +145,8 @@ where
 #[cfg(feature = "device-selected")]
 pub fn new_with_mii<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
     parts: PartsIn,
-    rx_buffer: &'rx mut [RxRingEntry],
-    tx_buffer: &'tx mut [TxRingEntry],
+    rx_buffer: RxDescriptorRing<'rx>,
+    tx_buffer: TxDescriptorRing<'tx>,
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
     mdio: MDIO,

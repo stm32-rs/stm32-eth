@@ -1,4 +1,4 @@
-use crate::dma::desc::Descriptor;
+use crate::dma::raw_descriptor::RawDescriptor;
 
 use super::Subseconds;
 
@@ -98,7 +98,7 @@ impl Timestamp {
     }
 
     /// Create a timestamp from the given descriptor
-    pub fn from_descriptor(desc: &Descriptor) -> Option<Self> {
+    pub fn from_descriptor(desc: &RawDescriptor) -> Option<Self> {
         #[cfg(not(feature = "stm32f1xx-hal"))]
         {
             let (high, low) = { (desc.read(7), desc.read(6)) };
