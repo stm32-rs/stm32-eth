@@ -97,6 +97,14 @@ required-features = [ "defmt" , "smoltcp-phy" ]
 name = "rtic-timestamp"
 required-features = [ "defmt", "ptp" ]
 
+[[example]]
+name = "client"
+required-features = [ "defmt", "ptp" ]
+
+[[example]]
+name = "server"
+required-features = [ "defmt", "ptp" ]
+
 [profile.release]
 debug = 2
 lto = true
