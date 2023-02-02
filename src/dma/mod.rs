@@ -50,6 +50,7 @@ pub const MTU: usize = 1522;
 /// RX or TX descriptor handled by the DMA.
 #[cfg(feature = "ptp")]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimestampError {
     /// The descriptor with the given packet ID has not been
     /// timestamped yet.

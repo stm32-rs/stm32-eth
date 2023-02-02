@@ -188,8 +188,10 @@ mod app {
         });
     }
 
-    #[task(binds = ETH, shared = [dma, tx_id, ptp, scheduled_time], priority = 2)]
+    #[task(binds = ETH, shared = [dma, tx_id, ptp, scheduled_time], local = [rx_packet_id: u32 = 0], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
+        let packet_id = cx.local.rx_packet_id;
+
         (
             cx.shared.dma,
             cx.shared.tx_id,
@@ -212,26 +214,50 @@ mod app {
                     }
                 }
 
-                let mut packet_id = 0;
+                let mut buffer = [0u8; 22];
 
-                while let Ok(packet) = dma.recv_next(Some(packet_id.into())) {
-                    let mut dst_mac = [0u8; 6];
-                    dst_mac.copy_from_slice(&packet[..6]);
+                while let Ok((data, rx_timestamp, used_packet_id)) = {
+                    let used_packet_id = *packet_id;
+                    let result = if let Ok(packet) = dma.recv_next(Some(used_packet_id.into())) {
+                        let data_len = packet.len().min(22);
+                        buffer[..data_len].copy_from_slice(&packet[..data_len]);
+                        let data = &buffer[..data_len];
 
-                    // Note that, instead of grabbing the timestamp from the `RxPacket` directly, it
-                    // is also possible to retrieve a cached version of the timestamp using
-                    // `EthernetDMA::get_timestamp_for_id` (in the same way as for TX timestamps).
-                    let ts = if let Some(timestamp) = packet.timestamp() {
+                        // For RX packets, we can grab the timestamp directly or
+                        // indirectly using [`EthernetDMA::get_timestamp_for_id`].
+                        //
+                        // Using `timestamp` directly is easier, because you don't
+                        // have to re-borrow the DMA for it.
+                        let timestamp = packet.timestamp();
+
+                        *packet_id += 1;
+                        *packet_id &= !0x8000_0000;
+
+                        Ok((data, timestamp, used_packet_id))
+                    } else {
+                        Err(())
+                    };
+                    result
+                } {
+                    let rx_timestamp = if let Some(timestamp) = rx_timestamp {
                         timestamp
                     } else {
                         continue;
                     };
 
-                    defmt::debug!("RX timestamp: {}", ts);
+                    // Get the timestamp "the long way" around by asking the DMA to retrieve
+                    // the value cached in the RX packet.
+                    let cached_timestamp = dma.get_timestamp_for_id(used_packet_id);
 
-                    let timestamp = if dst_mac == [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56] {
+                    // Assert that they are the same.
+                    defmt::assert_eq!(cached_timestamp, Ok(rx_timestamp));
+
+                    defmt::debug!("RX timestamp: {}", rx_timestamp);
+
+                    let dst_mac = &data[..6];
+                    let tx_timestamp = if dst_mac == [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56] {
                         let mut timestamp_data = [0u8; 8];
-                        timestamp_data.copy_from_slice(&packet[14..22]);
+                        timestamp_data.copy_from_slice(&data[14..22]);
                         let raw = i64::from_be_bytes(timestamp_data);
 
                         let timestamp = Timestamp::new_raw(raw);
@@ -240,9 +266,9 @@ mod app {
                         continue;
                     };
 
-                    defmt::debug!("Contained TX timestamp: {}", ts);
+                    defmt::debug!("Contained TX timestamp: {}", rx_timestamp);
 
-                    let diff = timestamp - ts;
+                    let diff = tx_timestamp - rx_timestamp;
 
                     defmt::info!("Difference between TX and RX time: {}", diff);
 
@@ -263,9 +289,6 @@ mod app {
                         defmt::warn!("Updated time.");
                         ptp.update_time(diff);
                     }
-
-                    packet_id += 1;
-                    packet_id &= !0x8000_0000;
                 }
 
                 if let Some((tx_id, sent_time)) = tx_id.take() {

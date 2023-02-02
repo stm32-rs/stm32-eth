@@ -139,9 +139,11 @@ impl RxDescriptor {
             // "Subsequent reads and writes cannot be moved ahead of preceding reads."
             atomic::compiler_fence(Ordering::Acquire);
 
+            self.packet_id = packet_id;
+
             // Cache the PTP timestamps if PTP is enabled.
             #[cfg(feature = "ptp")]
-            self.attach_timestamp(packet_id);
+            self.attach_timestamp();
 
             Ok(())
         } else {
@@ -184,14 +186,8 @@ impl RxDescriptor {
         }
     }
 
-    fn attach_timestamp(&mut self, packet_id: Option<PacketId>) {
-        if packet_id != self.packet_id {
-            self.cached_timestamp.take();
-        }
-
-        if let (Some(timestamp), None) = (self.read_timestamp(), self.cached_timestamp) {
-            self.cached_timestamp = Some(timestamp);
-        }
+    fn attach_timestamp(&mut self) {
+        self.cached_timestamp = self.read_timestamp();
     }
 
     pub(super) fn timestamp(&self) -> Option<&Timestamp> {

@@ -165,9 +165,7 @@ impl TxDescriptor {
     }
 
     pub(super) fn attach_timestamp(&mut self) {
-        if self.packet_id.is_some() {
-            self.cached_timestamp = self.read_timestamp();
-        }
+        self.cached_timestamp = self.read_timestamp();
     }
 
     pub(super) fn timestamp(&self) -> Option<&Timestamp> {
