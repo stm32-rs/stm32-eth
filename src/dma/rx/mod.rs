@@ -148,7 +148,7 @@ impl<'data> RxRing<'data, Running> {
 
 #[cfg(feature = "ptp")]
 impl<'data, STATE> RxRing<'data, STATE> {
-    pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
+    pub fn get_timestamp_for_id(&self, id: PacketId) -> Result<Timestamp, TimestampError> {
         for descriptor in self.ring.descriptors() {
             if let (Some(packet_id), Some(timestamp)) =
                 (descriptor.packet_id(), descriptor.timestamp())

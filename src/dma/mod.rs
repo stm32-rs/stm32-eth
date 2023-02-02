@@ -248,10 +248,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// 2. Before calling [`interrupt_handler`](EthernetDMA::interrupt_handler) again, retrieve timestamps of sent and received frames using this function.
     ///
     /// Retrieving RX timestamps can also be done using [`RxPacket::timestamp`].
-    pub fn get_timestamp_for_id<'a, PKT>(
-        &mut self,
-        packet_id: PKT,
-    ) -> Result<Timestamp, TimestampError>
+    pub fn get_timestamp_for_id<'a, PKT>(&self, packet_id: PKT) -> Result<Timestamp, TimestampError>
     where
         PKT: Into<PacketId>,
     {

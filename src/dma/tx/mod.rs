@@ -157,15 +157,12 @@ impl<'data> TxRing<'data, Running> {
 #[cfg(feature = "ptp")]
 impl<'data> TxRing<'data, Running> {
     pub(crate) fn collect_timestamps(&mut self) {
-        for descriptor in self.ring.descriptors() {
+        for descriptor in self.ring.descriptors_mut() {
             descriptor.attach_timestamp();
         }
     }
 
-    pub(crate) fn get_timestamp_for_id(
-        &mut self,
-        id: PacketId,
-    ) -> Result<Timestamp, TimestampError> {
+    pub(crate) fn get_timestamp_for_id(&self, id: PacketId) -> Result<Timestamp, TimestampError> {
         let descriptor = if let Some(descriptor) =
             self.ring.descriptors().find(|d| d.packet_id() == Some(&id))
         {

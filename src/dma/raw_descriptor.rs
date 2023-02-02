@@ -78,7 +78,11 @@ impl<'data, T> DescriptorRing<'data, T> {
         (&mut self.descriptors[index], &mut self.buffers[index])
     }
 
-    pub fn descriptors(&mut self) -> impl Iterator<Item = &mut T> {
+    pub fn descriptors(&self) -> impl Iterator<Item = &T> {
+        self.descriptors.iter()
+    }
+
+    pub fn descriptors_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.descriptors.iter_mut()
     }
 
