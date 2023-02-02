@@ -60,9 +60,9 @@ pub enum TimestampError {
 
 /// Ethernet DMA.
 pub struct EthernetDMA<'rx, 'tx> {
-    pub(crate) eth_dma: ETHERNET_DMA,
-    pub(crate) rx_ring: RxRing<'rx>,
-    pub(crate) tx_ring: TxRing<'tx>,
+    eth_dma: ETHERNET_DMA,
+    rx_ring: RxRing<'rx, rx::Running>,
+    tx_ring: TxRing<'tx, tx::Running>,
 }
 
 impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
@@ -137,16 +137,14 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         // Configure word skip length.
         eth_dma.dmabmr.modify(|_, w| w.dsl().bits(DESC_WORD_SKIP));
 
-        let mut dma = EthernetDMA {
+        let rx_ring = RxRing::new(rx_buffer).start(&eth_dma);
+        let tx_ring = TxRing::new(tx_buffer).start(&eth_dma);
+
+        EthernetDMA {
             eth_dma,
-            rx_ring: RxRing::new(rx_buffer),
-            tx_ring: TxRing::new(tx_buffer),
-        };
-
-        dma.rx_ring.start(&dma.eth_dma);
-        dma.tx_ring.start(&dma.eth_dma);
-
-        dma
+            rx_ring,
+            tx_ring,
+        }
     }
 
     /// Enable RX and TX interrupts
@@ -201,9 +199,9 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         self.tx_ring.running_state(&self.eth_dma)
     }
 
-    pub(crate) fn recv_next_impl<'rx_borrow>(
+    fn recv_next_impl<'rx_borrow>(
         eth_dma: &ETHERNET_DMA,
-        rx_ring: &'rx_borrow mut RxRing,
+        rx_ring: &'rx_borrow mut RxRing<rx::Running>,
         rx_packet_id: Option<PacketId>,
     ) -> Result<RxPacket<'rx_borrow>, RxError> {
         rx_ring.recv_next(eth_dma, rx_packet_id.map(|p| p.into()))
@@ -222,7 +220,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 
     pub(crate) fn send_impl<F: FnOnce(&mut [u8]) -> R, R>(
         eth_dma: &ETHERNET_DMA,
-        tx_ring: &mut TxRing,
+        tx_ring: &mut TxRing<tx::Running>,
         length: usize,
         tx_packet_id: Option<PacketId>,
         f: F,
@@ -273,6 +271,13 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     #[cfg(feature = "ptp")]
     fn collect_timestamps(&mut self) {
         self.tx_ring.collect_timestamps();
+    }
+}
+
+impl<'rx, 'tx> Drop for EthernetDMA<'rx, 'tx> {
+    fn drop(&mut self) {
+        self.rx_ring.stop(&self.eth_dma);
+        self.tx_ring.stop(&self.eth_dma);
     }
 }
 

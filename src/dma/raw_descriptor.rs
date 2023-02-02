@@ -59,15 +59,7 @@ pub struct DescriptorRing<'data, T> {
     buffers: &'data mut [[u8; MTU]],
 }
 
-pub trait DescriptorRingEntry {
-    /// Set up this [`Descriptor`] with the given buffer.
-    fn setup(&mut self, buffer: &mut [u8]);
-}
-
-impl<'data, T> DescriptorRing<'data, T>
-where
-    T: DescriptorRingEntry,
-{
+impl<'data, T> DescriptorRing<'data, T> {
     pub fn new(descriptors: &'data mut [T], buffers: &'data mut [[u8; MTU]]) -> Self {
         assert!(descriptors.len() == buffers.len());
         buffers.iter().for_each(|b| assert!(b.len() <= super::MTU));

@@ -1,7 +1,6 @@
-use super::{
-    raw_descriptor::{DescriptorRing, DescriptorRingEntry},
-    PacketId,
-};
+use core::marker::PhantomData;
+
+use super::{raw_descriptor::DescriptorRing, PacketId};
 use crate::peripherals::ETHERNET_DMA;
 
 #[cfg(feature = "ptp")]
@@ -9,6 +8,9 @@ use super::{Timestamp, TimestampError};
 
 mod descriptor;
 pub use descriptor::TxDescriptor;
+
+pub struct NotRunning;
+pub struct Running;
 
 /// A TX descriptor ring.
 pub type TxDescriptorRing<'rx> = DescriptorRing<'rx, TxDescriptor>;
@@ -21,12 +23,32 @@ pub enum TxError {
 }
 
 /// Tx DMA state
-pub(crate) struct TxRing<'data> {
+pub(crate) struct TxRing<'data, STATE> {
     ring: TxDescriptorRing<'data>,
     next_entry: usize,
+    state: PhantomData<STATE>,
 }
 
-impl<'data> TxRing<'data> {
+impl<'data, STATE> TxRing<'data, STATE> {
+    pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
+        match eth_dma.dmasr.read().tps().bits() {
+            // Reset or Stop Transmit Command issued
+            0b000 => RunningState::Stopped,
+            // Fetching transmit transfer descriptor
+            0b001 => RunningState::Running,
+            // Waiting for status
+            0b010 => RunningState::Running,
+            // Reading Data from host memory buffer and queuing it to transmit buffer
+            0b011 => RunningState::Running,
+            0b100 | 0b101 => RunningState::Reserved,
+            // Transmit descriptor unavailable
+            0b110 => RunningState::Suspended,
+            _ => RunningState::Unknown,
+        }
+    }
+}
+
+impl<'data> TxRing<'data, NotRunning> {
     /// Allocate
     ///
     /// `start()` will be needed before `send()`
@@ -34,11 +56,12 @@ impl<'data> TxRing<'data> {
         TxRing {
             ring,
             next_entry: 0,
+            state: Default::default(),
         }
     }
 
     /// Start the Tx DMA engine
-    pub fn start(&mut self, eth_dma: &ETHERNET_DMA) {
+    pub fn start(mut self, eth_dma: &ETHERNET_DMA) -> TxRing<'data, Running> {
         // Setup ring
         for (descriptor, buffer) in self.ring.descriptors_and_buffers() {
             descriptor.setup(buffer);
@@ -66,8 +89,16 @@ impl<'data> TxRing<'data> {
 
         // Start transmission
         eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
-    }
 
+        TxRing {
+            ring: self.ring,
+            next_entry: self.next_entry,
+            state: Default::default(),
+        }
+    }
+}
+
+impl<'data> TxRing<'data, Running> {
     pub fn send<F: FnOnce(&mut [u8]) -> R, R>(
         &mut self,
         length: usize,
@@ -115,26 +146,16 @@ impl<'data> TxRing<'data> {
         self.running_state(eth_dma).is_running()
     }
 
-    pub(crate) fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
-        match eth_dma.dmasr.read().tps().bits() {
-            // Reset or Stop Transmit Command issued
-            0b000 => RunningState::Stopped,
-            // Fetching transmit transfer descriptor
-            0b001 => RunningState::Running,
-            // Waiting for status
-            0b010 => RunningState::Running,
-            // Reading Data from host memory buffer and queuing it to transmit buffer
-            0b011 => RunningState::Running,
-            0b100 | 0b101 => RunningState::Reserved,
-            // Transmit descriptor unavailable
-            0b110 => RunningState::Suspended,
-            _ => RunningState::Unknown,
-        }
+    pub fn stop(&mut self, eth_dma: &ETHERNET_DMA) {
+        // Start transmission
+        eth_dma.dmaomr.modify(|_, w| w.st().clear_bit());
+
+        while self.running_state(eth_dma) != RunningState::Stopped {}
     }
 }
 
 #[cfg(feature = "ptp")]
-impl<'data> TxRing<'data> {
+impl<'data> TxRing<'data, Running> {
     pub(crate) fn collect_timestamps(&mut self) {
         for descriptor in self.ring.descriptors() {
             descriptor.attach_timestamp();

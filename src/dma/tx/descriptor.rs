@@ -1,9 +1,6 @@
 use core::sync::atomic::{self, Ordering};
 
-use crate::dma::{
-    raw_descriptor::{DescriptorRingEntry, RawDescriptor},
-    PacketId,
-};
+use crate::dma::{raw_descriptor::RawDescriptor, PacketId};
 
 #[cfg(feature = "ptp")]
 use crate::ptp::Timestamp;
@@ -51,18 +48,6 @@ pub struct TxDescriptor {
     cached_timestamp: Option<Timestamp>,
 }
 
-impl DescriptorRingEntry for TxDescriptor {
-    fn setup(&mut self, buffer: &mut [u8]) {
-        self.set_buffer(buffer);
-        unsafe {
-            self.inner_raw.write(
-                0,
-                TXDESC_0_CIC0 | TXDESC_0_CIC1 | TXDESC_0_FS | TXDESC_0_LS | TXDESC_0_IC,
-            );
-        }
-    }
-}
-
 impl Default for TxDescriptor {
     fn default() -> Self {
         Self::new()
@@ -77,6 +62,16 @@ impl TxDescriptor {
             packet_id: None,
             #[cfg(feature = "ptp")]
             cached_timestamp: None,
+        }
+    }
+
+    pub(super) fn setup(&mut self, buffer: &mut [u8]) {
+        self.set_buffer(buffer);
+        unsafe {
+            self.inner_raw.write(
+                0,
+                TXDESC_0_CIC0 | TXDESC_0_CIC1 | TXDESC_0_FS | TXDESC_0_LS | TXDESC_0_IC,
+            );
         }
     }
 

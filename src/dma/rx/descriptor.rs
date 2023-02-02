@@ -1,10 +1,7 @@
 use core::sync::atomic::{self, Ordering};
 
 use crate::{
-    dma::{
-        raw_descriptor::{DescriptorRingEntry, RawDescriptor},
-        PacketId,
-    },
+    dma::{raw_descriptor::RawDescriptor, PacketId},
     ptp::Timestamp,
 };
 
@@ -52,13 +49,6 @@ impl Default for RxDescriptor {
     }
 }
 
-impl DescriptorRingEntry for RxDescriptor {
-    fn setup(&mut self, buffer: &mut [u8]) {
-        self.set_buffer(buffer);
-        self.set_owned();
-    }
-}
-
 impl RxDescriptor {
     /// Creates a new [`RxDescriptor`].
     pub const fn new() -> Self {
@@ -68,6 +58,11 @@ impl RxDescriptor {
             #[cfg(feature = "ptp")]
             cached_timestamp: None,
         }
+    }
+
+    pub(super) fn setup(&mut self, buffer: &mut [u8]) {
+        self.set_buffer(buffer);
+        self.set_owned();
     }
 
     /// Is owned by the DMA engine?
@@ -191,7 +186,7 @@ impl RxDescriptor {
         }
     }
 
-    pub(super) fn attach_timestamp(&mut self, packet_id: Option<PacketId>) {
+    fn attach_timestamp(&mut self, packet_id: Option<PacketId>) {
         if packet_id != self.packet_id {
             self.cached_timestamp.take();
         }

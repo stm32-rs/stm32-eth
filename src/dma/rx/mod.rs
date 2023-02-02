@@ -1,7 +1,6 @@
-use super::{
-    raw_descriptor::{DescriptorRing, DescriptorRingEntry},
-    PacketId,
-};
+use core::marker::PhantomData;
+
+use super::{raw_descriptor::DescriptorRing, PacketId};
 use crate::peripherals::ETHERNET_DMA;
 
 #[cfg(feature = "ptp")]
@@ -25,47 +24,17 @@ pub enum RxError {
 /// An RX descriptor ring.
 pub type RxDescriptorRing<'rx> = DescriptorRing<'rx, RxDescriptor>;
 
+pub struct NotRunning;
+pub struct Running;
+
 /// Rx DMA state
-pub(crate) struct RxRing<'data> {
+pub struct RxRing<'data, STATE> {
     ring: RxDescriptorRing<'data>,
     next_entry: usize,
+    state: PhantomData<STATE>,
 }
 
-impl<'data> RxRing<'data> {
-    /// Allocate
-    pub fn new(ring: RxDescriptorRing<'data>) -> Self {
-        RxRing {
-            ring,
-            next_entry: 0,
-        }
-    }
-
-    /// Setup the DMA engine (**required**)
-    pub fn start(&mut self, eth_dma: &ETHERNET_DMA) {
-        // Setup ring
-        for (entry, buffer) in self.ring.descriptors_and_buffers() {
-            entry.setup(buffer);
-        }
-
-        self.ring
-            .descriptors_and_buffers()
-            .last()
-            .map(|(desc, _)| desc.set_end_of_ring());
-
-        self.next_entry = 0;
-        let ring_ptr = self.ring.descriptors_start_address();
-
-        // Set the RxDma ring start address.
-        eth_dma
-            .dmardlar
-            .write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
-
-        // Start receive
-        eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
-
-        self.demand_poll(eth_dma);
-    }
-
+impl<'data, STATE> RxRing<'data, STATE> {
     /// Demand that the DMA engine polls the current `RxDescriptor`
     /// (when in `RunningState::Stopped`.)
     pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
@@ -89,6 +58,58 @@ impl<'data> RxRing<'data> {
             0b111 => RunningState::Running,
             _ => RunningState::Unknown,
         }
+    }
+}
+
+impl<'data> RxRing<'data, NotRunning> {
+    /// Allocate
+    pub fn new(ring: RxDescriptorRing<'data>) -> Self {
+        RxRing {
+            ring,
+            next_entry: 0,
+            state: Default::default(),
+        }
+    }
+
+    /// Start the RX ring
+    pub fn start(mut self, eth_dma: &ETHERNET_DMA) -> RxRing<'data, Running> {
+        // Setup ring
+        for (entry, buffer) in self.ring.descriptors_and_buffers() {
+            entry.setup(buffer);
+        }
+
+        self.ring
+            .descriptors_and_buffers()
+            .last()
+            .map(|(desc, _)| desc.set_end_of_ring());
+
+        self.next_entry = 0;
+        let ring_ptr = self.ring.descriptors_start_address();
+
+        // Set the RxDma ring start address.
+        eth_dma
+            .dmardlar
+            .write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
+
+        // Start receive
+        eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
+
+        self.demand_poll(eth_dma);
+
+        RxRing {
+            ring: self.ring,
+            next_entry: self.next_entry,
+            state: Default::default(),
+        }
+    }
+}
+
+impl<'data> RxRing<'data, Running> {
+    /// Stop the DMA engine.
+    pub fn stop(&mut self, eth_dma: &ETHERNET_DMA) {
+        eth_dma.dmaomr.modify(|_, w| w.sr().clear_bit());
+
+        while self.running_state(eth_dma) != RunningState::Stopped {}
     }
 
     /// Receive the next packet (if any is ready), or return `None`
@@ -126,7 +147,7 @@ impl<'data> RxRing<'data> {
 }
 
 #[cfg(feature = "ptp")]
-impl<'a> RxRing<'a> {
+impl<'data, STATE> RxRing<'data, STATE> {
     pub fn get_timestamp_for_id(&mut self, id: PacketId) -> Result<Timestamp, TimestampError> {
         for descriptor in self.ring.descriptors() {
             if let (Some(packet_id), Some(timestamp)) =
