@@ -1,11 +1,9 @@
 use core::sync::atomic::{self, Ordering};
 
-use crate::{
-    dma::{raw_descriptor::RawDescriptor, PacketId},
-    ptp::Timestamp,
-};
+use crate::dma::{raw_descriptor::RawDescriptor, PacketId, RxError};
 
-use super::RxError;
+#[cfg(feature = "ptp")]
+use crate::ptp::Timestamp;
 
 /// Owned by DMA engine
 const RXDESC_0_OWN: u32 = 1 << 31;
