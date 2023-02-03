@@ -18,7 +18,7 @@ use stm32f4xx_hal::{
     pac::{RCC, SYSCFG},
 };
 
-#[cfg(feature = "stm32f7xx-hal")]
+#[cfg(any(feature = "stm32f7xx-hal", feature = "stm32h7xx-hal"))]
 use cortex_m::interrupt;
 
 #[cfg(feature = "stm32f7xx-hal")]
@@ -34,9 +34,26 @@ use stm32f7xx_hal::{
     pac::{RCC, SYSCFG},
 };
 
+#[cfg(not(feature = "stm32h7xx-hal"))]
 use crate::{
     dma::EthernetDMA,
     stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
+};
+
+#[cfg(feature = "stm32h7xx-hal")]
+// TODO: implement all allowed GPIO pins.
+#[allow(unused_imports)]
+use crate::{
+    dma::EthernetDMA,
+    hal::gpio::{
+        gpioa::{PA0, PA1, PA2, PA3, PA7},
+        gpiob::{PB0, PB1, PB10, PB11, PB12, PB13, PB5, PB8},
+        gpioc::{PC1, PC2, PC3, PC4, PC5},
+        gpiog::{PG11, PG13},
+        Input,
+        Speed::VeryHigh,
+    },
+    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MTL, RCC, SYSCFG},
 };
 
 #[cfg(feature = "ptp")]
@@ -44,6 +61,32 @@ use crate::{ptp::EthernetPTP, stm32::ETHERNET_PTP};
 
 // Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
 pub(crate) fn setup() {
+    #[cfg(feature = "stm32h7xx-hal")]
+    interrupt::free(|_| {
+        // SAFETY: we only perform interrupt-free modifications of RCC.
+        let rcc = unsafe { &*RCC::ptr() };
+        let syscfg = unsafe { &*SYSCFG::ptr() };
+
+        rcc.apb4enr.modify(|_, w| w.syscfgen().set_bit());
+        rcc.ahb1enr.modify(|_, w| {
+            w.eth1macen()
+                .set_bit()
+                .eth1rxen()
+                .set_bit()
+                .eth1txen()
+                .set_bit()
+        });
+
+        // Select RMII mode
+        //
+        // SAFETY: this is the correct value for RMII mode.
+        syscfg.pmcr.modify(|_, w| unsafe { w.epis().bits(0b100) });
+
+        // Reset pulse to MAC.
+        rcc.ahb1rstr.modify(|_, w| w.eth1macrst().set_bit());
+        rcc.ahb1rstr.modify(|_, w| w.eth1macrst().clear_bit());
+    });
+
     #[cfg(feature = "stm32f4xx-hal")]
     unsafe {
         const SYSCFG_BIT: u8 = 14;
@@ -76,6 +119,7 @@ pub(crate) fn setup() {
         bb::set(&rcc.ahb1rstr, ETH_MAC_BIT);
         bb::clear(&rcc.ahb1rstr, ETH_MAC_BIT);
     }
+
     #[cfg(feature = "stm32f7xx-hal")]
     //stm32f7xx-hal does not currently have bitbanding
     interrupt::free(|_| unsafe {
@@ -189,33 +233,16 @@ pub trait AlternateVeryHighSpeed {
 #[allow(missing_docs)]
 pub struct PartsIn {
     pub mac: ETHERNET_MAC,
-    pub mmc: ETHERNET_MMC,
     pub dma: ETHERNET_DMA,
+
+    #[cfg(feature = "f-series")]
+    pub mmc: ETHERNET_MMC,
+
+    #[cfg(feature = "stm32h7xx-hal")]
+    pub mtl: ETHERNET_MTL,
+
     #[cfg(feature = "ptp")]
     pub ptp: ETHERNET_PTP,
-}
-
-#[cfg(feature = "ptp")]
-impl From<(ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA, ETHERNET_PTP)> for PartsIn {
-    fn from(value: (ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA, ETHERNET_PTP)) -> Self {
-        Self {
-            mac: value.0,
-            mmc: value.1,
-            dma: value.2,
-            ptp: value.3,
-        }
-    }
-}
-
-#[cfg(not(feature = "ptp"))]
-impl From<(ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA)> for PartsIn {
-    fn from(value: (ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA)) -> Self {
-        Self {
-            mac: value.0,
-            mmc: value.1,
-            dma: value.2,
-        }
-    }
 }
 
 /// Access to all configured parts of the ethernet peripheral.
@@ -304,6 +331,33 @@ macro_rules! impl_pins {
         )+
     };
 }
+
+#[cfg(feature = "stm32h7xx-hal")]
+impl_pins!(
+    RmiiRefClk: [
+        PA1<Input>,
+    ],
+    RmiiCrsDv: [
+        PA7<Input>,
+    ],
+    RmiiTxEN: [
+        PB11<Input>,
+        PG11<Input>,
+    ],
+    RmiiTxD0: [
+        PB12<Input>,
+        PG13<Input>,
+    ],
+    RmiiTxD1: [
+        PB13<Input>,
+    ],
+    RmiiRxD0: [
+        PC4<Input>,
+    ],
+    RmiiRxD1: [
+        PC5<Input>,
+    ],
+);
 
 #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
 impl_pins!(

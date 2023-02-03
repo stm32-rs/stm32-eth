@@ -6,7 +6,16 @@ use crate::peripherals::ETHERNET_DMA;
 #[cfg(feature = "ptp")]
 use crate::{dma::TimestampError, ptp::Timestamp};
 
-mod descriptor;
+#[cfg(feature = "f-series")]
+mod f_series_desc;
+#[cfg(feature = "f-series")]
+use f_series_desc as descriptor;
+
+#[cfg(feature = "stm32h7xx-hal")]
+mod h_desc;
+#[cfg(feature = "stm32h7xx-hal")]
+use h_desc as descriptor;
+
 pub use descriptor::RxDescriptor;
 
 /// Errors that can occur during RX
@@ -38,12 +47,24 @@ impl<'data, STATE> RxRing<'data, STATE> {
     /// Demand that the DMA engine polls the current `RxDescriptor`
     /// (when in `RunningState::Stopped`.)
     pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
+        #[cfg(feature = "f-series")]
         eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
+
+        // On H7, we poll by re-writing the tail pointer register.
+        #[cfg(feature = "stm32h7xx-hal")]
+        eth_dma
+            .dmacrx_dtpr
+            .modify(|r, w| unsafe { w.bits(r.bits()) });
     }
 
     /// Get current `RunningState`
     pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
-        match eth_dma.dmasr.read().rps().bits() {
+        #[cfg(feature = "f-series")]
+        let rps = eth_dma.dmasr.read().rps().bits();
+        #[cfg(feature = "stm32h7xx-hal")]
+        let rps = eth_dma.dmadsr.read().rps0().bits();
+
+        match rps {
             //  Reset or Stop Receive Command issued
             0b000 => RunningState::Stopped,
             //  Fetching receive transfer descriptor
@@ -56,6 +77,9 @@ impl<'data, STATE> RxRing<'data, STATE> {
             0b101 => RunningState::Running,
             //  Transferring the receive packet data from receive buffer to host memory
             0b111 => RunningState::Running,
+            #[cfg(feature = "stm32h7xx-hal")]
+            // Timestamp write state
+            0b110 => RunningState::Running,
             _ => RunningState::Unknown,
         }
     }
@@ -78,21 +102,67 @@ impl<'data> RxRing<'data, NotRunning> {
             entry.setup(buffer);
         }
 
-        self.ring
-            .descriptors_and_buffers()
-            .last()
-            .map(|(desc, _)| desc.set_end_of_ring());
-
         self.next_entry = 0;
         let ring_ptr = self.ring.descriptors_start_address();
 
-        // Set the RxDma ring start address.
-        eth_dma
-            .dmardlar
-            .write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
+        #[cfg(feature = "f-series")]
+        {
+            self.ring.last_descriptor_mut().set_end_of_ring();
+            // Set the RxDma ring start address.
+            eth_dma
+                .dmardlar
+                .write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
 
-        // Start receive
-        eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
+            // // Start receive
+            eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            // TODO: assert that ethernet DMA can access
+            // the memory in these rings
+            assert!(self.ring.descriptors().count() >= 4);
+
+            // Assert that the descriptors are properly aligned.
+            assert!(ring_ptr as u32 & !0b11 == ring_ptr as u32);
+            assert!(
+                self.ring.last_descriptor_mut() as *const _ as u32 & !0b11
+                    == self.ring.last_descriptor_mut() as *const _ as u32
+            );
+
+            // Set the start pointer.
+            eth_dma
+                .dmacrx_dlar
+                .write(|w| unsafe { w.bits(ring_ptr as u32) });
+
+            // Set the Receive Descriptor Ring Length
+            eth_dma.dmacrx_rlr.write(|w| {
+                w.rdrl()
+                    .variant((self.ring.descriptors().count() - 1) as u16)
+            });
+
+            // Set the tail pointer
+            eth_dma
+                .dmacrx_dtpr
+                .write(|w| unsafe { w.bits(self.ring.last_descriptor() as *const _ as u32) });
+
+            // Set receive buffer size
+            let receive_buffer_size = self.ring.last_buffer().len() as u16;
+            assert!(receive_buffer_size % 4 == 0);
+
+            eth_dma.dmacrx_cr.modify(|_, w| unsafe {
+                w
+                    // Start receive
+                    .sr()
+                    .set_bit()
+                    // Set receive buffer size
+                    .rbsz()
+                    .bits(receive_buffer_size >> 1)
+                    // AUtomatically flush on bus error
+                    .rpf()
+                    .set_bit()
+            });
+        }
 
         self.demand_poll(eth_dma);
 
@@ -107,7 +177,13 @@ impl<'data> RxRing<'data, NotRunning> {
 impl<'data> RxRing<'data, Running> {
     /// Stop the DMA engine.
     pub fn stop(&mut self, eth_dma: &ETHERNET_DMA) {
-        eth_dma.dmaomr.modify(|_, w| w.sr().clear_bit());
+        #[cfg(feature = "f-series")]
+        let start_reg = &eth_dma.dmaomr;
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        let start_reg = &eth_dma.dmacrx_cr;
+
+        start_reg.modify(|_, w| w.sr().clear_bit());
 
         while self.running_state(eth_dma) != RunningState::Stopped {}
     }
@@ -126,7 +202,7 @@ impl<'data> RxRing<'data, Running> {
         let entries_len = self.ring.len();
         let (descriptor, buffer) = self.ring.get(self.next_entry);
 
-        let mut res = descriptor.take_received(packet_id);
+        let mut res = descriptor.take_received(packet_id, buffer);
 
         if res.as_mut().err() != Some(&mut RxError::WouldBlock) {
             self.next_entry = (self.next_entry + 1) % entries_len;
@@ -204,7 +280,7 @@ impl<'a> core::ops::DerefMut for RxPacket<'a> {
 
 impl<'a> Drop for RxPacket<'a> {
     fn drop(&mut self) {
-        self.entry.set_owned();
+        self.entry.set_owned(self.buffer.as_ptr());
     }
 }
 

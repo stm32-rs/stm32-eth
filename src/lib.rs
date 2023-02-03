@@ -7,6 +7,9 @@
 #[cfg(not(feature = "device-selected"))]
 compile_error!("No device was selected! Exactly one stm32fxxx feature must be selected.");
 
+#[cfg(feature = "stm32h7xx-hal")]
+pub use stm32h7xx_hal as hal;
+
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -21,8 +24,10 @@ pub use stm32f1xx_hal as hal;
 
 #[cfg(feature = "device-selected")]
 pub use hal::pac as stm32;
-#[cfg(feature = "device-selected")]
+#[cfg(all(feature = "device-selected", not(feature = "stm32h7xx-hal")))]
 use hal::rcc::Clocks;
+#[cfg(all(feature = "device-selected", feature = "stm32h7xx-hal"))]
+use hal::rcc::CoreClocks as Clocks;
 
 #[cfg(feature = "device-selected")]
 pub mod dma;
@@ -50,10 +55,13 @@ pub use smoltcp;
 
 #[cfg(feature = "device-selected")]
 use {
-    dma::{EthernetDMA, RxDescriptorRing, TxDescriptorRing},
-    mac::{EthernetMAC, EthernetMACWithMii, MdcPin, MdioPin, Speed, WrongClock},
+    dma::{DmaParts, EthernetDMA, RxDescriptorRing, TxDescriptorRing},
+    mac::{EthernetMAC, Speed, WrongClock},
     setup::*,
 };
+
+#[cfg(all(feature = "device-selected", feature = "f-series"))]
+use mac::{EthernetMACWithMii, MdcPin, MdioPin};
 
 #[cfg(all(feature = "device-selected", feature = "ptp"))]
 use ptp::EthernetPTP;
@@ -103,14 +111,27 @@ where
     let eth_mac = parts.mac.into();
 
     // Congfigure and start up the ethernet DMA.
-    let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(
+        DmaParts {
+            eth_dma: parts.dma,
+            #[cfg(feature = "stm32h7xx-hal")]
+            eth_mtl: parts.mtl,
+        },
+        rx_buffer,
+        tx_buffer,
+    );
 
     // Configure the ethernet PTP
     #[cfg(feature = "ptp")]
     let ptp = EthernetPTP::new(parts.ptp.into(), clocks, &dma);
 
+    #[cfg(not(feature = "stm32h7xx-hal"))]
+    let mmc = parts.mmc;
+    #[cfg(feature = "stm32h7xx-hal")]
+    let mmc = ();
+
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx, &dma)?;
+    let mac = EthernetMAC::new(eth_mac, mmc, clocks, Speed::FullDuplexBase100Tx, &dma)?;
 
     let parts = Parts {
         mac,
@@ -142,7 +163,7 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
-#[cfg(feature = "device-selected")]
+#[cfg(all(feature = "device-selected", feature = "f-series"))]
 pub fn new_with_mii<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
     parts: PartsIn,
     rx_buffer: RxDescriptorRing<'rx>,

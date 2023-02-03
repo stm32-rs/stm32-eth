@@ -17,10 +17,12 @@ use cortex_m_rt::{entry, exception};
 use cortex_m::interrupt::Mutex;
 use stm32_eth::{
     dma::{RxDescriptor, TxDescriptor},
-    mac::{phy::BarePhy, Phy},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
     Parts, MTU,
 };
+
+#[cfg(feature = "f-series")]
+use stm32_eth::mac::{phy::BarePhy, Phy};
 
 pub mod common;
 
@@ -30,6 +32,17 @@ const PHY_ADDR: u8 = 0;
 
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
+
+/// On H7s, the ethernet DMA does not have access to the normal ram
+/// so we must explicitly put them in SRAM.
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+static mut TX_DESCRIPTORS: [TxDescriptor; 4] = [TxDescriptor::new(); 4];
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+static mut TX_BUFFERS: [[u8; MTU + 2]; 4] = [[0u8; MTU + 2]; 4];
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
+static mut RX_DESCRIPTORS: [RxDescriptor; 4] = [RxDescriptor::new(); 4];
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
+static mut RX_BUFFERS: [[u8; MTU + 2]; 4] = [[0u8; MTU + 2]; 4];
 
 #[entry]
 fn main() -> ! {
@@ -44,13 +57,8 @@ fn main() -> ! {
 
     let (eth_pins, mdio, mdc, _) = common::setup_pins(gpio);
 
-    let mut rx_descriptors: [RxDescriptor; 2] = Default::default();
-    let mut rx_buffers: [[u8; MTU]; 2] = [[0u8; MTU]; 2];
-    let rx_ring = RxDescriptorRing::new(&mut rx_descriptors, &mut rx_buffers);
-
-    let mut tx_descriptors: [TxDescriptor; 2] = Default::default();
-    let mut tx_buffers: [[u8; MTU]; 2] = [[0u8; MTU]; 2];
-    let tx_ring = TxDescriptorRing::new(&mut tx_descriptors, &mut tx_buffers);
+    let rx_ring = RxDescriptorRing::new(unsafe { &mut RX_DESCRIPTORS }, unsafe { &mut RX_BUFFERS });
+    let tx_ring = TxDescriptorRing::new(unsafe { &mut TX_DESCRIPTORS }, unsafe { &mut TX_BUFFERS });
 
     let Parts {
         mut dma,
@@ -62,10 +70,15 @@ fn main() -> ! {
 
     let mut last_link_up = false;
 
-    let mut bare_phy = BarePhy::new(mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
+    #[cfg(feature = "f-series")]
+    let mut bare_phy = BarePhy::new(_mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
 
     loop {
+        #[cfg(feature = "f-series")]
         let link_up = bare_phy.phy_link_up();
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        let link_up = true;
 
         if link_up != last_link_up {
             if link_up {
@@ -129,7 +142,7 @@ fn main() -> ! {
                     defmt::info!("ARP sent");
                 }
                 Err(TxError::WouldBlock) => {
-                    defmt::panic!("ARP failed. {}", dma.tx_state())
+                    defmt::info!("ARP failed. {}", dma.tx_state())
                 }
             }
         } else {

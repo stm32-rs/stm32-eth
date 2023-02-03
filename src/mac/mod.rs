@@ -1,10 +1,17 @@
 //! Ethernet MAC access and configuration.
 
-use core::ops::{Deref, DerefMut};
+use crate::{dma::EthernetDMA, peripherals::ETHERNET_MAC, Clocks};
 
-use crate::{dma::EthernetDMA, hal::rcc::Clocks, peripherals::ETHERNET_MAC, stm32::ETHERNET_MMC};
+#[cfg(feature = "f-series")]
+use crate::stm32::ETHERNET_MMC;
 
+#[cfg(feature = "stm32h7xx-hal")]
+#[allow(non_camel_case_types)]
+type ETHERNET_MMC = ();
+
+#[cfg(feature = "f-series")]
 mod miim;
+#[cfg(feature = "f-series")]
 pub use miim::*;
 
 /// Speeds at which this MAC can be configured
@@ -21,6 +28,9 @@ pub enum Speed {
     FullDuplexBase100Tx,
 }
 
+#[cfg(feature = "f-series")]
+use self::consts::*;
+#[cfg(feature = "f-series")]
 mod consts {
     /* For HCLK 60-100 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_42: u8 = 0;
@@ -33,7 +43,6 @@ mod consts {
     /* For HCLK over 150 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_102: u8 = 4;
 }
-use self::consts::*;
 
 /// HCLK must be at least 25MHz to use the ethernet peripheral.
 /// This (empty) struct is returned to indicate that it is not set
@@ -69,21 +78,21 @@ impl EthernetMAC {
         // it doesn't work.
         _dma: &EthernetDMA,
     ) -> Result<Self, WrongClock> {
-        let clock_frequency = clocks.hclk().to_Hz();
-
-        let clock_range = match clock_frequency {
-            0..=24_999_999 => return Err(WrongClock),
-            25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
-            35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
-            60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
-            100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
-            _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
-        };
+        // let clock_frequency = clocks.hclk().to_Hz();
+        // TODO: configure MDIOS
+        // let clock_range = match clock_frequency {
+        //     0..=24_999_999 => return Err(WrongClock),
+        //     25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
+        //     35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
+        //     60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
+        //     100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
+        //     _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
+        // };
 
         // Set clock range in MAC MII address register
-        eth_mac
-            .macmiiar
-            .modify(|_, w| unsafe { w.cr().bits(clock_range) });
+        // eth_mac
+        //     .macmiiar
+        //     .modify(|_, w| unsafe { w.cr().bits(clock_range) });
 
         // Configuration Register
         eth_mac.maccr.modify(|_, w| {
@@ -91,12 +100,8 @@ impl EthernetMAC {
             #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
             let w = w.cstf().set_bit();
 
-            // Fast Ethernet speed
-            w.fes()
-                .set_bit()
-                // Duplex mode
-                .dm()
-                .set_bit()
+            #[cfg(feature = "f-series")]
+            let w = w
                 // IPv4 checksum offload
                 .ipco()
                 .set_bit()
@@ -105,6 +110,25 @@ impl EthernetMAC {
                 .set_bit()
                 // Retry disable in half-duplex mode
                 .rd()
+                .set_bit();
+
+            #[cfg(feature = "stm32h7xx-hal")]
+            let w = w
+                // IPv4 checksum offload
+                .acs()
+                .set_bit()
+                // Automatic pad/CRC stripping
+                .ipc()
+                .set_bit()
+                // Retry disable in half-duplex mode
+                .dr()
+                .set_bit();
+
+            // Fast Ethernet speed
+            w.fes()
+                .set_bit()
+                // Duplex mode
+                .dm()
                 .set_bit()
                 // Receiver enable
                 .re()
@@ -114,8 +138,13 @@ impl EthernetMAC {
                 .set_bit()
         });
 
+        #[cfg(feature = "f-series")]
+        let (mac_filter_reg, flow_control) = (&eth_mac.macffr, &eth_mac.macfcr);
+        #[cfg(feature = "stm32h7xx-hal")]
+        let (mac_filter, flow_control) = (&eth_mac.macpfr, &eth_mac.macqtx_fcr);
+
         // Frame filter register
-        eth_mac.macffr.modify(|_, w| {
+        mac_filter.modify(|_, w| {
             // Receive All
             w.ra()
                 .set_bit()
@@ -123,28 +152,64 @@ impl EthernetMAC {
                 .pm()
                 .set_bit()
         });
-
         // Flow Control Register
-        eth_mac.macfcr.modify(|_, w| {
+        flow_control.modify(|_, w| {
             // Pause time
-            w.pt().bits(0x100)
+            #[allow(unused_unsafe)]
+            unsafe {
+                w.pt().bits(0x100)
+            }
         });
 
-        // Disable all MMC RX interrupts
-        eth_mmc
-            .mmcrimr
-            .write(|w| w.rgufm().set_bit().rfaem().set_bit().rfcem().set_bit());
+        #[cfg(feature = "f-series")]
+        {
+            // Disable all MMC RX interrupts
+            eth_mmc
+                .mmcrimr
+                .write(|w| w.rgufm().set_bit().rfaem().set_bit().rfcem().set_bit());
 
-        // Disable all MMC TX interrupts
-        eth_mmc
-            .mmctimr
-            .write(|w| w.tgfm().set_bit().tgfmscm().set_bit().tgfscm().set_bit());
+            // Disable all MMC TX interrupts
+            eth_mmc
+                .mmctimr
+                .write(|w| w.tgfm().set_bit().tgfmscm().set_bit().tgfscm().set_bit());
 
-        // Fix incorrect TGFM bit position until https://github.com/stm32-rs/stm32-rs/pull/689
-        // is released and used by HALs.
-        eth_mmc
-            .mmctimr
-            .modify(|r, w| unsafe { w.bits(r.bits() | (1 << 21)) });
+            // Fix incorrect TGFM bit position until https://github.com/stm32-rs/stm32-rs/pull/689
+            // is released and used by HALs.
+            eth_mmc
+                .mmctimr
+                .modify(|r, w| unsafe { w.bits(r.bits() | (1 << 21)) });
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            // Disable all MMC RX interrupts
+            eth_mac.mmc_rx_interrupt_mask.write(|w| {
+                w.rxlpitrcim()
+                    .set_bit()
+                    .rxlpiuscim()
+                    .set_bit()
+                    .rxucgpim()
+                    .set_bit()
+                    .rxalgnerpim()
+                    .set_bit()
+                    .rxcrcerpim()
+                    .set_bit()
+            });
+
+            // Disable all MMC TX interrupts
+            eth_mac.mmc_tx_interrupt_mask.write(|w| {
+                w.txlpitrcim()
+                    .set_bit()
+                    .txlpiuscim()
+                    .set_bit()
+                    .txgpktim()
+                    .set_bit()
+                    .txmcolgpim()
+                    .set_bit()
+                    .txscolgpim()
+                    .set_bit()
+            });
+        }
 
         let mut me = Self { eth_mac };
 
@@ -160,6 +225,7 @@ impl EthernetMAC {
     ///
     /// Exclusive access to the `MDIO` and `MDC` is required to ensure that are not used elsewhere
     /// for the duration of Mii communication.
+    #[cfg(feature = "f-series")]
     pub fn mii<'eth, 'pins, Mdio, Mdc>(
         &'eth mut self,
         mdio: &'pins mut Mdio,
@@ -173,6 +239,7 @@ impl EthernetMAC {
     }
 
     /// Turn this [`EthernetMAC`] into an [`EthernetMACWithMii`]
+    #[cfg(feature = "f-series")]
     pub fn with_mii<MDIO, MDC>(self, mdio: MDIO, mdc: MDC) -> EthernetMACWithMii<MDIO, MDC>
     where
         MDIO: MdioPin,
@@ -224,98 +291,5 @@ impl EthernetMAC {
         // SAFETY: MACIMR only receives atomic writes.
         let macimr = &unsafe { &*ETHERNET_MAC::ptr() }.macimr;
         macimr.write(|w| w.tstim().clear_bit());
-    }
-}
-
-/// Ethernet media access control (MAC) with owned MII
-///
-/// This version of the struct owns it's MII pins,
-/// allowing it to be used directly, instead of requiring
-/// that a  [`Miim`] is created.
-pub struct EthernetMACWithMii<MDIO, MDC>
-where
-    MDIO: MdioPin,
-    MDC: MdcPin,
-{
-    pub(crate) eth_mac: EthernetMAC,
-    mdio: MDIO,
-    mdc: MDC,
-}
-
-impl<MDIO, MDC> EthernetMACWithMii<MDIO, MDC>
-where
-    MDIO: MdioPin,
-    MDC: MdcPin,
-{
-    /// Create a new EthernetMAC with owned MDIO and MDC pins.
-    ///
-    /// To interact with a connected Phy, use the `read` and `write` functions.
-    ///
-    /// Functionality for interacting with PHYs from the `ieee802_3_miim` crate
-    /// is available.
-    pub fn new(eth_mac: EthernetMAC, mdio: MDIO, mdc: MDC) -> Self {
-        Self { eth_mac, mdio, mdc }
-    }
-
-    /// Release the owned MDIO and MDC pins, and return an EthernetMAC that
-    /// has to borrow the MDIO and MDC pins.
-    pub fn release_pins(self) -> (EthernetMAC, MDIO, MDC) {
-        (self.eth_mac, self.mdio, self.mdc)
-    }
-}
-
-impl<MDIO, MDC> Deref for EthernetMACWithMii<MDIO, MDC>
-where
-    MDIO: MdioPin,
-    MDC: MdcPin,
-{
-    type Target = EthernetMAC;
-
-    fn deref(&self) -> &Self::Target {
-        &self.eth_mac
-    }
-}
-
-impl<MDIO, MDC> DerefMut for EthernetMACWithMii<MDIO, MDC>
-where
-    MDIO: MdioPin,
-    MDC: MdcPin,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.eth_mac
-    }
-}
-
-impl<MDIO, MDC> EthernetMACWithMii<MDIO, MDC>
-where
-    MDIO: MdioPin,
-    MDC: MdcPin,
-{
-    /// Read MII register `reg` from the PHY at address `phy`
-    pub fn read(&mut self, phy: u8, reg: u8) -> u16 {
-        self.eth_mac
-            .mii(&mut self.mdio, &mut self.mdc)
-            .read(phy, reg)
-    }
-
-    /// Write the value `data` to MII register `reg` to the PHY at address `phy`
-    pub fn write(&mut self, phy: u8, reg: u8, data: u16) {
-        self.eth_mac
-            .mii(&mut self.mdio, &mut self.mdc)
-            .write(phy, reg, data)
-    }
-}
-
-impl<MDIO, MDC> miim::Miim for EthernetMACWithMii<MDIO, MDC>
-where
-    MDIO: MdioPin,
-    MDC: MdcPin,
-{
-    fn read(&mut self, phy: u8, reg: u8) -> u16 {
-        self.read(phy, reg)
-    }
-
-    fn write(&mut self, phy: u8, reg: u8, data: u16) {
-        self.write(phy, reg, data)
     }
 }
