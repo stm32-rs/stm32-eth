@@ -65,9 +65,6 @@ pub struct DescriptorRing<'data, T> {
 impl<'data, T> DescriptorRing<'data, T> {
     pub fn new(descriptors: &'data mut [T], buffers: &'data mut [[u8; MTU + 2]]) -> Self {
         assert!(descriptors.len() == buffers.len());
-        buffers
-            .iter()
-            .for_each(|b| assert!(b.len() <= super::MTU + 2));
 
         Self {
             descriptors,
