@@ -136,7 +136,7 @@ impl EthernetPTP {
             mac.macssir
                 .write(|w| unsafe { w.ssinc().bits(stssi.raw() as u8) });
 
-            Self {}
+            me
         };
 
         me.set_addend(tsa);
