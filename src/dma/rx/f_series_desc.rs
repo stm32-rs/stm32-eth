@@ -125,11 +125,7 @@ impl RxDescriptor {
         ((self.inner_raw.read(0) >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize
     }
 
-    pub(super) fn take_received(
-        &mut self,
-        // NOTE(allow): packet_id is unused if ptp is disabled.
-        #[allow(unused_variables)] packet_id: Option<PacketId>,
-    ) -> Result<(), RxError> {
+    pub(super) fn take_received(&mut self, packet_id: Option<PacketId>) -> Result<(), RxError> {
         if self.is_owned() {
             Err(RxError::WouldBlock)
         } else if self.has_error() {

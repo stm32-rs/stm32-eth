@@ -22,10 +22,8 @@ mod consts {
     // Read format
     /// Interrupt On Completion
     pub const TXDESC_2_IOC: u32 = 1 << 31;
-
     /// Transmit Timestamp Enable
     pub const TXDESC_2_TTSE: u32 = 1 << 30;
-
     /// Buffer 2 length shift
     pub const TXDESC_2_B2L_SHIFT: u32 = 16;
     /// Buffer 2 length mask
@@ -86,28 +84,20 @@ mod consts {
     // Write back format
     /// Tx Timestamp status
     pub const TXDESC_3_TTSS: u32 = 1 << 17;
-
     /// Error Summary
     pub const TXDESC_3_ES: u32 = 1 << 15;
-
     /// Jabber timeout
     pub const TXDESC_3_JT: u32 = 1 << 14;
-
     /// Packet flushed
     pub const TXDESC_3_FF: u32 = 1 << 13;
-
     /// Payload Checksum Error
     pub const TXDESC_3_PCE: u32 = 1 << 12;
-
     /// Loss of Carrier
     pub const TXDESC_3_LOC: u32 = 1 << 11;
-
     /// No Carrier
     pub const TXDESC_3_NC: u32 = 1 << 10;
-
     /// Late Collision
     pub const TXDESC_3_LC: u32 = 1 << 9;
-
     /// Excessive Collision
     pub const TXDESC_3_EC: u32 = 1 << 8;
 
@@ -118,13 +108,10 @@ mod consts {
 
     /// Excessive Deferral
     pub const TXDESC_3_ED: u32 = 1 << 3;
-
     /// Underflow error
     pub const TXDESC_3_UF: u32 = 1 << 2;
-
     /// Deferred Bit
     pub const TXDESC_3_DB: u32 = 1 << 1;
-
     /// IP Header Error
     pub const TXDESC_3_IHE: u32 = 1 << 0;
 }
@@ -162,6 +149,11 @@ impl TxDescriptor {
 
     pub(super) fn is_owned(&self) -> bool {
         (self.inner_raw.read(3) & TXDESC_3_OWN) == TXDESC_3_OWN
+    }
+
+    #[allow(unused)]
+    pub(super) fn packet_id(&self) -> Option<&PacketId> {
+        self.packet_id.as_ref()
     }
 
     /// Pass ownership to the DMA engine
@@ -219,10 +211,6 @@ impl TxDescriptor {
             });
         }
     }
-
-    // pub(super) fn packet_id(&self) -> Option<&PacketId> {
-    //     self.packet_id.as_ref()
-    // }
 }
 
 #[cfg(feature = "ptp")]

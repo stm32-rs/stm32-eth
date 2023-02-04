@@ -101,13 +101,42 @@ impl RxDescriptor {
         }
     }
 
-    pub(super) fn setup(&mut self, buffer: &[u8]) {
-        self.set_owned(buffer.as_ptr());
-    }
-
     /// Is owned by the DMA engine?
     fn is_owned(&self) -> bool {
         (self.inner_raw.read(3) & RXDESC_3_OWN) == RXDESC_3_OWN
+    }
+
+    fn has_error(&self) -> bool {
+        self.inner_raw.read(3) & RXDESC_3_ES == RXDESC_3_ES
+    }
+
+    fn is_first(&self) -> bool {
+        self.inner_raw.read(3) & RXDESC_3_FD == RXDESC_3_FD
+    }
+
+    fn is_last(&self) -> bool {
+        self.inner_raw.read(3) & RXDESC_3_LD == RXDESC_3_LD
+    }
+
+    fn is_context(&self) -> bool {
+        self.inner_raw.read(3) & RXDESC_3_CTXT == RXDESC_3_CTXT
+    }
+
+    pub(super) fn frame_length(&self) -> usize {
+        if self.is_owned() {
+            0
+        } else {
+            ((self.inner_raw.read(3) & RXDESC_3_PL_MASK) >> RXDESC_3_PL_SHIFT) as usize
+        }
+    }
+
+    #[allow(unused)]
+    pub(super) fn packet_id(&self) -> Option<&PacketId> {
+        self.packet_id.as_ref()
+    }
+
+    pub(super) fn setup(&mut self, buffer: &[u8]) {
+        self.set_owned(buffer.as_ptr());
     }
 
     /// Pass ownership to the DMA engine
@@ -154,26 +183,9 @@ impl RxDescriptor {
         }
     }
 
-    fn has_error(&self) -> bool {
-        self.inner_raw.read(3) & RXDESC_3_ES == RXDESC_3_ES
-    }
-
-    fn is_first(&self) -> bool {
-        self.inner_raw.read(3) & RXDESC_3_FD == RXDESC_3_FD
-    }
-
-    fn is_last(&self) -> bool {
-        self.inner_raw.read(3) & RXDESC_3_LD == RXDESC_3_LD
-    }
-
-    fn is_context(&self) -> bool {
-        self.inner_raw.read(3) & RXDESC_3_CTXT == RXDESC_3_CTXT
-    }
-
     pub(super) fn take_received(
         &mut self,
-        // NOTE(allow): packet_id is unused if ptp is disabled.
-        #[allow(unused_variables)] packet_id: Option<PacketId>,
+        packet_id: Option<PacketId>,
         buffer: &mut [u8],
     ) -> Result<(), RxError> {
         if self.is_owned() {
@@ -196,19 +208,6 @@ impl RxDescriptor {
             self.set_owned(buffer.as_ptr());
             Err(RxError::Truncated)
         }
-    }
-
-    pub(super) fn frame_length(&self) -> usize {
-        if self.is_owned() {
-            0
-        } else {
-            ((self.inner_raw.read(3) & RXDESC_3_PL_MASK) >> RXDESC_3_PL_SHIFT) as usize
-        }
-    }
-
-    #[allow(unused)]
-    pub(super) fn packet_id(&self) -> Option<&PacketId> {
-        self.packet_id.as_ref()
     }
 }
 

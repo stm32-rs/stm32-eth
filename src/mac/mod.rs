@@ -3,16 +3,102 @@
 use crate::{dma::EthernetDMA, peripherals::ETHERNET_MAC, Clocks};
 
 #[cfg(feature = "f-series")]
-use crate::stm32::ETHERNET_MMC;
-
-#[cfg(feature = "stm32h7xx-hal")]
-#[allow(non_camel_case_types)]
-type ETHERNET_MMC = ();
-
-#[cfg(feature = "f-series")]
 mod miim;
 #[cfg(feature = "f-series")]
 pub use miim::*;
+
+pub(crate) struct MacParts {
+    pub eth_mac: ETHERNET_MAC,
+    #[cfg(feature = "f-series")]
+    pub eth_mmc: ETHERNET_MMC,
+}
+
+impl MacParts {
+    fn enable_promicious_mode(&self) {
+        let Self { eth_mac, .. } = self;
+
+        #[cfg(feature = "f-series")]
+        let (mac_filter_reg, flow_control) = (&eth_mac.macffr, &eth_mac.macfcr);
+        #[cfg(feature = "stm32h7xx-hal")]
+        let (mac_filter, flow_control) = (&eth_mac.macpfr, &eth_mac.macqtx_fcr);
+
+        // Frame filter register
+        mac_filter.modify(|_, w| {
+            // Receive All
+            w.ra()
+                .set_bit()
+                // Promiscuous mode
+                .pm()
+                .set_bit()
+        });
+        // Flow Control Register
+        flow_control.modify(|_, w| {
+            // Pause time
+            #[allow(unused_unsafe)]
+            unsafe {
+                w.pt().bits(0x100)
+            }
+        });
+    }
+
+    fn disable_mmc_interrupts(&self) {
+        let Self {
+            eth_mac,
+            #[cfg(feature = "f-series")]
+            eth_mmc,
+        } = self;
+
+        #[cfg(feature = "f-series")]
+        {
+            // Disable all MMC RX interrupts
+            eth_mmc
+                .mmcrimr
+                .write(|w| w.rgufm().set_bit().rfaem().set_bit().rfcem().set_bit());
+
+            // Disable all MMC TX interrupts
+            eth_mmc
+                .mmctimr
+                .write(|w| w.tgfm().set_bit().tgfmscm().set_bit().tgfscm().set_bit());
+
+            // Fix incorrect TGFM bit position until https://github.com/stm32-rs/stm32-rs/pull/689
+            // is released and used by HALs.
+            eth_mmc
+                .mmctimr
+                .modify(|r, w| unsafe { w.bits(r.bits() | (1 << 21)) });
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            // Disable all MMC RX interrupts
+            eth_mac.mmc_rx_interrupt_mask.write(|w| {
+                w.rxlpitrcim()
+                    .set_bit()
+                    .rxlpiuscim()
+                    .set_bit()
+                    .rxucgpim()
+                    .set_bit()
+                    .rxalgnerpim()
+                    .set_bit()
+                    .rxcrcerpim()
+                    .set_bit()
+            });
+
+            // Disable all MMC TX interrupts
+            eth_mac.mmc_tx_interrupt_mask.write(|w| {
+                w.txlpitrcim()
+                    .set_bit()
+                    .txlpiuscim()
+                    .set_bit()
+                    .txgpktim()
+                    .set_bit()
+                    .txmcolgpim()
+                    .set_bit()
+                    .txscolgpim()
+                    .set_bit()
+            });
+        }
+    }
+}
 
 /// Speeds at which this MAC can be configured
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -69,30 +155,38 @@ impl EthernetMAC {
     /// Additionally, an `impl` of the [`ieee802_3_miim::Miim`] trait is available
     /// for PHY communication.
     pub(crate) fn new(
-        eth_mac: ETHERNET_MAC,
-        eth_mmc: ETHERNET_MMC,
-        clocks: Clocks,
+        parts: MacParts,
+        #[allow(unused)] clocks: Clocks,
         initial_speed: Speed,
         // Note(_dma): this field exists to ensure that the MAC is not
         // initialized before the DMA. If MAC is started before the DMA,
         // it doesn't work.
         _dma: &EthernetDMA,
     ) -> Result<Self, WrongClock> {
-        // let clock_frequency = clocks.hclk().to_Hz();
-        // TODO: configure MDIOS
-        // let clock_range = match clock_frequency {
-        //     0..=24_999_999 => return Err(WrongClock),
-        //     25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
-        //     35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
-        //     60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
-        //     100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
-        //     _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
-        // };
+        let MacParts {
+            eth_mac,
+            #[cfg(feature = "f-series")]
+            eth_mmc,
+        } = &parts;
 
-        // Set clock range in MAC MII address register
-        // eth_mac
-        //     .macmiiar
-        //     .modify(|_, w| unsafe { w.cr().bits(clock_range) });
+        // TODO: configure MDIOS
+        #[cfg(feature = "f-series")]
+        {
+            let clock_frequency = clocks.hclk().to_Hz();
+            let clock_range = match clock_frequency {
+                0..=24_999_999 => return Err(WrongClock),
+                25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
+                35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
+                60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
+                100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
+                _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
+            };
+
+            // Set clock range in MAC MII address register
+            eth_mac
+                .macmiiar
+                .modify(|_, w| unsafe { w.cr().bits(clock_range) });
+        }
 
         // Configuration Register
         eth_mac.maccr.modify(|_, w| {
@@ -138,80 +232,12 @@ impl EthernetMAC {
                 .set_bit()
         });
 
-        #[cfg(feature = "f-series")]
-        let (mac_filter_reg, flow_control) = (&eth_mac.macffr, &eth_mac.macfcr);
-        #[cfg(feature = "stm32h7xx-hal")]
-        let (mac_filter, flow_control) = (&eth_mac.macpfr, &eth_mac.macqtx_fcr);
+        parts.enable_promicious_mode();
+        parts.disable_mmc_interrupts();
 
-        // Frame filter register
-        mac_filter.modify(|_, w| {
-            // Receive All
-            w.ra()
-                .set_bit()
-                // Promiscuous mode
-                .pm()
-                .set_bit()
-        });
-        // Flow Control Register
-        flow_control.modify(|_, w| {
-            // Pause time
-            #[allow(unused_unsafe)]
-            unsafe {
-                w.pt().bits(0x100)
-            }
-        });
-
-        #[cfg(feature = "f-series")]
-        {
-            // Disable all MMC RX interrupts
-            eth_mmc
-                .mmcrimr
-                .write(|w| w.rgufm().set_bit().rfaem().set_bit().rfcem().set_bit());
-
-            // Disable all MMC TX interrupts
-            eth_mmc
-                .mmctimr
-                .write(|w| w.tgfm().set_bit().tgfmscm().set_bit().tgfscm().set_bit());
-
-            // Fix incorrect TGFM bit position until https://github.com/stm32-rs/stm32-rs/pull/689
-            // is released and used by HALs.
-            eth_mmc
-                .mmctimr
-                .modify(|r, w| unsafe { w.bits(r.bits() | (1 << 21)) });
-        }
-
-        #[cfg(feature = "stm32h7xx-hal")]
-        {
-            // Disable all MMC RX interrupts
-            eth_mac.mmc_rx_interrupt_mask.write(|w| {
-                w.rxlpitrcim()
-                    .set_bit()
-                    .rxlpiuscim()
-                    .set_bit()
-                    .rxucgpim()
-                    .set_bit()
-                    .rxalgnerpim()
-                    .set_bit()
-                    .rxcrcerpim()
-                    .set_bit()
-            });
-
-            // Disable all MMC TX interrupts
-            eth_mac.mmc_tx_interrupt_mask.write(|w| {
-                w.txlpitrcim()
-                    .set_bit()
-                    .txlpiuscim()
-                    .set_bit()
-                    .txgpktim()
-                    .set_bit()
-                    .txmcolgpim()
-                    .set_bit()
-                    .txscolgpim()
-                    .set_bit()
-            });
-        }
-
-        let mut me = Self { eth_mac };
+        let mut me = Self {
+            eth_mac: parts.eth_mac,
+        };
 
         me.set_speed(initial_speed);
 

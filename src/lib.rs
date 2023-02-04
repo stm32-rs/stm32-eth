@@ -56,7 +56,7 @@ pub use smoltcp;
 #[cfg(feature = "device-selected")]
 use {
     dma::{DmaParts, EthernetDMA, RxDescriptorRing, TxDescriptorRing},
-    mac::{EthernetMAC, Speed, WrongClock},
+    mac::{EthernetMAC, MacParts, Speed, WrongClock},
     setup::*,
 };
 
@@ -108,8 +108,6 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
-    let eth_mac = parts.mac.into();
-
     // Congfigure and start up the ethernet DMA.
     let dma = EthernetDMA::new(
         DmaParts {
@@ -125,13 +123,17 @@ where
     #[cfg(feature = "ptp")]
     let ptp = EthernetPTP::new(parts.ptp.into(), clocks, &dma);
 
-    #[cfg(not(feature = "stm32h7xx-hal"))]
-    let mmc = parts.mmc;
-    #[cfg(feature = "stm32h7xx-hal")]
-    let mmc = ();
-
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, mmc, clocks, Speed::FullDuplexBase100Tx, &dma)?;
+    let mac = EthernetMAC::new(
+        MacParts {
+            eth_mac: parts.mac.into(),
+            #[cfg(feature = "f-series")]
+            eth_mmc: parts.mmc.into(),
+        },
+        clocks,
+        Speed::FullDuplexBase100Tx,
+        &dma,
+    )?;
 
     let parts = Parts {
         mac,
@@ -200,8 +202,13 @@ where
     let ptp = EthernetPTP::new(parts.ptp.into(), clocks, &dma);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(eth_mac, parts.mmc, clocks, Speed::FullDuplexBase100Tx, &dma)?
-        .with_mii(mdio, mdc);
+    let mac = EthernetMAC::new(
+        MacParts { eth_mac, eth_mmc },
+        clocks,
+        Speed::FullDuplexBase100Tx,
+        &dma,
+    )?
+    .with_mii(mdio, mdc);
 
     let parts = Parts {
         mac,
