@@ -148,7 +148,7 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Par
 
         let pwrcfg = pwr.vos0(&syscfg).freeze();
 
-        let rcc = rcc.hclk(240.MHz());
+        let rcc = rcc.hclk(240.MHz()).sys_ck(240.MHz());
 
         let rcc = if cfg!(hse = "bypass") {
             rcc.bypass_hse().use_hse(8.MHz())
