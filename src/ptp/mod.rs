@@ -130,6 +130,9 @@ impl EthernetPTP {
                     // Enable all timestamps
                     .tsena()
                     .set_bit()
+                    // Tell MAC to overwrite non-read timestamps
+                    .txtsstsm()
+                    .set_bit()
             });
 
             // Set up the subsecond increment

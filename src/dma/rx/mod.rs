@@ -199,8 +199,9 @@ impl<'data> RxRing<'data, Running> {
             self.demand_poll(eth_dma);
         }
 
+        let entry = self.next_entry;
         let entries_len = self.ring.len();
-        let (descriptor, buffer) = self.ring.get(self.next_entry);
+        let (descriptor, buffer) = self.ring.get(entry);
 
         let mut res = descriptor.take_received(packet_id, buffer);
 
@@ -208,8 +209,44 @@ impl<'data> RxRing<'data, Running> {
             self.next_entry = (self.next_entry + 1) % entries_len;
         }
 
+        #[cfg(all(feature = "ptp", feature = "stm32h7xx-hal"))]
+        let (timestamp, descriptor, buffer) = {
+            if res.as_mut().err() != Some(&mut RxError::WouldBlock) {
+                let desc_has_timestamp = descriptor.has_timestamp();
+
+                drop(descriptor);
+                drop(buffer);
+
+                // On H7's, the timestamp is stored in the next Context
+                // descriptor.
+                let timestamp = if desc_has_timestamp {
+                    let (ctx_descriptor, ctx_des_buffer) = self.ring.get(self.next_entry);
+                    if let Some(timestamp) = ctx_descriptor.read_timestamp() {
+                        ctx_descriptor.set_owned(ctx_des_buffer);
+                        // Advance over this buffer
+                        self.next_entry = (self.next_entry + 1) % entries_len;
+                        Some(timestamp)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let (descriptor, buffer) = self.ring.get(entry);
+
+                descriptor.attach_timestamp(timestamp);
+
+                (timestamp, descriptor, buffer)
+            } else {
+                let (descriptor, buffer) = self.ring.get(entry);
+                descriptor.attach_timestamp(None);
+                (None, descriptor, buffer)
+            }
+        };
+
         res.map(move |_| {
-            #[cfg(feature = "ptp")]
+            #[cfg(all(feature = "ptp", feature = "f-series"))]
             let timestamp = descriptor.read_timestamp();
 
             RxPacket {

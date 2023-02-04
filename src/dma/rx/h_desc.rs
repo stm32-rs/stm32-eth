@@ -20,6 +20,10 @@ mod consts {
     pub const RXDESC_3_BUF1V: u32 = 1 << 24;
 
     // Write-back bits
+    /// Timestamp Dropped
+    pub const RXDESC_1_TD: u32 = 1 << 16;
+    /// Timestamp Avaialble
+    pub const RXDESC_1_TSA: u32 = 1 << 14;
     /// Context Descriptor
     pub const RXDESC_3_CTXT: u32 = 1 << 30;
     /// First Descriptor
@@ -102,7 +106,7 @@ impl RxDescriptor {
     }
 
     /// Is owned by the DMA engine?
-    fn is_owned(&self) -> bool {
+    pub(super) fn is_owned(&self) -> bool {
         (self.inner_raw.read(3) & RXDESC_3_OWN) == RXDESC_3_OWN
     }
 
@@ -120,6 +124,10 @@ impl RxDescriptor {
 
     fn is_context(&self) -> bool {
         self.inner_raw.read(3) & RXDESC_3_CTXT == RXDESC_3_CTXT
+    }
+
+    pub(super) fn has_timestamp(&self) -> bool {
+        (self.inner_raw.read(1) & RXDESC_1_TSA) == RXDESC_1_TSA && self.is_last()
     }
 
     pub(super) fn frame_length(&self) -> usize {
@@ -200,10 +208,6 @@ impl RxDescriptor {
 
             self.packet_id = packet_id;
 
-            // Cache the PTP timestamps if PTP is enabled.
-            #[cfg(feature = "ptp")]
-            self.attach_timestamp();
-
             Ok(())
         } else {
             self.set_owned(buffer);
@@ -216,11 +220,16 @@ impl RxDescriptor {
 impl RxDescriptor {
     /// Get PTP timestamps if available
     pub(super) fn read_timestamp(&self) -> Option<Timestamp> {
-        todo!();
+        if self.is_context() && !self.is_owned() {
+            let (high, low) = (self.inner_raw.read(1), self.inner_raw.read(0));
+            Some(Timestamp::from_parts(high, low))
+        } else {
+            None
+        }
     }
 
-    fn attach_timestamp(&mut self) {
-        self.cached_timestamp = self.read_timestamp();
+    pub(super) fn attach_timestamp(&mut self, timestamp: Option<Timestamp>) {
+        self.cached_timestamp = timestamp;
     }
 
     pub(super) fn timestamp(&self) -> Option<&Timestamp> {
