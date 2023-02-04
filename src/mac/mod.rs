@@ -223,6 +223,13 @@ impl EthernetMAC {
         parts.enable_promicious_mode();
         parts.disable_mmc_interrupts();
 
+        #[cfg(feature = "stm32h7xx-hal")]
+        // On H7 parts, the target timestamp interrupt
+        // is not broken, so we can enable it unconditionally.
+        {
+            parts.eth_mac.macier.modify(|_, w| w.tsie().set_bit());
+        }
+
         let mut me = Self {
             eth_mac: parts.eth_mac,
         };

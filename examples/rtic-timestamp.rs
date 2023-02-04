@@ -161,7 +161,7 @@ mod app {
         // incorrect, but works well enough in low-activity systems (such as this example).
         let now = (cx.shared.ptp, cx.shared.scheduled_time).lock(|ptp, sched_time| {
             let now = ptp.get_time();
-            #[cfg(not(any(feature = "stm32f107", feature = "stm32h7xx-hal")))]
+            #[cfg(not(feature = "stm32f107"))]
             {
                 let in_half_sec = now
                     + Timestamp::new(
@@ -212,7 +212,7 @@ mod app {
             .lock(|dma, tx_id, ptp, _sched_time| {
                 dma.interrupt_handler();
 
-                #[cfg(not(any(feature = "stm32f107", feature = "stm32h7xx-hal")))]
+                #[cfg(not(feature = "stm32f107"))]
                 {
                     if ptp.interrupt_handler() {
                         if let Some(sched_time) = _sched_time.take() {

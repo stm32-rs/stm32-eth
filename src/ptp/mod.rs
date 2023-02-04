@@ -343,17 +343,34 @@ impl EthernetPTP {
 /// Setting and configuring target time interrupts on the STM32F107 does not
 /// make any sense: we can generate the interrupt, but it is impossible to
 /// clear the flag as the register required to do so does not exist.
-#[cfg(all(not(feature = "stm32f1xx-hal"), not(feature = "stm32h7xx-hal")))]
+#[cfg(all(not(feature = "stm32f1xx-hal")))]
 impl EthernetPTP {
     /// Configure the target time.
     fn set_target_time(&mut self, timestamp: Timestamp) {
         let (high, low) = (timestamp.seconds(), timestamp.subseconds_signed());
-        self.eth_ptp
-            .ptptthr
-            .write(|w| unsafe { w.ttsh().bits(high) });
-        self.eth_ptp
-            .ptpttlr
-            .write(|w| unsafe { w.ttsl().bits(low) });
+
+        #[cfg(feature = "f-series")]
+        {
+            self.eth_ptp
+                .ptptthr
+                .write(|w| unsafe { w.ttsh().bits(high) });
+            self.eth_ptp
+                .ptpttlr
+                .write(|w| unsafe { w.ttsl().bits(low) });
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            // SAFETY: we only write to `ppsttsr` (PPS target time seconds register) and
+            // `ppsttnr` (PPS target time subseconds register)
+            let (ppsttsr, ppsttnr) = unsafe {
+                let mac = self.mac();
+                (&mac.macppsttsr, &mac.macppsttnr)
+            };
+
+            ppsttsr.write(|w| unsafe { w.bits(high) });
+            ppsttnr.write(|w| unsafe { w.bits(low) });
+        }
     }
 
     /// Configure the target time interrupt.
@@ -362,22 +379,40 @@ impl EthernetPTP {
     /// interrupt to detect (and clear) the correct status bits.
     pub fn configure_target_time_interrupt(&mut self, timestamp: Timestamp) {
         self.set_target_time(timestamp);
-        self.eth_ptp.ptptscr.modify(|_, w| w.tsite().set_bit());
-        EthernetMAC::unmask_timestamp_trigger_interrupt();
+        #[cfg(feature = "f-series")]
+        {
+            self.eth_ptp.ptptscr.modify(|_, w| w.tsite().set_bit());
+            EthernetMAC::unmask_timestamp_trigger_interrupt();
+        }
     }
 
     /// Returns a boolean indicating whether or not the interrupt
     /// was caused by a Timestamp trigger and clears the interrupt
     /// flag.
     pub fn interrupt_handler(&mut self) -> bool {
-        let is_tsint = self.eth_ptp.ptptssr.read().tsttr().bit_is_set();
-        if is_tsint {
-            self.eth_ptp.ptptscr.modify(|_, w| w.tsite().clear_bit());
-            EthernetMAC::mask_timestamp_trigger_interrupt();
-        }
+        #[cfg(feature = "f-series")]
+        let is_tsint = {
+            let is_tsint = self.eth_ptp.ptptssr.read().tsttr().bit_is_set();
+            if is_tsint {
+                self.eth_ptp.ptptscr.modify(|_, w| w.tsite().clear_bit());
+                EthernetMAC::mask_timestamp_trigger_interrupt();
+            }
+            is_tsint
+        };
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        let is_tsint = {
+            // SAFETY: we only write to `mactssr` (Timestamp Status register)
+            let mactssr = unsafe { &self.mac().mactssr };
+
+            // Reading the bit clears it, and deasserts the interrupt.
+            mactssr.read().tstargt0().bit_is_set()
+        };
+
         is_tsint
     }
 
+    #[cfg(feature = "f-series")]
     /// Configure the PPS output frequency.
     ///
     /// The PPS output frequency becomes `2 ^ pps_freq`. `pps_freq` is
