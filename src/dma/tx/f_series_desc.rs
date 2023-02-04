@@ -162,7 +162,13 @@ impl TxDescriptor {
         let contains_timestamp = (tdes0 & TXDESC_0_TIMESTAMP_STATUS) == TXDESC_0_TIMESTAMP_STATUS;
 
         if !self.is_owned() && contains_timestamp && Self::is_last(tdes0) {
-            Timestamp::from_descriptor(&self.inner_raw)
+            #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
+            let (high, low) = { (self.inner_raw.read(7), self.inner_raw.read(6)) };
+
+            #[cfg(feature = "stm32f1xx-hal")]
+            let (high, low) = { (self.inner_raw.read(3), self.inner_raw.read(2)) };
+
+            Some(Timestamp::from_parts(high, low))
         } else {
             None
         }

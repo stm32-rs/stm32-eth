@@ -166,6 +166,12 @@ impl RxDescriptor {
 
     /// Get PTP timestamps if available
     pub(super) fn read_timestamp(&self) -> Option<Timestamp> {
+        #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
+        let (high, low) = { (self.inner_raw.read(7), self.inner_raw.read(6)) };
+
+        #[cfg(feature = "stm32f1xx-hal")]
+        let (high, low) = { (self.inner_raw.read(3), self.inner_raw.read(2)) };
+
         #[cfg(not(feature = "stm32f1xx-hal"))]
         let is_valid = {
             /// RX timestamp
@@ -174,14 +180,15 @@ impl RxDescriptor {
         };
 
         #[cfg(feature = "stm32f1xx-hal")]
-        // There is no "timestamp valid" indicator bit
-        // on STM32F1XX
-        let is_valid = true;
+        // There is no direct "timestamp valid" indicator bit
+        // on STM32F1XX, but if it's invalid it will be written
+        // as all ones.
+        let is_valid = high != 0xFFFF_FFFF || low != 0xFFFF_FFFF;
 
-        let timestamp = Timestamp::from_descriptor(&self.inner_raw);
+        let timestamp = Timestamp::from_parts(high, low);
 
         if is_valid && self.is_last() {
-            timestamp
+            Some(timestamp)
         } else {
             None
         }
