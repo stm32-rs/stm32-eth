@@ -48,7 +48,7 @@ mod app {
         },
         mac::Speed,
         ptp::{EthernetPTP, Timestamp},
-        Parts,
+        Parts, MTU,
     };
 
     #[local]
@@ -65,19 +65,27 @@ mod app {
     #[monotonic(binds = SysTick, default = true)]
     type Monotonic = Systick<1000>;
 
-    #[init(local = [
-        rx_desc: [RxDescriptor; 2] = [RxDescriptor::new(); 2],
-        tx_desc: [TxDescriptor; 2] = [TxDescriptor::new(); 2],
-        rx_buffers: [[u8; 1522]; 2] = [[0u8; stm32_eth::MTU]; 2],
-        tx_buffers: [[u8; 1522]; 2] = [[0u8; stm32_eth::MTU]; 2],
-    ])]
+    /// On H7s, the ethernet DMA does not have access to the normal ram
+    /// so we must explicitly put them in SRAM.
+    #[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+    static mut TX_DESCRIPTORS: [TxDescriptor; 4] = [TxDescriptor::new(); 4];
+    #[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+    static mut TX_BUFFERS: [[u8; MTU + 2]; 4] = [[0u8; MTU + 2]; 4];
+    #[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
+    static mut RX_DESCRIPTORS: [RxDescriptor; 4] = [RxDescriptor::new(); 4];
+    #[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
+    static mut RX_BUFFERS: [[u8; MTU + 2]; 4] = [[0u8; MTU + 2]; 4];
+
+    #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
         let core = cx.core;
         let p = cx.device;
 
-        let rx_ring = RxDescriptorRing::new(cx.local.rx_desc, cx.local.rx_buffers);
-        let tx_ring = TxDescriptorRing::new(cx.local.tx_desc, cx.local.tx_buffers);
+        let rx_ring =
+            RxDescriptorRing::new(unsafe { &mut RX_DESCRIPTORS }, unsafe { &mut RX_BUFFERS });
+        let tx_ring =
+            TxDescriptorRing::new(unsafe { &mut TX_DESCRIPTORS }, unsafe { &mut TX_BUFFERS });
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
@@ -88,13 +96,15 @@ mod app {
         defmt::info!("Configuring ethernet");
 
         let Parts { dma, mac, mut ptp } =
-            stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
+            stm32_eth::new(ethernet, rx_ring, tx_ring, clocks, pins).unwrap();
 
+        #[cfg(not(feature = "stm32h7xx-hal"))]
         ptp.enable_pps(pps);
 
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();
 
+        #[cfg(not(feature = "stm32h7xx-hal"))]
         match EthernetPhy::from_miim(mac, 0) {
             Ok(mut phy) => {
                 defmt::info!(
@@ -151,7 +161,7 @@ mod app {
         // incorrect, but works well enough in low-activity systems (such as this example).
         let now = (cx.shared.ptp, cx.shared.scheduled_time).lock(|ptp, sched_time| {
             let now = ptp.get_time();
-            #[cfg(not(feature = "stm32f107"))]
+            #[cfg(not(any(feature = "stm32f107", feature = "stm32h7xx-hal")))]
             {
                 let in_half_sec = now
                     + Timestamp::new(
@@ -159,6 +169,7 @@ mod app {
                         0,
                         stm32_eth::ptp::Subseconds::new_from_nanos(500_000_000).unwrap(),
                     );
+
                 ptp.configure_target_time_interrupt(in_half_sec);
             }
             *sched_time = Some(now);
@@ -201,7 +212,7 @@ mod app {
             .lock(|dma, tx_id, ptp, _sched_time| {
                 dma.interrupt_handler();
 
-                #[cfg(not(feature = "stm32f107"))]
+                #[cfg(not(any(feature = "stm32f107", feature = "stm32h7xx-hal")))]
                 {
                     if ptp.interrupt_handler() {
                         if let Some(sched_time) = _sched_time.take() {

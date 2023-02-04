@@ -30,7 +30,7 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Par
         mtl: p.ETHERNET_MTL,
         #[cfg(feature = "f-series")]
         mmc: p.ETHERNET_MMC,
-        #[cfg(feature = "ptp")]
+        #[cfg(all(feature = "ptp", feature = "f-series"))]
         ptp: p.ETHERNET_PTP,
     };
 

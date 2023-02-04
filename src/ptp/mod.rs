@@ -2,7 +2,10 @@
 //!
 //! See [`EthernetPTP`] for a more details.
 
-use crate::{dma::EthernetDMA, hal::rcc::Clocks, mac::EthernetMAC, peripherals::ETHERNET_PTP};
+use crate::{dma::EthernetDMA, Clocks};
+
+#[cfg(feature = "f-series")]
+use crate::{mac::EthernetMAC, peripherals::ETHERNET_PTP};
 
 mod timestamp;
 pub use timestamp::Timestamp;
@@ -44,6 +47,7 @@ pub use pps_pin::PPSPin;
 ///
 /// [`NonZeroU8`]: core::num::NonZeroU8
 pub struct EthernetPTP {
+    #[cfg(feature = "f-series")]
     eth_ptp: ETHERNET_PTP,
 }
 
@@ -65,14 +69,23 @@ impl EthernetPTP {
         (stssi, tsa)
     }
 
+    #[cfg(feature = "stm32h7xx-hal")]
+    /// # Safety
+    /// The reference to the registerblock obtained using this function
+    /// must _only_ be used to change strictly PTP related registers.
+    unsafe fn mac(&self) -> &crate::stm32::ethernet_mac::RegisterBlock {
+        &*crate::peripherals::ETHERNET_MAC::ptr()
+    }
+
     pub(crate) fn new(
-        eth_ptp: ETHERNET_PTP,
+        #[cfg(feature = "f-series")] eth_ptp: ETHERNET_PTP,
         clocks: Clocks,
         // Note(_dma): this field exists to ensure that the PTP is not
         // initialized before the DMA. If PTP is started before the DMA,
         // it doesn't work.
         _dma: &EthernetDMA,
     ) -> Self {
+        #[cfg(feature = "f-series")]
         // Mask timestamp interrupt register
         EthernetMAC::mask_timestamp_trigger_interrupt();
 
@@ -80,21 +93,51 @@ impl EthernetPTP {
 
         let (stssi, tsa) = Self::calculate_regs(hclk);
 
-        // Setup PTP timestamping in fine mode.
-        eth_ptp.ptptscr.write(|w| {
-            // Enable snapshots for all frames.
-            #[cfg(not(feature = "stm32f1xx-hal"))]
-            let w = w.tssarfe().set_bit();
+        #[cfg(feature = "f-series")]
+        let mut me = {
+            // Setup PTP timestamping in fine mode.
+            eth_ptp.ptptscr.write(|w| {
+                // Enable snapshots for all frames.
+                #[cfg(not(feature = "stm32f1xx-hal"))]
+                let w = w.tssarfe().set_bit();
 
-            w.tse().set_bit().tsfcu().set_bit()
-        });
+                w.tse().set_bit().tsfcu().set_bit()
+            });
 
-        // Set up subsecond increment
-        eth_ptp
-            .ptpssir
-            .write(|w| unsafe { w.stssi().bits(stssi.raw() as u8) });
+            // Set up subsecond increment
+            eth_ptp
+                .ptpssir
+                .write(|w| unsafe { w.stssi().bits(stssi.raw() as u8) });
 
-        let mut me = Self { eth_ptp };
+            Self { eth_ptp }
+        };
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        let mut me = {
+            let me = Self {};
+
+            // SAFETY: we only write to `mactscr` (timestamp control register)
+            let mac = unsafe { me.mac() };
+
+            mac.mactscr.modify(|_, w| {
+                w
+                    // Enable timestamp snapshots for all frames
+                    .tsenall()
+                    .set_bit()
+                    // Enable fine-grain update mode
+                    .tscfupdt()
+                    .set_bit()
+                    // Enable all timestamps
+                    .tsena()
+                    .set_bit()
+            });
+
+            // Set up the subsecond increment
+            mac.macssir
+                .write(|w| unsafe { w.ssinc().bits(stssi.raw() as u8) });
+
+            Self {}
+        };
 
         me.set_addend(tsa);
         me.set_time(Timestamp::new_unchecked(false, 0, 0));
@@ -104,49 +147,104 @@ impl EthernetPTP {
 
     /// Get the configured subsecond increment.
     pub fn subsecond_increment(&self) -> Subseconds {
-        Subseconds::new_unchecked(self.eth_ptp.ptpssir.read().stssi().bits() as u32)
+        #[cfg(feature = "f-series")]
+        return Subseconds::new_unchecked(self.eth_ptp.ptpssir.read().stssi().bits() as u32);
+        #[cfg(feature = "stm32h7xx-hal")]
+        // SAFETY: we only read `macssir` (subsecond register).
+        return Subseconds::new_unchecked(unsafe {
+            self.mac().macssir.read().ssinc().bits() as u32
+        });
     }
 
     /// Get the currently configured PTP clock addend.
     pub fn addend(&self) -> u32 {
-        self.eth_ptp.ptptsar.read().bits()
+        #[cfg(feature = "f-series")]
+        return self.eth_ptp.ptptsar.read().bits();
+        #[cfg(feature = "stm32h7xx-hal")]
+        // SAFETY: we only read `mactsar` (timestamp addend register).
+        return unsafe { self.mac().mactsar.read().bits() };
     }
 
     /// Set the PTP clock addend.
     #[inline(always)]
     pub fn set_addend(&mut self, rate: u32) {
+        #[cfg(feature = "f-series")]
         let ptp = &self.eth_ptp;
+        #[cfg(feature = "f-series")]
         ptp.ptptsar.write(|w| unsafe { w.bits(rate) });
 
-        #[cfg(feature = "stm32f1xx-hal")]
+        #[cfg(feature = "f-series")]
         {
-            while ptp.ptptscr.read().tsaru().bit_is_set() {}
-            ptp.ptptscr.modify(|_, w| w.tsaru().set_bit());
-            while ptp.ptptscr.read().tsaru().bit_is_set() {}
+            #[cfg(feature = "stm32f1xx-hal")]
+            {
+                while ptp.ptptscr.read().tsaru().bit_is_set() {}
+                ptp.ptptscr.modify(|_, w| w.tsaru().set_bit());
+                while ptp.ptptscr.read().tsaru().bit_is_set() {}
+            }
+
+            #[cfg(not(feature = "stm32f1xx-hal"))]
+            {
+                while ptp.ptptscr.read().ttsaru().bit_is_set() {}
+                ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
+                while ptp.ptptscr.read().ttsaru().bit_is_set() {}
+            }
         }
 
-        #[cfg(not(feature = "stm32f1xx-hal"))]
+        #[cfg(feature = "stm32h7xx-hal")]
         {
-            while ptp.ptptscr.read().ttsaru().bit_is_set() {}
-            ptp.ptptscr.modify(|_, w| w.ttsaru().set_bit());
-            while ptp.ptptscr.read().ttsaru().bit_is_set() {}
+            // SAFETY: we only write to `mactsar` (timestamp addend register)
+            // and `mactscr` (timestamp control register)
+            let (mactsar, mactscr) = unsafe {
+                let mac = self.mac();
+                (&mac.mactsar, &mac.mactscr)
+            };
+
+            mactsar.write(|w| unsafe { w.tsar().bits(rate) });
+
+            while mactscr.read().tsaddreg().bit_is_set() {}
+            mactscr.modify(|_, w| w.tsaddreg().set_bit());
+            while mactscr.read().tsaddreg().bit_is_set() {}
         }
     }
 
     /// Set the current time.
     pub fn set_time(&mut self, time: Timestamp) {
-        let ptp = &self.eth_ptp;
-
         let seconds = time.seconds();
+        // TODO(stm32h7): figure out if the time being signed
+        // means that we have a two's complement number or not
+        // (the RM makes it read as though it may be).
         let subseconds = time.subseconds_signed();
 
-        ptp.ptptshur.write(|w| unsafe { w.bits(seconds) });
-        ptp.ptptslur.write(|w| unsafe { w.bits(subseconds) });
+        #[cfg(feature = "f-series")]
+        {
+            let ptp = &self.eth_ptp;
 
-        // Initialise timestamp
-        while ptp.ptptscr.read().tssti().bit_is_set() {}
-        ptp.ptptscr.modify(|_, w| w.tssti().set_bit());
-        while ptp.ptptscr.read().tssti().bit_is_set() {}
+            ptp.ptptshur.write(|w| unsafe { w.bits(seconds) });
+            ptp.ptptslur.write(|w| unsafe { w.bits(subseconds) });
+
+            // Initialise timestamp
+            while ptp.ptptscr.read().tssti().bit_is_set() {}
+            ptp.ptptscr.modify(|_, w| w.tssti().set_bit());
+            while ptp.ptptscr.read().tssti().bit_is_set() {}
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            // SAFETY: we only write to `mactscr` (timestamp control register), `macstsur`
+            // (timestamp update seconds register) and `macstnur` (timestmap update subsecond/nanosecond
+            // register)
+            let (mactscr, macstsur, macstnur) = unsafe {
+                let mac = self.mac();
+                (&mac.mactscr, &mac.macstsur, &mac.macstnur)
+            };
+
+            macstsur.write(|w| unsafe { w.bits(seconds) });
+            macstnur.write(|w| unsafe { w.bits(subseconds) });
+
+            while mactscr.read().tsinit().bit_is_set() {}
+            mactscr.modify(|_, w| w.tsinit().set_bit());
+            while mactscr.read().tsinit().bit_is_set() {}
+        }
     }
 
     /// Add the provided time to the current time, atomically.
@@ -154,32 +252,70 @@ impl EthernetPTP {
     /// If `time` is negative, it will instead be subtracted from the
     /// system time.
     pub fn update_time(&mut self, time: Timestamp) {
-        let ptp = &self.eth_ptp;
-
         let seconds = time.seconds();
         let subseconds = time.subseconds_signed();
 
-        ptp.ptptshur.write(|w| unsafe { w.bits(seconds) });
-        ptp.ptptslur.write(|w| unsafe { w.bits(subseconds) });
+        #[cfg(feature = "f-series")]
+        {
+            let ptp = &self.eth_ptp;
 
-        // Add timestamp to global time
+            ptp.ptptshur.write(|w| unsafe { w.bits(seconds) });
+            ptp.ptptslur.write(|w| unsafe { w.bits(subseconds) });
 
-        let read_status = || {
-            let scr = ptp.ptptscr.read();
-            scr.tsstu().bit_is_set() || scr.tssti().bit_is_set()
-        };
+            // Add timestamp to global time
 
-        while read_status() {}
-        ptp.ptptscr.modify(|_, w| w.tsstu().set_bit());
-        while ptp.ptptscr.read().tsstu().bit_is_set() {}
+            let read_status = || {
+                let scr = ptp.ptptscr.read();
+                scr.tsstu().bit_is_set() || scr.tssti().bit_is_set()
+            };
+
+            while read_status() {}
+            ptp.ptptscr.modify(|_, w| w.tsstu().set_bit());
+            while ptp.ptptscr.read().tsstu().bit_is_set() {}
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            // SAFETY: we only write to `mactscr` (timestamp control register), `macstsur`
+            // (timestamp update seconds register) and `macstnur` (timestmap update subsecond/nanosecond
+            // register)
+            let (mactscr, macstsur, macstnur) = unsafe {
+                let mac = self.mac();
+                (&mac.mactscr, &mac.macstsur, &mac.macstnur)
+            };
+
+            macstsur.write(|w| unsafe { w.bits(seconds) });
+            macstnur.write(|w| unsafe { w.bits(subseconds) });
+
+            while mactscr.read().tsupdt().bit_is_set() {}
+            mactscr.modify(|_, w| w.tsupdt().set_bit());
+            while mactscr.read().tsupdt().bit_is_set() {}
+        }
     }
 
     /// Get the current time.
     pub fn get_time(&self) -> Timestamp {
         let try_read_time = || {
-            let seconds = self.eth_ptp.ptptshr.read().bits();
-            let subseconds = self.eth_ptp.ptptslr.read().bits();
-            let seconds_after = self.eth_ptp.ptptshr.read().bits();
+            #[cfg(feature = "f-series")]
+            let (seconds, subseconds, seconds_after) = {
+                let seconds = self.eth_ptp.ptptshr.read().bits();
+                let subseconds = self.eth_ptp.ptptslr.read().bits();
+                let seconds2 = self.eth_ptp.ptptshr.read().bits();
+                (seconds, subseconds, seconds2)
+            };
+
+            #[cfg(feature = "stm32h7xx-hal")]
+            let (seconds, subseconds, seconds_after) = {
+                let (macstsr, macstnr) = unsafe {
+                    let mac = self.mac();
+                    (&mac.macstsr, &mac.macstnr)
+                };
+
+                let seconds = macstsr.read().bits();
+                let subseconds = macstnr.read().bits();
+                let seconds2 = macstsr.read().bits();
+                (seconds, subseconds, seconds2)
+            };
 
             if seconds == seconds_after {
                 Ok(Timestamp::from_parts(seconds, subseconds))
@@ -207,7 +343,7 @@ impl EthernetPTP {
 /// Setting and configuring target time interrupts on the STM32F107 does not
 /// make any sense: we can generate the interrupt, but it is impossible to
 /// clear the flag as the register required to do so does not exist.
-#[cfg(not(feature = "stm32f1xx-hal"))]
+#[cfg(all(not(feature = "stm32f1xx-hal"), not(feature = "stm32h7xx-hal")))]
 impl EthernetPTP {
     /// Configure the target time.
     fn set_target_time(&mut self, timestamp: Timestamp) {

@@ -57,7 +57,7 @@ use crate::{
 };
 
 #[cfg(feature = "ptp")]
-use crate::{ptp::EthernetPTP, stm32::ETHERNET_PTP};
+use crate::ptp::EthernetPTP;
 
 // Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
 pub(crate) fn setup() {
@@ -241,8 +241,8 @@ pub struct PartsIn {
     #[cfg(feature = "stm32h7xx-hal")]
     pub mtl: ETHERNET_MTL,
 
-    #[cfg(feature = "ptp")]
-    pub ptp: ETHERNET_PTP,
+    #[cfg(all(feature = "ptp", feature = "f-series"))]
+    pub ptp: crate::stm32::ETHERNET_PTP,
 }
 
 /// Access to all configured parts of the ethernet peripheral.

@@ -144,6 +144,10 @@ impl TxDescriptor {
         }
     }
 
+    fn is_last(&self) -> bool {
+        (self.inner_raw.read(3) & TXDESC_3_LD) == TXDESC_3_LD
+    }
+
     // Placeholder for API parity with f-series descriptor.
     pub(super) fn setup(&mut self, _: &[u8]) {}
 
@@ -216,12 +220,11 @@ impl TxDescriptor {
 #[cfg(feature = "ptp")]
 impl TxDescriptor {
     fn read_timestamp(&mut self) -> Option<Timestamp> {
-        let tdes0 = self.inner_raw.read(0);
+        let contains_timestamp = (self.inner_raw.read(3) & TXDESC_3_TTSS) == TXDESC_3_TTSS;
 
-        let contains_timestamp = (tdes0 & TXDESC_0_TIMESTAMP_STATUS) == TXDESC_0_TIMESTAMP_STATUS;
-
-        if !self.is_owned() && contains_timestamp && Self::is_last(tdes0) {
-            Timestamp::from_descriptor(&self.inner_raw)
+        if !self.is_owned() && contains_timestamp && self.is_last() {
+            let (low, high) = (self.inner_raw.read(0), self.inner_raw.read(1));
+            Some(Timestamp::from_parts(high, low))
         } else {
             None
         }
