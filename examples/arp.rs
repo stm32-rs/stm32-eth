@@ -33,17 +33,6 @@ const PHY_ADDR: u8 = 0;
 static TIME: Mutex<RefCell<usize>> = Mutex::new(RefCell::new(0));
 static ETH_PENDING: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
-/// On H7s, the ethernet DMA does not have access to the normal ram
-/// so we must explicitly put them in SRAM.
-#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
-static mut TX_DESCRIPTORS: [TxDescriptor; 4] = [TxDescriptor::new(); 4];
-#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
-static mut TX_BUFFERS: [[u8; MTU + 2]; 4] = [[0u8; MTU + 2]; 4];
-#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
-static mut RX_DESCRIPTORS: [RxDescriptor; 4] = [RxDescriptor::new(); 4];
-#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
-static mut RX_BUFFERS: [[u8; MTU + 2]; 4] = [[0u8; MTU + 2]; 4];
-
 #[entry]
 fn main() -> ! {
     let p = Peripherals::take().unwrap();
@@ -57,8 +46,7 @@ fn main() -> ! {
 
     let (eth_pins, mdio, mdc, _) = common::setup_pins(gpio);
 
-    let rx_ring = RxDescriptorRing::new(unsafe { &mut RX_DESCRIPTORS }, unsafe { &mut RX_BUFFERS });
-    let tx_ring = TxDescriptorRing::new(unsafe { &mut TX_DESCRIPTORS }, unsafe { &mut TX_BUFFERS });
+    let (tx_ring, rx_ring) = crate::common::setup_rings();
 
     let Parts {
         mut dma,

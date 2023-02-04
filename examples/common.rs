@@ -4,7 +4,13 @@
 //!
 //! Note that this module isn't an example by itself.
 
-use stm32_eth::{hal::gpio::GpioExt, PartsIn};
+use core::mem::MaybeUninit;
+
+use stm32_eth::{
+    dma::{RxDescriptor, RxDescriptorRing, TxDescriptor, TxDescriptorRing},
+    hal::gpio::GpioExt,
+    PartsIn, MTU,
+};
 
 #[cfg(feature = "f-series")]
 use stm32_eth::hal::rcc::Clocks;
@@ -16,6 +22,31 @@ pub use pins::{setup_pins, Gpio};
 
 use fugit::RateExtU32;
 use stm32_eth::hal::rcc::RccExt;
+
+/// On H7s, the ethernet DMA does not have access to the normal ram
+/// so we must explicitly put them in SRAM.
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+static mut TX_DESCRIPTORS: MaybeUninit<[TxDescriptor; 4]> = MaybeUninit::uninit();
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+static mut TX_BUFFERS: MaybeUninit<[[u8; MTU + 2]; 4]> = MaybeUninit::uninit();
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
+static mut RX_DESCRIPTORS: MaybeUninit<[RxDescriptor; 4]> = MaybeUninit::uninit();
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
+static mut RX_BUFFERS: MaybeUninit<[[u8; MTU + 2]; 4]> = MaybeUninit::uninit();
+
+/// Set up the buffers to be used
+pub fn setup_rings() -> (TxDescriptorRing<'static>, RxDescriptorRing<'static>) {
+    let tx_desc = unsafe { TX_DESCRIPTORS.write([TxDescriptor::new(); 4]) };
+    let tx_buf = unsafe { TX_BUFFERS.write([[0u8; MTU + 2]; 4]) };
+
+    let rx_desc = unsafe { RX_DESCRIPTORS.write([RxDescriptor::new(); 4]) };
+    let rx_buf = unsafe { RX_BUFFERS.write([[0u8; MTU + 2]; 4]) };
+
+    (
+        TxDescriptorRing::new(tx_desc, tx_buf),
+        RxDescriptorRing::new(rx_desc, rx_buf),
+    )
+}
 
 /// Setup the clocks and return clocks and a GPIO struct that
 /// can be used to set up all of the pins.

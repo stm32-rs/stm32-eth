@@ -65,27 +65,13 @@ mod app {
     #[monotonic(binds = SysTick, default = true)]
     type Monotonic = Systick<1000>;
 
-    /// On H7s, the ethernet DMA does not have access to the normal ram
-    /// so we must explicitly put them in SRAM.
-    #[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
-    static mut TX_DESCRIPTORS: [TxDescriptor; 4] = [TxDescriptor::new(); 4];
-    #[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
-    static mut TX_BUFFERS: [[u8; MTU + 2]; 4] = [[0u8; MTU + 2]; 4];
-    #[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
-    static mut RX_DESCRIPTORS: [RxDescriptor; 4] = [RxDescriptor::new(); 4];
-    #[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth2")]
-    static mut RX_BUFFERS: [[u8; MTU + 2]; 4] = [[0u8; MTU + 2]; 4];
-
     #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
         let core = cx.core;
         let p = cx.device;
 
-        let rx_ring =
-            RxDescriptorRing::new(unsafe { &mut RX_DESCRIPTORS }, unsafe { &mut RX_BUFFERS });
-        let tx_ring =
-            TxDescriptorRing::new(unsafe { &mut TX_DESCRIPTORS }, unsafe { &mut TX_BUFFERS });
+        let (tx_ring, rx_ring) = crate::common::setup_rings();
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
@@ -192,7 +178,7 @@ mod app {
                 buf[12..14].copy_from_slice(&ETH_TYPE);
                 buf[14..22].copy_from_slice(&now.raw().to_be_bytes());
             })
-            .ok();
+            .unwrap();
             *tx_id = Some((tx_id_val, now));
             *tx_id_ctr += 1;
             *tx_id_ctr |= 0x8000_0000;
@@ -210,7 +196,7 @@ mod app {
             cx.shared.scheduled_time,
         )
             .lock(|dma, tx_id, ptp, _sched_time| {
-                dma.interrupt_handler();
+                let interrupt_summary = dma.interrupt_handler();
 
                 #[cfg(not(feature = "stm32f107"))]
                 {
@@ -302,15 +288,17 @@ mod app {
                     }
                 }
 
-                if let Some((tx_id, sent_time)) = tx_id.take() {
-                    if let Ok(ts) = dma.get_timestamp_for_id(PacketId(tx_id)) {
-                        defmt::info!("TX timestamp: {}", ts);
-                        defmt::debug!(
+                if interrupt_summary.is_tx {
+                    if let Some((tx_id, sent_time)) = tx_id.take() {
+                        if let Ok(ts) = dma.get_timestamp_for_id(PacketId(tx_id)) {
+                            defmt::info!("TX timestamp: {}", ts);
+                            defmt::debug!(
                         "Diff between TX timestamp and the time that was put into the packet: {}",
                         ts - sent_time
                     );
-                    } else {
-                        defmt::warn!("Failed to retrieve TX timestamp");
+                        } else {
+                            defmt::warn!("Failed to retrieve TX timestamp");
+                        }
                     }
                 }
             });
