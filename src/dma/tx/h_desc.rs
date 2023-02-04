@@ -144,15 +144,24 @@ impl TxDescriptor {
         }
     }
 
+    #[allow(unused)]
     fn is_last(&self) -> bool {
         (self.inner_raw.read(3) & TXDESC_3_LD) == TXDESC_3_LD
     }
 
     // Placeholder for API parity with f-series descriptor.
-    pub(super) fn setup(&mut self, _: &[u8]) {}
+    pub(super) fn setup(&mut self, _: &[u8]) {
+        // Zero-out all fields in the descriptor
+        (0..4).for_each(|n| unsafe { self.inner_raw.write(n, 0) });
+    }
 
     pub(super) fn is_owned(&self) -> bool {
         (self.inner_raw.read(3) & TXDESC_3_OWN) == TXDESC_3_OWN
+    }
+
+    #[allow(unused)]
+    pub(super) fn is_context(&self) -> bool {
+        (self.inner_raw.read(3) & TXDESC_3_CTXT) == TXDESC_3_CTXT
     }
 
     #[allow(unused)]
@@ -236,14 +245,5 @@ impl TxDescriptor {
 
     pub(super) fn timestamp(&self) -> Option<&Timestamp> {
         self.cached_timestamp.as_ref()
-    }
-}
-
-impl TxDescriptor {
-    /// The initial value for a TxDescriptor
-    pub const TX_INIT: Self = Self::new();
-
-    pub(crate) fn prepare_packet(&mut self) -> bool {
-        !self.is_owned()
     }
 }

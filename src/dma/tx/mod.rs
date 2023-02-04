@@ -117,8 +117,8 @@ impl<'data> TxRing<'data, NotRunning> {
             // Assert that the descriptors are properly aligned.
             assert!(ring_ptr as u32 & !0b11 == ring_ptr as u32);
             assert!(
-                self.ring.last_descriptor_mut() as *const _ as u32 & !0b11
-                    == self.ring.last_descriptor_mut() as *const _ as u32
+                self.ring.last_descriptor() as *const _ as u32 & !0b11
+                    == self.ring.last_descriptor() as *const _ as u32
             );
 
             // Set the start pointer.
@@ -175,7 +175,7 @@ impl<'data> TxRing<'data, Running> {
 
         assert!(length <= buffer.len());
 
-        if descriptor.prepare_packet() {
+        if !descriptor.is_owned() {
             let r = f(&mut buffer[0..length]);
 
             descriptor.send(packet_id, &buffer[0..length]);

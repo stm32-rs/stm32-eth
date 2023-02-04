@@ -39,7 +39,7 @@ const _TXDESC_SIZE: usize = core::mem::size_of::<TxDescriptor>();
 /// value which applies to both TX and RX descriptors.
 const _ASSERT_DESCRIPTOR_SIZES: () = assert!(_RXDESC_SIZE == _TXDESC_SIZE);
 
-const DESC_WORD_SKIP: u8 = (core::mem::size_of::<RxDescriptor>() / 4 - DESC_SIZE) as u8;
+const DESC_WORD_SKIP: u8 = ((_RXDESC_SIZE / 4) - DESC_SIZE) as u8;
 
 const _ASSERT_DESC_WORD_SKIP_SIZE: () = assert!(DESC_WORD_SKIP <= 0b111);
 
