@@ -182,12 +182,3 @@ impl TxDescriptor {
         self.cached_timestamp.as_ref()
     }
 }
-
-impl TxDescriptor {
-    /// The initial value for a TxDescriptor
-    pub const TX_INIT: Self = Self::new();
-
-    pub(crate) fn prepare_packet(&mut self) -> bool {
-        !self.is_owned()
-    }
-}
