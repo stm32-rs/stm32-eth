@@ -67,12 +67,6 @@ impl TxDescriptor {
 
     pub(super) fn setup(&mut self, buffer: &mut [u8]) {
         self.set_buffer(buffer);
-        unsafe {
-            self.inner_raw.write(
-                0,
-                TXDESC_0_CIC0 | TXDESC_0_CIC1 | TXDESC_0_FS | TXDESC_0_LS | TXDESC_0_IC,
-            );
-        }
     }
 
     #[allow(unused)]
@@ -112,7 +106,17 @@ impl TxDescriptor {
         atomic::fence(Ordering::Release);
         atomic::compiler_fence(Ordering::Release);
 
-        unsafe { self.inner_raw.modify(0, |w| w | extra_flags | TXDESC_0_OWN) };
+        unsafe {
+            self.inner_raw.modify(0, |w| {
+                w | extra_flags
+                    | TXDESC_0_OWN
+                    | TXDESC_0_CIC0
+                    | TXDESC_0_CIC1
+                    | TXDESC_0_FS
+                    | TXDESC_0_LS
+                    | TXDESC_0_IC
+            })
+        };
 
         // Used to flush the store buffer as fast as possible to make the buffer available for the
         // DMA.
@@ -144,14 +148,14 @@ impl TxDescriptor {
     pub(super) fn set_end_of_ring(&mut self) {
         unsafe { self.inner_raw.modify(0, |w| w | TXDESC_0_TER) };
     }
-
-    pub(super) fn packet_id(&self) -> Option<&PacketId> {
-        self.packet_id.as_ref()
-    }
 }
 
 #[cfg(feature = "ptp")]
 impl TxDescriptor {
+    pub(super) fn packet_id(&self) -> Option<&PacketId> {
+        self.packet_id.as_ref()
+    }
+
     fn read_timestamp(&mut self) -> Option<Timestamp> {
         let tdes0 = self.inner_raw.read(0);
 

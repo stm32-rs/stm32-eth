@@ -41,7 +41,7 @@ pub(crate) struct TxRing<'data, STATE> {
 impl<'data, STATE> TxRing<'data, STATE> {
     pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
         #[cfg(feature = "f-series")]
-        let tx_status = eth_dma.dmasr().read().tps().bits();
+        let tx_status = eth_dma.dmasr.read().tps().bits();
 
         #[cfg(feature = "stm32h7xx-hal")]
         let tx_status = eth_dma.dmadsr.read().tps0().bits();
@@ -97,7 +97,7 @@ impl<'data> TxRing<'data, NotRunning> {
 
         #[cfg(feature = "f-series")]
         // Set end of ring register
-        self.ring.last_descriptor().set_end_of_ring();
+        self.ring.last_descriptor_mut().set_end_of_ring();
 
         let ring_ptr = self.ring.descriptors_start_address();
 
@@ -235,7 +235,7 @@ impl<'data> TxRing<'data, Running> {
 impl<'data> TxRing<'data, Running> {
     pub(crate) fn collect_timestamps(&mut self) {
         for descriptor in self.ring.descriptors_mut() {
-            f_descriptor.attach_timestamp();
+            descriptor.attach_timestamp();
         }
     }
 
@@ -243,12 +243,12 @@ impl<'data> TxRing<'data, Running> {
         let descriptor = if let Some(descriptor) =
             self.ring.descriptors().find(|d| d.packet_id() == Some(&id))
         {
-            f_descriptor
+            descriptor
         } else {
             return Err(TimestampError::IdNotFound);
         };
 
-        f_descriptor
+        descriptor
             .timestamp()
             .map(|t| *t)
             .ok_or(TimestampError::NotYetTimestamped)

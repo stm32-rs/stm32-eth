@@ -6,12 +6,6 @@ use cortex_m::peripheral::NVIC;
 
 use crate::{peripherals::ETHERNET_DMA, stm32::Interrupt};
 
-#[cfg(feature = "f-series")]
-type ETHERNET_MTL = ();
-
-#[cfg(feature = "stm32h7xx-hal")]
-use crate::stm32::ETHERNET_MTL;
-
 #[cfg(feature = "smoltcp-phy")]
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
@@ -77,7 +71,7 @@ pub struct EthernetDMA<'rx, 'tx> {
 pub(crate) struct DmaParts {
     pub eth_dma: ETHERNET_DMA,
     #[cfg(feature = "stm32h7xx-hal")]
-    pub eth_mtl: ETHERNET_MTL,
+    pub eth_mtl: crate::stm32::ETHERNET_MTL,
 }
 
 impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {

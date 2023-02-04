@@ -10,7 +10,7 @@ pub use miim::*;
 pub(crate) struct MacParts {
     pub eth_mac: ETHERNET_MAC,
     #[cfg(feature = "f-series")]
-    pub eth_mmc: ETHERNET_MMC,
+    pub eth_mmc: crate::stm32::ETHERNET_MMC,
 }
 
 impl MacParts {
@@ -18,7 +18,7 @@ impl MacParts {
         let Self { eth_mac, .. } = self;
 
         #[cfg(feature = "f-series")]
-        let (mac_filter_reg, flow_control) = (&eth_mac.macffr, &eth_mac.macfcr);
+        let (mac_filter, flow_control) = (&eth_mac.macffr, &eth_mac.macfcr);
         #[cfg(feature = "stm32h7xx-hal")]
         let (mac_filter, flow_control) = (&eth_mac.macpfr, &eth_mac.macqtx_fcr);
 
@@ -42,14 +42,9 @@ impl MacParts {
     }
 
     fn disable_mmc_interrupts(&self) {
-        let Self {
-            eth_mac,
-            #[cfg(feature = "f-series")]
-            eth_mmc,
-        } = self;
-
         #[cfg(feature = "f-series")]
         {
+            let eth_mmc = &self.eth_mmc;
             // Disable all MMC RX interrupts
             eth_mmc
                 .mmcrimr
@@ -69,6 +64,8 @@ impl MacParts {
 
         #[cfg(feature = "stm32h7xx-hal")]
         {
+            let eth_mac = &self.eth_mac;
+
             // Disable all MMC RX interrupts
             eth_mac.mmc_rx_interrupt_mask.write(|w| {
                 w.rxlpitrcim()
@@ -163,11 +160,7 @@ impl EthernetMAC {
         // it doesn't work.
         _dma: &EthernetDMA,
     ) -> Result<Self, WrongClock> {
-        let MacParts {
-            eth_mac,
-            #[cfg(feature = "f-series")]
-            eth_mmc,
-        } = &parts;
+        let eth_mac = &parts.eth_mac;
 
         // TODO: configure MDIOS
         #[cfg(feature = "f-series")]
@@ -218,12 +211,7 @@ impl EthernetMAC {
                 .dr()
                 .set_bit();
 
-            // Fast Ethernet speed
-            w.fes()
-                .set_bit()
-                // Duplex mode
-                .dm()
-                .set_bit()
+            w
                 // Receiver enable
                 .re()
                 .set_bit()
@@ -242,6 +230,31 @@ impl EthernetMAC {
         me.set_speed(initial_speed);
 
         Ok(me)
+    }
+
+    /// Set the Ethernet Speed at which the MAC communicates
+    ///
+    /// Note that this does _not_ affect the PHY in any way. To
+    /// configure the PHY, use [`EthernetMACWithMii`] (see: [`Self::with_mii`])
+    /// or [`Stm32Mii`] (see: [`Self::mii`])
+    pub fn set_speed(&mut self, speed: Speed) {
+        self.eth_mac.maccr.modify(|_, w| match speed {
+            Speed::HalfDuplexBase10T => w.fes().clear_bit().dm().clear_bit(),
+            Speed::FullDuplexBase10T => w.fes().clear_bit().dm().set_bit(),
+            Speed::HalfDuplexBase100Tx => w.fes().set_bit().dm().clear_bit(),
+            Speed::FullDuplexBase100Tx => w.fes().set_bit().dm().set_bit(),
+        });
+    }
+
+    /// Get the Ethernet Speed at which the MAC communicates
+    pub fn get_speed(&self) -> Speed {
+        let cr = self.eth_mac.maccr.read();
+        match (cr.fes().bit_is_set(), cr.dm().bit_is_set()) {
+            (false, false) => Speed::HalfDuplexBase10T,
+            (false, true) => Speed::FullDuplexBase10T,
+            (true, false) => Speed::HalfDuplexBase100Tx,
+            (true, true) => Speed::FullDuplexBase100Tx,
+        }
     }
 
     /// Borrow access to the MAC's SMI.
@@ -271,36 +284,7 @@ impl EthernetMAC {
         MDIO: MdioPin,
         MDC: MdcPin,
     {
-        EthernetMACWithMii {
-            eth_mac: self,
-            mdio,
-            mdc,
-        }
-    }
-
-    /// Set the Ethernet Speed at which the MAC communicates
-    ///
-    /// Note that this does _not_ affect the PHY in any way. To
-    /// configure the PHY, use [`EthernetMACWithMii`] (see: [`Self::with_mii`])
-    /// or [`Stm32Mii`] (see: [`Self::mii`])
-    pub fn set_speed(&mut self, speed: Speed) {
-        self.eth_mac.maccr.modify(|_, w| match speed {
-            Speed::HalfDuplexBase10T => w.fes().clear_bit().dm().clear_bit(),
-            Speed::FullDuplexBase10T => w.fes().clear_bit().dm().set_bit(),
-            Speed::HalfDuplexBase100Tx => w.fes().set_bit().dm().clear_bit(),
-            Speed::FullDuplexBase100Tx => w.fes().set_bit().dm().set_bit(),
-        });
-    }
-
-    /// Get the Ethernet Speed at which the MAC communicates
-    pub fn get_speed(&self) -> Speed {
-        let cr = self.eth_mac.maccr.read();
-        match (cr.fes().bit_is_set(), cr.dm().bit_is_set()) {
-            (false, false) => Speed::HalfDuplexBase10T,
-            (false, true) => Speed::FullDuplexBase10T,
-            (true, false) => Speed::HalfDuplexBase100Tx,
-            (true, true) => Speed::FullDuplexBase100Tx,
-        }
+        EthernetMACWithMii::new(self, mdio, mdc)
     }
 
     #[cfg(feature = "ptp")]

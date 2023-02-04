@@ -196,6 +196,7 @@ mod pac_override_impl {
 
         #[doc = r"Return the pointer to the register block"]
         #[inline(always)]
+        #[cfg_attr(not(feature = "ptp"), allow(unused))]
         pub const fn ptr() -> *const MacRegisterBlock {
             Self::PTR
         }

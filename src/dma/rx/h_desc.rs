@@ -136,11 +136,12 @@ impl RxDescriptor {
     }
 
     pub(super) fn setup(&mut self, buffer: &[u8]) {
-        self.set_owned(buffer.as_ptr());
+        self.set_owned(buffer);
     }
 
     /// Pass ownership to the DMA engine
-    pub(super) fn set_owned(&mut self, buffer: *const u8) {
+    pub(super) fn set_owned(&mut self, buffer: &[u8]) {
+        let buffer = buffer.as_ptr();
         self.set_buffer(buffer);
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
@@ -205,7 +206,7 @@ impl RxDescriptor {
 
             Ok(())
         } else {
-            self.set_owned(buffer.as_ptr());
+            self.set_owned(buffer);
             Err(RxError::Truncated)
         }
     }

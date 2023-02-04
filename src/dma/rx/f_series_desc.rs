@@ -59,8 +59,7 @@ impl RxDescriptor {
     }
 
     pub(super) fn setup(&mut self, buffer: &mut [u8]) {
-        self.set_buffer(buffer);
-        self.set_owned();
+        self.set_owned(buffer);
     }
 
     /// Is owned by the DMA engine?
@@ -71,7 +70,9 @@ impl RxDescriptor {
     /// Pass ownership to the DMA engine
     ///
     /// Overrides old timestamp data
-    pub(super) fn set_owned(&mut self) {
+    pub(super) fn set_owned(&mut self, buffer: &mut [u8]) {
+        self.set_buffer(buffer);
+
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]
         atomic::fence(Ordering::Release);
@@ -125,11 +126,15 @@ impl RxDescriptor {
         ((self.inner_raw.read(0) >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize
     }
 
-    pub(super) fn take_received(&mut self, packet_id: Option<PacketId>) -> Result<(), RxError> {
+    pub(super) fn take_received(
+        &mut self,
+        packet_id: Option<PacketId>,
+        buffer: &mut [u8],
+    ) -> Result<(), RxError> {
         if self.is_owned() {
             Err(RxError::WouldBlock)
         } else if self.has_error() {
-            self.set_owned();
+            self.set_owned(buffer);
             Err(RxError::DmaError)
         } else if self.is_first() && self.is_last() {
             // "Subsequent reads and writes cannot be moved ahead of preceding reads."
@@ -143,7 +148,7 @@ impl RxDescriptor {
 
             Ok(())
         } else {
-            self.set_owned();
+            self.set_owned(buffer);
             Err(RxError::Truncated)
         }
     }
@@ -151,14 +156,14 @@ impl RxDescriptor {
     pub(super) fn set_end_of_ring(&mut self) {
         unsafe { self.inner_raw.modify(1, |w| w | RXDESC_1_RER) }
     }
-
-    pub(super) fn packet_id(&self) -> Option<&PacketId> {
-        self.packet_id.as_ref()
-    }
 }
 
 #[cfg(feature = "ptp")]
 impl RxDescriptor {
+    pub(super) fn packet_id(&self) -> Option<&PacketId> {
+        self.packet_id.as_ref()
+    }
+
     /// Get PTP timestamps if available
     pub(super) fn read_timestamp(&self) -> Option<Timestamp> {
         #[cfg(not(feature = "stm32f1xx-hal"))]

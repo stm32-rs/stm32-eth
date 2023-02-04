@@ -1,6 +1,7 @@
 pub use ieee802_3_miim::Miim;
-
 pub use ieee802_3_miim::*;
+
+use core::ops::{Deref, DerefMut};
 
 use crate::{peripherals::ETHERNET_MAC, stm32::ethernet_mac::MACMIIAR};
 
@@ -157,7 +158,7 @@ where
     MDIO: MdioPin,
     MDC: MdcPin,
 {
-    pub(crate) eth_mac: EthernetMAC,
+    eth_mac: EthernetMAC,
     mdio: MDIO,
     mdc: MDC,
 }
@@ -226,7 +227,7 @@ where
     }
 }
 
-impl<MDIO, MDC> miim::Miim for EthernetMACWithMii<MDIO, MDC>
+impl<MDIO, MDC> Miim for EthernetMACWithMii<MDIO, MDC>
 where
     MDIO: MdioPin,
     MDC: MdcPin,

@@ -280,7 +280,7 @@ impl<'a> core::ops::DerefMut for RxPacket<'a> {
 
 impl<'a> Drop for RxPacket<'a> {
     fn drop(&mut self) {
-        self.entry.set_owned(self.buffer.as_ptr());
+        self.entry.set_owned(self.buffer);
     }
 }
 

@@ -108,32 +108,27 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    let dma_parts = DmaParts {
+        eth_dma: parts.dma.into(),
+        #[cfg(feature = "stm32h7xx-hal")]
+        eth_mtl: parts.mtl,
+    };
+
+    let mac_parts = MacParts {
+        eth_mac: parts.mac.into(),
+        #[cfg(feature = "f-series")]
+        eth_mmc: parts.mmc.into(),
+    };
+
     // Congfigure and start up the ethernet DMA.
-    let dma = EthernetDMA::new(
-        DmaParts {
-            eth_dma: parts.dma,
-            #[cfg(feature = "stm32h7xx-hal")]
-            eth_mtl: parts.mtl,
-        },
-        rx_buffer,
-        tx_buffer,
-    );
+    let dma = EthernetDMA::new(dma_parts, rx_buffer, tx_buffer);
 
     // Configure the ethernet PTP
     #[cfg(feature = "ptp")]
     let ptp = EthernetPTP::new(parts.ptp.into(), clocks, &dma);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(
-        MacParts {
-            eth_mac: parts.mac.into(),
-            #[cfg(feature = "f-series")]
-            eth_mmc: parts.mmc.into(),
-        },
-        clocks,
-        Speed::FullDuplexBase100Tx,
-        &dma,
-    )?;
+    let mac = EthernetMAC::new(mac_parts, clocks, Speed::FullDuplexBase100Tx, &dma)?;
 
     let parts = Parts {
         mac,
@@ -192,23 +187,25 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
-    let eth_mac = parts.mac.into();
+    let dma_parts = DmaParts {
+        eth_dma: parts.dma.into(),
+    };
+
+    let mac_parts = MacParts {
+        eth_mac: parts.mac.into(),
+        eth_mmc: parts.mmc.into(),
+    };
 
     // Congfigure and start up the ethernet DMA.
-    let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(dma_parts, rx_buffer, tx_buffer);
 
     // Configure the ethernet PTP
     #[cfg(feature = "ptp")]
     let ptp = EthernetPTP::new(parts.ptp.into(), clocks, &dma);
 
     // Configure the ethernet MAC
-    let mac = EthernetMAC::new(
-        MacParts { eth_mac, eth_mmc },
-        clocks,
-        Speed::FullDuplexBase100Tx,
-        &dma,
-    )?
-    .with_mii(mdio, mdc);
+    let mac =
+        EthernetMAC::new(mac_parts, clocks, Speed::FullDuplexBase100Tx, &dma)?.with_mii(mdio, mdc);
 
     let parts = Parts {
         mac,
