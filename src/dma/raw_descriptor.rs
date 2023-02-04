@@ -58,7 +58,7 @@ impl RawDescriptor {
 }
 
 pub struct DescriptorRing<'data, T> {
-    pub descriptors: &'data mut [T],
+    descriptors: &'data mut [T],
     buffers: &'data mut [[u8; MTU + 2]],
 }
 
