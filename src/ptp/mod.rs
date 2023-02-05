@@ -415,7 +415,6 @@ impl EthernetPTP {
         is_tsint
     }
 
-    #[cfg(feature = "f-series")]
     /// Configure the PPS output frequency.
     ///
     /// The PPS output frequency becomes `2 ^ pps_freq`. `pps_freq` is
@@ -426,9 +425,18 @@ impl EthernetPTP {
         // SAFETY: we atomically write to the PTPPPSCR register, which is
         // not read or written to anywhere else. The SVD files are incorrectly
         // saying that the bits in this register are read-only.
+        #[cfg(feature = "f-series")]
         unsafe {
             let ptpppscr = self.eth_ptp.ptpppscr.as_ptr() as *mut u32;
             core::ptr::write_volatile(ptpppscr, pps_freq as u32);
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            // SAFETY: we only access and modify the `macppscr` (PPS Control register)
+            let macppscr = unsafe { &self.mac().macppscr };
+
+            macppscr.modify(|_, w| w.ppsctrl().variant(pps_freq));
         }
     }
 }
@@ -442,7 +450,7 @@ mod test {
     // with the provided clock speeds.
     #[test]
     fn hclk_to_regs() {
-        for hclk_hz in (25..180).map(|v| v * 1_000_000) {
+        for hclk_hz in (25..480).map(|v| v * 1_000_000) {
             let (stssi, tsa) = EthernetPTP::calculate_regs(hclk_hz);
 
             let stssi = stssi.raw() as f64;
