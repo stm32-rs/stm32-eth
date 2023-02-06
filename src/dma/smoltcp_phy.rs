@@ -1,7 +1,7 @@
 use super::rx::RxRing;
 use super::tx::TxRing;
 use super::EthernetDMA;
-use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
+use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, PacketId, RxToken, TxToken};
 use smoltcp::time::Instant;
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/smoltcp-rs/smoltcp)
@@ -17,25 +17,43 @@ impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
         caps
     }
 
-    fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+    fn receive(
+        &mut self,
+        _timestamp: Instant,
+        rx_packet_id: PacketId,
+        tx_packet_id: PacketId,
+    ) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         if self.tx_available() && self.rx_available() {
             let EthernetDMA {
                 rx_ring, tx_ring, ..
             } = self;
 
-            let rx = EthRxToken { rx_ring };
+            let rx = EthRxToken {
+                rx_ring,
+                packet_id: rx_packet_id,
+            };
 
-            let tx = EthTxToken { tx_ring };
+            let tx = EthTxToken {
+                tx_ring,
+                packet_id: tx_packet_id,
+            };
             Some((rx, tx))
         } else {
             None
         }
     }
 
-    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
+    fn transmit(
+        &mut self,
+        _timestamp: Instant,
+        tx_packet_id: PacketId,
+    ) -> Option<Self::TxToken<'_>> {
         if self.tx_available() {
             let EthernetDMA { tx_ring, .. } = self;
-            Some(EthTxToken { tx_ring })
+            Some(EthTxToken {
+                tx_ring,
+                packet_id: tx_packet_id,
+            })
         } else {
             None
         }
@@ -46,6 +64,7 @@ impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
 /// an ethernet packet.
 pub struct EthRxToken<'a, 'rx> {
     rx_ring: &'a mut RxRing<'rx>,
+    packet_id: PacketId,
 }
 
 impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
@@ -54,7 +73,11 @@ impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
         F: FnOnce(&mut [u8]) -> R,
     {
         // NOTE(unwrap): an `EthRxToken` is only created when `eth.rx_available()`
-        let mut packet = self.rx_ring.recv_next(None).ok().unwrap();
+        let mut packet = self
+            .rx_ring
+            .recv_next(Some(self.packet_id.into()))
+            .ok()
+            .unwrap();
         let result = f(&mut packet);
         packet.free();
         result
@@ -65,6 +88,7 @@ impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
 /// packet later with [`TxToken::consume()`].
 pub struct EthTxToken<'a, 'tx> {
     tx_ring: &'a mut TxRing<'tx>,
+    packet_id: PacketId,
 }
 
 impl<'dma, 'tx> TxToken for EthTxToken<'dma, 'tx> {
@@ -74,6 +98,9 @@ impl<'dma, 'tx> TxToken for EthTxToken<'dma, 'tx> {
     {
         // NOTE(unwrap): an `EthTxToken` is only created if
         // there is a descriptor available for sending.
-        self.tx_ring.send(len, None, f).ok().unwrap()
+        self.tx_ring
+            .send(len, Some(self.packet_id.into()), f)
+            .ok()
+            .unwrap()
     }
 }

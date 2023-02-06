@@ -23,3 +23,10 @@ impl From<u32> for PacketId {
         Self(value)
     }
 }
+
+#[cfg(feature = "smoltcp-phy")]
+impl From<smoltcp::phy::PacketId> for PacketId {
+    fn from(value: smoltcp::phy::PacketId) -> Self {
+        Self(value.id())
+    }
+}
