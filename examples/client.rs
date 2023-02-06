@@ -82,11 +82,11 @@ impl Default for Client {
 impl Client {
     pub fn print_timestamps(&self) {
         defmt::debug!("Timestamp information: ");
-        defmt::debug!("t1: {}", self.t1);
+        defmt::debug!("t1:  {}", self.t1);
         defmt::debug!("t1': {}", self.t1_prim);
-        defmt::debug!("t2: {}", self.t2);
+        defmt::debug!("t2:  {}", self.t2);
         defmt::debug!("t2': {}", self.t2_prim);
-        defmt::debug!("t3: {}", self.t3);
+        defmt::debug!("t3:  {}", self.t3);
         defmt::debug!("t3': {}", self.t3_prim);
     }
 
@@ -249,13 +249,14 @@ mod app {
         });
     }
 
-    #[task(binds = ETH, shared = [dma, ptp, client], local = [tx_id_ctr: u32 = 0x8000_0000, start_addend], priority = 2)]
+    #[task(binds = ETH, shared = [dma, ptp, client], local = [tx_id_ctr: u32 = 0x8000_0000, start_addend, addend_integrator: i64 = 0], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (dma, client, ptp, tx_id_ctr) = (
+        let (dma, client, ptp, tx_id_ctr, addend_integrator) = (
             cx.shared.dma,
             cx.shared.client,
             cx.shared.ptp,
             cx.local.tx_id_ctr,
+            cx.local.addend_integrator,
         );
 
         let recv_data = |buf: &mut [u8], dma: &mut EthernetDMA| {
@@ -367,23 +368,29 @@ mod app {
                     let offset = client.calculate_offset();
 
                     if offset.seconds() > 0 || offset.nanos() > 200_000 {
+                        *addend_integrator = 0;
                         defmt::info!("Updating time. Offset {} ", offset);
                         let updated_time = now + offset;
                         ptp.set_time(updated_time);
                     } else {
-                        let offset_nanos = offset.nanos() as u64;
-
-                        let p1 = ((offset_nanos * start_addend as u64) / 1_000_000_000) as u32;
-
-                        defmt::info!("Addend correction value: {}. Offset: {}", p1, offset);
-
-                        defmt::println!("{}", offset);
-
+                        let mut offset_nanos = offset.nanos() as i64;
                         if offset.is_negative() {
-                            ptp.set_addend(start_addend - p1);
-                        } else {
-                            ptp.set_addend(start_addend + p1);
-                        };
+                            offset_nanos *= -1;
+                        }
+
+                        let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
+                        *addend_integrator += error / 200;
+
+                        defmt::info!(
+                            "Error: {}. Integrator: {}, Offset: {} ns",
+                            error,
+                            addend_integrator,
+                            offset.nanos()
+                        );
+
+                        let new_addend =
+                            (start_addend as i64 + error / 4 + *addend_integrator) as u32;
+                        ptp.set_addend(new_addend);
                     }
 
                     *client = Default::default();
