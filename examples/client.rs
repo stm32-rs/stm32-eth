@@ -90,13 +90,13 @@ impl Client {
         defmt::debug!("t3': {}", self.t3_prim);
     }
 
-    pub fn calculate_offset(&self) -> Timestamp {
-        let t1 = self.t1.unwrap();
-        let t1_prim = self.t1_prim.unwrap();
-        let t2 = self.t2.unwrap();
-        let t2_prim = self.t2_prim.unwrap();
-        let _t3 = self.t3.unwrap();
-        let _t3_prim = self.t3_prim.unwrap();
+    pub fn calculate_offset(&self) -> Option<Timestamp> {
+        let t1 = self.t1?;
+        let t1_prim = self.t1_prim?;
+        let t2 = self.t2?;
+        let t2_prim = self.t2_prim?;
+        let _t3 = self.t3?;
+        let _t3_prim = self.t3_prim?;
 
         let double_offset = t1_prim - t1 - t2_prim + t2;
 
@@ -104,7 +104,7 @@ impl Client {
         let offset = (raw / 2).neg();
         let offset = Timestamp::new_raw(offset);
 
-        offset
+        Some(offset)
     }
 }
 
@@ -112,6 +112,14 @@ impl Client {
 mod app {
 
     use fugit::ExtU64;
+    use smoltcp::{
+        iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage},
+        socket::udp,
+        wire::{
+            EthernetAddress, HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint,
+            Ipv4Address,
+        },
+    };
 
     use crate::{common::EthernetPhy, Client};
 
@@ -119,15 +127,18 @@ mod app {
     use systick_monotonic::Systick;
 
     use stm32_eth::{
-        dma::{EthernetDMA, PacketId, RxRingEntry, TxRingEntry},
+        dma::{EthernetDMA, RxRingEntry, TxRingEntry},
         mac::Speed,
         ptp::{EthernetPTP, Timestamp},
         Parts,
     };
 
-    const SERVER_ADDR: [u8; 6] = [0xEF, 0xBE, 0xAD, 0xDE, 0x00, 0x00];
     const CLIENT_ADDR: [u8; 6] = [0x80, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
-    const ETH_TYPE: [u8; 2] = [0xFF, 0xFF]; // Custom/unknown ethertype
+
+    fn now() -> smoltcp::time::Instant {
+        let now_micros = monotonics::now().ticks() * 1000;
+        smoltcp::time::Instant::from_micros(now_micros as i64)
+    }
 
     #[local]
     struct Local {
@@ -138,6 +149,9 @@ mod app {
     struct Shared {
         client: Client,
         dma: EthernetDMA<'static, 'static>,
+        interface: Interface,
+        sockets: SocketSet<'static>,
+        udp_socket: SocketHandle,
         ptp: EthernetPTP,
     }
 
@@ -147,7 +161,12 @@ mod app {
     #[init(local = [
         rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
         tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
-    ])]
+        rx_meta_storage: [udp::PacketMetadata; 8] = [udp::PacketMetadata::EMPTY; 8],
+        rx_payload_storage: [u8; 1024] = [0u8; 1024],
+        tx_meta_storage: [udp::PacketMetadata; 8] = [udp::PacketMetadata::EMPTY; 8],
+        tx_payload_storage: [u8; 1024] = [0u8; 1024],
+        sockets: [SocketStorage<'static>; 8] = [SocketStorage::EMPTY; 8],
+        ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
         let core = cx.core;
@@ -155,6 +174,12 @@ mod app {
 
         let rx_ring = cx.local.rx_ring;
         let tx_ring = cx.local.tx_ring;
+
+        let rx_meta_storage = cx.local.rx_meta_storage;
+        let rx_payload_storage = cx.local.rx_payload_storage;
+        let tx_meta_storage = cx.local.tx_meta_storage;
+        let tx_payload_storage = cx.local.tx_payload_storage;
+        let sockets = cx.local.sockets;
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
@@ -164,11 +189,31 @@ mod app {
 
         defmt::info!("Configuring ethernet");
 
-        let Parts { dma, mac, mut ptp } =
-            stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
+        let Parts {
+            mut dma,
+            mac,
+            mut ptp,
+        } = stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
         ptp.enable_pps(pps);
         let start_addend = ptp.addend();
+
+        let mut cfg = Config::new();
+        cfg.hardware_addr = Some(HardwareAddress::Ethernet(EthernetAddress(CLIENT_ADDR)));
+
+        let mut interface = Interface::new(cfg, &mut &mut dma);
+        interface.update_ip_addrs(|a| {
+            a.push(IpCidr::new(IpAddress::v4(10, 0, 0, 2), 24)).ok();
+        });
+
+        let rx_buffer =
+            udp::PacketBuffer::new(&mut rx_meta_storage[..], &mut rx_payload_storage[..]);
+        let tx_buffer =
+            udp::PacketBuffer::new(&mut tx_meta_storage[..], &mut tx_payload_storage[..]);
+        let udp_socket = udp::Socket::new(rx_buffer, tx_buffer);
+
+        let mut sockets = SocketSet::new(&mut sockets[..]);
+        let udp_socket = sockets.add(udp_socket);
 
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();
@@ -212,192 +257,238 @@ mod app {
                 dma,
                 ptp,
                 client: Default::default(),
+                interface,
+                sockets,
+                udp_socket,
             },
             Local { start_addend },
             init::Monotonics(mono),
         )
     }
 
-    #[task(shared = [dma, ptp, client])]
+    #[task(shared = [dma, ptp, client, interface, sockets, udp_socket])]
     fn sender(cx: sender::Context) {
-        sender::spawn_after(20.millis()).ok();
+        sender::spawn_after(50.millis()).ok();
 
-        let (mut dma, mut client) = (cx.shared.dma, cx.shared.client);
+        let (dma, client, interface, sockets, udp_socket) = (
+            cx.shared.dma,
+            cx.shared.client,
+            cx.shared.interface,
+            cx.shared.sockets,
+            cx.shared.udp_socket,
+        );
 
-        let mut send_data = |data: &[u8]| {
-            dma.lock(|dma| {
-                dma.send(14 + data.len(), None, |buf| {
-                    // Write the Ethernet Header and the current timestamp value to
-                    // the frame.
-                    buf[0..6].copy_from_slice(&SERVER_ADDR);
-                    buf[6..12].copy_from_slice(&CLIENT_ADDR);
-                    buf[12..14].copy_from_slice(&ETH_TYPE);
-                    buf[14..14 + data.len()].copy_from_slice(data);
-                })
-                .ok();
-            })
-        };
+        (interface, sockets, dma, client, udp_socket).lock(
+            |iface, sockets, mut dma, client, udp_socket| {
+                let socket = sockets.get_mut::<udp::Socket>(*udp_socket);
 
-        client.lock(|client| {
-            *client = Default::default();
-            // Step 1
-            // Client sends empty message 0x0
-            defmt::info!("Starting exchange...");
-            defmt::trace!("Step 1");
-            send_data(&[0x0]);
-            client.expected_number = 1;
-        });
+                *client = Default::default();
+                socket.close();
+                socket
+                    .bind(IpListenEndpoint {
+                        addr: None,
+                        port: 1337,
+                    })
+                    .ok()
+                    .unwrap();
+
+                // Step 1
+                // Client sends empty message 0x0
+                defmt::info!("Starting exchange...");
+                defmt::trace!("Step 1");
+                let (buffer, _packet_id) = socket
+                    .send_marked(
+                        iface,
+                        1,
+                        IpEndpoint {
+                            addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 1])),
+                            port: 1337,
+                        },
+                    )
+                    .unwrap();
+                buffer[0] = 0x0;
+                client.expected_number = 1;
+                iface.poll(now(), &mut dma, sockets);
+            },
+        );
     }
 
-    #[task(binds = ETH, shared = [dma, ptp, client], local = [tx_id_ctr: u32 = 0x8000_0000, start_addend, addend_integrator: f32 = 0.0], priority = 2)]
+    #[task(binds = ETH, shared = [dma, ptp, client, interface, sockets, udp_socket], local = [start_addend, addend_integrator: f32 = 0.0], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (dma, client, ptp, tx_id_ctr, addend_integrator) = (
+        let (dma, client, ptp, addend_integrator, interface, sockets, udp_socket) = (
             cx.shared.dma,
             cx.shared.client,
             cx.shared.ptp,
-            cx.local.tx_id_ctr,
             cx.local.addend_integrator,
+            cx.shared.interface,
+            cx.shared.sockets,
+            cx.shared.udp_socket,
         );
-
-        let recv_data = |buf: &mut [u8], dma: &mut EthernetDMA| {
-            while let Ok(packet) = dma.recv_next(None) {
-                if &packet[0..6] == CLIENT_ADDR
-                    && &packet[6..12] == SERVER_ADDR
-                    && &packet[12..14] == ETH_TYPE
-                {
-                    buf[0..packet.len() - 14].copy_from_slice(&packet[14..]);
-                    return Some((packet.len(), packet.timestamp().unwrap()));
-                } else {
-                    continue;
-                }
-            }
-            None
-        };
-
-        let mut send_data = |data: &[u8], dma: &mut EthernetDMA| {
-            let tx_id_val = *tx_id_ctr;
-            let packet_id = PacketId(tx_id_val);
-            dma.send(42, Some(packet_id.clone()), |buf| {
-                // Write the Ethernet Header and the current timestamp value to
-                // the frame.
-                buf[0..6].copy_from_slice(&SERVER_ADDR);
-                buf[6..12].copy_from_slice(&CLIENT_ADDR);
-                buf[12..14].copy_from_slice(&ETH_TYPE);
-                buf[14..14 + data.len()].copy_from_slice(data);
-            })
-            .ok();
-            *tx_id_ctr += 1;
-            *tx_id_ctr |= 0x8000_0000;
-            packet_id
-        };
 
         let start_addend = *cx.local.start_addend;
 
-        (dma, ptp, client).lock(|dma, ptp, client| {
-            use core::convert::TryInto;
+        (dma, ptp, client, interface, sockets, udp_socket).lock(
+            |mut dma, ptp, client, iface, sockets, udp_socket| {
+                use core::convert::TryInto;
 
-            dma.interrupt_handler();
-            ptp.interrupt_handler();
+                dma.interrupt_handler();
+                ptp.interrupt_handler();
 
-            if let (true, Some(resp_packet_id), None) =
-                (client.t2.is_none(), &mut client.t2_packet_id, client.t2)
-            {
-                // Step 4
-                // Client records TX time t2
-                defmt::trace!("Step 4");
-                client.t2 = dma.get_timestamp_for_id(resp_packet_id.clone()).ok();
-            }
+                while iface.poll(now(), &mut dma, sockets) {}
 
-            let mut buf = [0u8; 60];
-            if let Some((data, rx_timestamp)) = recv_data(&mut buf, dma) {
-                if data <= 0 {
-                    return;
-                }
+                let udp_socket = sockets.get_mut::<udp::Socket>(*udp_socket);
 
-                let msg_id = buf[0];
-                let data = &buf[1..data];
+                let recv_data = |udp_socket: &mut udp::Socket,
+                                 copy_buf: &mut [u8],
+                                 dma: &mut EthernetDMA<'_, '_>| {
+                    if let Ok((buf, meta)) = udp_socket.recv() {
+                        copy_buf[..buf.len()].copy_from_slice(buf);
 
-                // Verify that we're receiving the correct message.
-                if msg_id != client.expected_number {
-                    *client = Default::default();
-                    defmt::error!("Got unexpected message");
-                    sender::spawn_after(200.millis()).ok();
-                } else {
-                    // Advance to the next message.
-                    client.expected_number += 1;
-                }
-
-                if msg_id == 0x01 {
-                    // Step 2
-                    // Client records RX time t1'
-                    defmt::trace!("Step 2");
-                    client.t1_prim = Some(rx_timestamp);
-                } else if msg_id == 0x02 {
-                    let timestamp =
-                        Timestamp::new_raw(i64::from_le_bytes(data[0..8].try_into().ok().unwrap()));
-                    // Step 3
-                    // Client records TX time t1
-                    defmt::trace!("Step 3");
-                    client.t1 = Some(timestamp);
-                    client.t2_packet_id = Some(send_data(&[0x03], dma));
-                    client.expected_number = 0x04;
-                    return;
-                } else if msg_id == 0x04 {
-                    let timestamp =
-                        Timestamp::new_raw(i64::from_le_bytes(data[0..8].try_into().ok().unwrap()));
-                    // Step 5
-                    // Client records RX time t2'
-                    defmt::trace!("Step 5");
-                    client.t2_prim = Some(timestamp);
-                } else if msg_id == 0x05 {
-                    // Step 6
-                    // Client records RX time t3'
-                    defmt::trace!("Step 6");
-                    client.t3_prim = Some(rx_timestamp);
-                } else if msg_id == 0x06 {
-                    // Step 7
-                    // Client records TX time t3
-                    defmt::trace!("Step 7");
-                    let timestamp =
-                        Timestamp::new_raw(i64::from_le_bytes(data[0..8].try_into().ok().unwrap()));
-                    client.t3 = Some(timestamp);
-
-                    client.print_timestamps();
-
-                    let now = ptp.get_time();
-                    let offset = client.calculate_offset();
-
-                    if offset.seconds() > 0 || offset.nanos() > 200_000 {
-                        *addend_integrator = 0.0;
-                        defmt::info!("Updating time. Offset {} ", offset);
-                        let updated_time = now + offset;
-                        ptp.set_time(updated_time);
-                    } else {
-                        let mut offset_nanos = offset.nanos() as i64;
-                        if offset.is_negative() {
-                            offset_nanos *= -1;
+                        if let Some(timestamp) =
+                            dma.get_timestamp_for_id(meta.packet_id().unwrap()).ok()
+                        {
+                            Some((buf.len(), timestamp))
+                        } else {
+                            defmt::error!("Failed to obtain RX timestamp.");
+                            None
                         }
+                    } else {
+                        None
+                    }
+                };
 
-                        let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
-                        *addend_integrator += error as f32 / 500.;
+                let send_data =
+                    |iface: &mut Interface, udp_socket: &mut udp::Socket, buf: &[u8]| {
+                        let (buffer, tx_id) = udp_socket
+                            .send_marked(
+                                iface,
+                                buf.len(),
+                                IpEndpoint {
+                                    addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 1])),
+                                    port: 1337,
+                                },
+                            )
+                            .unwrap();
+                        buffer.copy_from_slice(buf);
+                        tx_id
+                    };
 
-                        defmt::println!("{}, {}, {}", error, addend_integrator, offset_nanos);
+                if let (true, Some(resp_packet_id), None) =
+                    (client.t2.is_none(), &mut client.t2_packet_id, client.t2)
+                {
+                    // Step 4
+                    // Client records TX time t2
+                    defmt::trace!("Step 4");
+                    client.t2 =
+                        if let Some(tx_ts) = dma.get_timestamp_for_id(resp_packet_id.clone()).ok() {
+                            Some(tx_ts)
+                        } else {
+                            defmt::error!("Did not get TX timestamp... (Step 4)");
+                            None
+                        }
+                }
 
-                        defmt::info!(
-                            "Error: {}. Integrator: {}, Offset: {} ns",
-                            error,
-                            addend_integrator,
-                            offset_nanos
-                        );
-
-                        let new_addend =
-                            (start_addend as i64 + error / 4 + (*addend_integrator as i64)) as u32;
-                        ptp.set_addend(new_addend);
+                let mut buf = [0u8; 60];
+                while let Some((data, rx_timestamp)) = recv_data(udp_socket, &mut buf, dma) {
+                    if data <= 0 {
+                        return;
                     }
 
-                    *client = Default::default();
+                    let msg_id = buf[0];
+                    let data = &buf[1..data];
+
+                    // Verify that we're receiving the correct message.
+                    if msg_id != client.expected_number {
+                        *client = Default::default();
+                        udp_socket.close();
+                        udp_socket
+                            .bind(IpListenEndpoint {
+                                addr: None,
+                                port: 1337,
+                            })
+                            .ok()
+                            .unwrap();
+                        defmt::error!("Got unexpected message {}", msg_id);
+                    } else {
+                        // Advance to the next message.
+                        client.expected_number += 1;
+                    }
+
+                    if msg_id == 0x01 {
+                        // Step 2
+                        // Client records RX time t1'
+                        defmt::trace!("Step 2");
+                        client.t1_prim = Some(rx_timestamp);
+                    } else if msg_id == 0x02 {
+                        let timestamp = Timestamp::new_raw(i64::from_le_bytes(
+                            data[0..8].try_into().ok().unwrap(),
+                        ));
+                        // Step 3
+                        // Client records TX time t1
+                        defmt::trace!("Step 3");
+                        client.t1 = Some(timestamp);
+                        client.t2_packet_id = Some(send_data(iface, udp_socket, &[0x03]).into());
+                        client.expected_number = 0x04;
+                    } else if msg_id == 0x04 {
+                        let timestamp = Timestamp::new_raw(i64::from_le_bytes(
+                            data[0..8].try_into().ok().unwrap(),
+                        ));
+                        // Step 5
+                        // Client records RX time t2'
+                        defmt::trace!("Step 5");
+                        client.t2_prim = Some(timestamp);
+                    } else if msg_id == 0x05 {
+                        // Step 6
+                        // Client records RX time t3'
+                        defmt::trace!("Step 6");
+                        client.t3_prim = Some(rx_timestamp);
+                    } else if msg_id == 0x06 {
+                        // Step 7
+                        // Client records TX time t3
+                        defmt::trace!("Step 7");
+                        let timestamp = Timestamp::new_raw(i64::from_le_bytes(
+                            data[0..8].try_into().ok().unwrap(),
+                        ));
+                        client.t3 = Some(timestamp);
+
+                        client.print_timestamps();
+
+                        let now = ptp.get_time();
+                        if let Some(offset) = client.calculate_offset() {
+                            if offset.seconds() > 0 || offset.nanos() > 200_000 {
+                                *addend_integrator = 0.0;
+                                defmt::info!("Updating time. Offset {} ", offset);
+                                let updated_time = now + offset;
+                                ptp.set_time(updated_time);
+                            } else {
+                                let mut offset_nanos = offset.nanos() as i64;
+                                if offset.is_negative() {
+                                    offset_nanos *= -1;
+                                }
+
+                                let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
+                                *addend_integrator += error as f32 / 500.;
+
+                                defmt::info!(
+                                    "Error: {}. Integrator: {}, Offset: {} ns",
+                                    error,
+                                    addend_integrator,
+                                    offset_nanos
+                                );
+
+                                let new_addend =
+                                    (start_addend as i64 + error / 4 + (*addend_integrator as i64))
+                                        as u32;
+                                ptp.set_addend(new_addend);
+                            }
+                        }
+
+                        *client = Default::default();
+                    }
                 }
-            }
-        });
+
+                while iface.poll(now(), &mut dma, sockets) {}
+            },
+        );
     }
 }

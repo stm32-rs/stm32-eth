@@ -73,15 +73,27 @@ mod app {
     use systick_monotonic::Systick;
 
     use stm32_eth::{
-        dma::{EthernetDMA, PacketId, RxRingEntry, TxRingEntry},
+        dma::{EthernetDMA, RxRingEntry, TxRingEntry},
         mac::Speed,
         ptp::EthernetPTP,
         Parts,
     };
 
-    const SERVER_ADDR: [u8; 6] = [0xEF, 0xBE, 0xAD, 0xDE, 0x00, 0x00];
-    const CLIENT_ADDR: [u8; 6] = [0x80, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
-    const ETH_TYPE: [u8; 2] = [0xFF, 0xFF]; // Custom/unknown ethertype
+    use smoltcp::{
+        iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage},
+        socket::udp,
+        wire::{
+            EthernetAddress, HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint,
+            Ipv4Address,
+        },
+    };
+
+    const SERVER_ADDR: [u8; 6] = [0x80, 0x00, 0xDE, 0xAD, 0xBE, 0xFF];
+
+    fn now() -> smoltcp::time::Instant {
+        let now_micros = monotonics::now().ticks() * 1000;
+        smoltcp::time::Instant::from_micros(now_micros as i64)
+    }
 
     #[local]
     struct Local {}
@@ -90,6 +102,9 @@ mod app {
     struct Shared {
         server: Server,
         dma: EthernetDMA<'static, 'static>,
+        interface: Interface,
+        sockets: SocketSet<'static>,
+        udp_socket: SocketHandle,
         ptp: EthernetPTP,
     }
 
@@ -99,6 +114,11 @@ mod app {
     #[init(local = [
         rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
         tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
+        rx_meta_storage: [udp::PacketMetadata; 8] = [udp::PacketMetadata::EMPTY; 8],
+        rx_payload_storage: [u8; 1024] = [0u8; 1024],
+        tx_meta_storage: [udp::PacketMetadata; 8] = [udp::PacketMetadata::EMPTY; 8],
+        tx_payload_storage: [u8; 1024] = [0u8; 1024],
+        sockets: [SocketStorage<'static>; 8] = [SocketStorage::EMPTY; 8],
     ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
@@ -108,6 +128,12 @@ mod app {
         let rx_ring = cx.local.rx_ring;
         let tx_ring = cx.local.tx_ring;
 
+        let rx_meta_storage = cx.local.rx_meta_storage;
+        let rx_payload_storage = cx.local.rx_payload_storage;
+        let tx_meta_storage = cx.local.tx_meta_storage;
+        let tx_payload_storage = cx.local.tx_payload_storage;
+        let sockets = cx.local.sockets;
+
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
 
@@ -116,10 +142,38 @@ mod app {
 
         defmt::info!("Configuring ethernet");
 
-        let Parts { dma, mac, mut ptp } =
-            stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
+        let Parts {
+            mut dma,
+            mac,
+            mut ptp,
+        } = stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
         ptp.enable_pps(pps);
+
+        let mut cfg = Config::new();
+        cfg.hardware_addr = Some(HardwareAddress::Ethernet(EthernetAddress(SERVER_ADDR)));
+
+        let mut interface = Interface::new(cfg, &mut &mut dma);
+        interface.update_ip_addrs(|a| {
+            a.push(IpCidr::new(IpAddress::v4(10, 0, 0, 1), 24)).ok();
+        });
+
+        let rx_buffer =
+            udp::PacketBuffer::new(&mut rx_meta_storage[..], &mut rx_payload_storage[..]);
+        let tx_buffer =
+            udp::PacketBuffer::new(&mut tx_meta_storage[..], &mut tx_payload_storage[..]);
+        let mut udp_socket = udp::Socket::new(rx_buffer, tx_buffer);
+
+        udp_socket
+            .bind(IpListenEndpoint {
+                addr: None,
+                port: 1337,
+            })
+            .ok()
+            .unwrap();
+
+        let mut sockets = SocketSet::new(&mut sockets[..]);
+        let udp_socket = sockets.add(udp_socket);
 
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();
@@ -161,135 +215,158 @@ mod app {
                 dma,
                 ptp,
                 server: Default::default(),
+                interface,
+                sockets,
+                udp_socket,
             },
             Local {},
             init::Monotonics(mono),
         )
     }
 
-    #[task(binds = ETH, shared = [dma, ptp, server], local = [tx_id_ctr: u32 = 0x8000_0000], priority = 2)]
+    #[task(binds = ETH, shared = [dma, ptp, server, interface, sockets, udp_socket], local = [tx_id_ctr: u32 = 0x8000_0000], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (dma, server, ptp, tx_id_ctr) = (
+        let (dma, server, ptp, interface, sockets, udp_socket) = (
             cx.shared.dma,
             cx.shared.server,
             cx.shared.ptp,
-            cx.local.tx_id_ctr,
+            cx.shared.interface,
+            cx.shared.sockets,
+            cx.shared.udp_socket,
         );
 
-        let recv_data = |buf: &mut [u8], dma: &mut EthernetDMA| {
-            while let Ok(packet) = dma.recv_next(None) {
-                if packet[0..6] == SERVER_ADDR
-                    && packet[6..12] == CLIENT_ADDR
-                    && packet[12..14] == ETH_TYPE
-                {
-                    buf[0..packet.len() - 14].copy_from_slice(&packet[14..]);
-                    let len = packet.len() - 14;
-                    return Some((len, packet.timestamp().unwrap()));
+        let recv_data =
+            |udp_socket: &mut udp::Socket, copy_buf: &mut [u8], dma: &mut EthernetDMA<'_, '_>| {
+                if let Ok((buf, meta)) = udp_socket.recv() {
+                    copy_buf[..buf.len()].copy_from_slice(buf);
+
+                    let timestamp = dma
+                        .get_timestamp_for_id(meta.packet_id().unwrap())
+                        .ok()
+                        .unwrap();
+
+                    Some((buf.len(), timestamp))
                 } else {
-                    continue;
+                    None
                 }
-            }
-            None
+            };
+
+        let send_data = |iface: &mut Interface, udp_socket: &mut udp::Socket, buf: &[u8]| {
+            let (buffer, tx_id) = udp_socket
+                .send_marked(
+                    iface,
+                    buf.len(),
+                    IpEndpoint {
+                        addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 2])),
+                        port: 1337,
+                    },
+                )
+                .unwrap();
+            buffer.copy_from_slice(buf);
+            tx_id
         };
 
-        let mut send_data = |data: &[u8], dma: &mut EthernetDMA| {
-            let tx_id_val = *tx_id_ctr;
-            let packet_id = PacketId(tx_id_val);
-            dma.send(14 + data.len(), Some(packet_id.clone()), |buf| {
-                // Write the Ethernet Header and the current timestamp value to
-                // the frame.
-                buf[0..6].copy_from_slice(&CLIENT_ADDR);
-                buf[6..12].copy_from_slice(&SERVER_ADDR);
-                buf[12..14].copy_from_slice(&ETH_TYPE);
-                buf[14..14 + data.len()].copy_from_slice(data);
-            })
-            .ok();
-            *tx_id_ctr += 1;
-            *tx_id_ctr |= 0x8000_0000;
-            packet_id
-        };
+        (dma, ptp, server, interface, sockets, udp_socket).lock(
+            |mut dma, ptp, server, interface, sockets, udp_socket| {
+                dma.interrupt_handler();
+                ptp.interrupt_handler();
 
-        (dma, ptp, server).lock(|dma, ptp, server| {
-            dma.interrupt_handler();
-            ptp.interrupt_handler();
+                while interface.poll(now(), &mut dma, sockets) {}
 
-            if let (false, Some(t1_id)) = (server.t1_sent, &mut server.t1_id) {
-                if let Some(t1) = dma.get_timestamp_for_id(t1_id.clone()).ok() {
-                    // Step 3
-                    // Server sends message 0x02 with the TX time of #2
-                    server.expected_number = 0x03;
+                let udp_socket = sockets.get_mut::<udp::Socket>(*udp_socket);
 
-                    defmt::info!("Step 3");
+                if let (false, Some(t1_id)) = (server.t1_sent, &mut server.t1_id) {
+                    if let Some(t1) = dma.get_timestamp_for_id(t1_id.clone()).ok() {
+                        // Step 3
+                        // Server sends message 0x02 with the TX time of #2
+                        server.expected_number = 0x03;
 
-                    let mut buffer = [0u8; 42];
-                    buffer[0] = 0x02;
-                    buffer[1..9].copy_from_slice(&t1.raw().to_le_bytes());
-                    send_data(&buffer[..9], dma);
-                    server.t1_sent = true;
-                }
-            } else if let Some(t3_id) = &mut server.t3_id {
-                if let Some(t3) = dma.get_timestamp_for_id(t3_id.clone()).ok() {
-                    // Step 7.
-                    // Server sends message 0x06 with the timestsamp of #6
-                    let mut buffer = [0u8; 9];
-                    buffer[0] = 0x06;
-                    buffer[1..9].copy_from_slice(&t3.raw().to_le_bytes());
-                    send_data(&buffer[..9], dma);
-                    server.t3_sent = true;
+                        defmt::info!("Step 3");
 
-                    defmt::info!("Step 7");
+                        let mut buffer = [0u8; 42];
+                        buffer[0] = 0x02;
+                        buffer[1..9].copy_from_slice(&t1.raw().to_le_bytes());
+                        send_data(interface, udp_socket, &buffer[..9]);
+                        server.t1_sent = true;
+                    } else {
+                        defmt::error!("Didn't get TX id... (Step 3)");
+                    }
+                } else if let Some(t3_id) = &mut server.t3_id {
+                    if let Some(t3) = dma.get_timestamp_for_id(t3_id.clone()).ok() {
+                        // Step 7.
+                        // Server sends message 0x06 with the timestsamp of #6
+                        let mut buffer = [0u8; 9];
+                        buffer[0] = 0x06;
+                        buffer[1..9].copy_from_slice(&t3.raw().to_le_bytes());
+                        send_data(interface, udp_socket, &buffer[..9]);
+                        server.t3_sent = true;
 
-                    // We're done, reset
-                    *server = Default::default();
-                }
-            }
+                        defmt::info!("Step 7");
 
-            let mut buf = [0u8; 60];
-            if let Some((data, rx_timestamp)) = recv_data(&mut buf, dma) {
-                if data <= 0 {
-                    return;
+                        // We're done, reset
+                        *server = Default::default();
+                    } else {
+                        defmt::error!("Didn'tget TX id... (Step 7)")
+                    }
                 }
 
-                let msg_id = buf[0];
+                let mut buf = [0u8; 60];
+                while let Some((data, rx_timestamp)) = recv_data(udp_socket, &mut buf, dma) {
+                    if data <= 0 {
+                        return;
+                    }
 
-                // Verify that we're receiving the correct message.
-                if msg_id != server.expected_number {
-                    *server = Default::default();
-                    defmt::error!("Got unexpected message");
-                } else {
-                    // Advance to the next message.
-                    server.expected_number += 1;
+                    let msg_id = buf[0];
+
+                    // Verify that we're receiving the correct message.
+                    if msg_id != server.expected_number {
+                        *server = Default::default();
+                        udp_socket.close();
+                        udp_socket
+                            .bind(IpListenEndpoint {
+                                addr: None,
+                                port: 1337,
+                            })
+                            .ok()
+                            .unwrap();
+
+                        defmt::error!("Got unexpected message {}", msg_id);
+                    } else {
+                        defmt::info!("Got {}", msg_id);
+                        // Advance to the next message.
+                        server.expected_number += 1;
+                    }
+
+                    if msg_id == 0 {
+                        // Step 1
+                        // Step 2
+                        // Server sends empty message 0x01.
+
+                        defmt::info!("Step 1");
+                        defmt::info!("Step 2");
+                        let t1_id = send_data(interface, udp_socket, &[0x1]);
+                        server.t1_id = Some(t1_id.into());
+                        server.t1_sent = false;
+                    } else if msg_id == 0x03 {
+                        // Step 4
+                        // Step 5
+                        defmt::info!("Step 4");
+                        defmt::info!("Step 5");
+                        let mut buffer = [0u8; 9];
+                        buffer[0] = 0x04;
+                        buffer[1..9].copy_from_slice(&rx_timestamp.raw().to_le_bytes());
+                        send_data(interface, udp_socket, &buffer[..9]);
+
+                        defmt::info!("Step 6");
+                        // Step 6
+                        buffer[0] = 0x05;
+                        let t3_id = send_data(interface, udp_socket, &buffer[..1]);
+                        server.t3_id = Some(t3_id.into());
+                    }
                 }
 
-                defmt::info!("{}", msg_id);
-
-                if msg_id == 0 {
-                    // Step 1
-                    // Step 2
-                    // Server sends empty message 0x01.
-
-                    defmt::info!("Step 1");
-                    defmt::info!("Step 2");
-                    let t1_id = send_data(&[0x01], dma);
-                    server.t1_id = Some(t1_id);
-                    server.t1_sent = false;
-                } else if msg_id == 0x03 {
-                    // Step 4
-                    // Step 5
-                    defmt::info!("Step 4");
-                    defmt::info!("Step 5");
-                    let mut buffer = [0u8; 9];
-                    buffer[0] = 0x04;
-                    buffer[1..9].copy_from_slice(&rx_timestamp.raw().to_le_bytes());
-                    send_data(&buffer[..9], dma);
-
-                    defmt::info!("Step 6");
-                    // Step 6
-                    buffer[0] = 0x05;
-                    let t3_id = send_data(&buffer[..1], dma);
-                    server.t3_id = Some(t3_id);
-                }
-            }
-        });
+                while interface.poll(now(), &mut dma, sockets) {}
+            },
+        );
     }
 }
