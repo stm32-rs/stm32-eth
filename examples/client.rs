@@ -220,7 +220,7 @@ mod app {
 
     #[task(shared = [dma, ptp, client])]
     fn sender(cx: sender::Context) {
-        sender::spawn_after(200.millis()).ok();
+        sender::spawn_after(20.millis()).ok();
 
         let (mut dma, mut client) = (cx.shared.dma, cx.shared.client);
 
@@ -249,7 +249,7 @@ mod app {
         });
     }
 
-    #[task(binds = ETH, shared = [dma, ptp, client], local = [tx_id_ctr: u32 = 0x8000_0000, start_addend, addend_integrator: i64 = 0], priority = 2)]
+    #[task(binds = ETH, shared = [dma, ptp, client], local = [tx_id_ctr: u32 = 0x8000_0000, start_addend, addend_integrator: f32 = 0.0], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
         let (dma, client, ptp, tx_id_ctr, addend_integrator) = (
             cx.shared.dma,
@@ -368,7 +368,7 @@ mod app {
                     let offset = client.calculate_offset();
 
                     if offset.seconds() > 0 || offset.nanos() > 200_000 {
-                        *addend_integrator = 0;
+                        *addend_integrator = 0.0;
                         defmt::info!("Updating time. Offset {} ", offset);
                         let updated_time = now + offset;
                         ptp.set_time(updated_time);
@@ -379,22 +379,23 @@ mod app {
                         }
 
                         let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
-                        *addend_integrator += error / 200;
+                        *addend_integrator += error as f32 / 500.;
+
+                        defmt::println!("{}, {}, {}", error, addend_integrator, offset_nanos);
 
                         defmt::info!(
                             "Error: {}. Integrator: {}, Offset: {} ns",
                             error,
                             addend_integrator,
-                            offset.nanos()
+                            offset_nanos
                         );
 
                         let new_addend =
-                            (start_addend as i64 + error / 4 + *addend_integrator) as u32;
+                            (start_addend as i64 + error / 4 + (*addend_integrator as i64)) as u32;
                         ptp.set_addend(new_addend);
                     }
 
                     *client = Default::default();
-                    sender::spawn_after(200.millis()).ok();
                 }
             }
         });
