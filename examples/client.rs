@@ -334,10 +334,6 @@ mod app {
                 dma.interrupt_handler();
                 ptp.interrupt_handler();
 
-                while iface.poll(now(), &mut dma, sockets) {}
-
-                let udp_socket = sockets.get_mut::<udp::Socket>(*udp_socket);
-
                 let recv_data = |udp_socket: &mut udp::Socket,
                                  copy_buf: &mut [u8],
                                  dma: &mut EthernetDMA<'_, '_>| {
@@ -349,7 +345,10 @@ mod app {
                         {
                             Some((buf.len(), timestamp))
                         } else {
-                            defmt::error!("Failed to obtain RX timestamp.");
+                            defmt::error!(
+                                "Failed to obtain RX timestamp for {}.",
+                                meta.packet_id().unwrap()
+                            );
                             None
                         }
                     } else {
@@ -373,121 +372,127 @@ mod app {
                         tx_id
                     };
 
-                if let (true, Some(resp_packet_id), None) =
-                    (client.t2.is_none(), &mut client.t2_packet_id, client.t2)
-                {
-                    // Step 4
-                    // Client records TX time t2
-                    defmt::trace!("Step 4");
-                    client.t2 =
-                        if let Some(tx_ts) = dma.get_timestamp_for_id(resp_packet_id.clone()).ok() {
+                while iface.poll(now(), &mut dma, sockets) {
+                    let udp_socket = sockets.get_mut::<udp::Socket>(*udp_socket);
+
+                    if let (true, Some(resp_packet_id), None) =
+                        (client.t2.is_none(), &mut client.t2_packet_id, client.t2)
+                    {
+                        // Step 4
+                        // Client records TX time t2
+                        defmt::trace!("Step 4");
+                        client.t2 = if let Some(tx_ts) =
+                            dma.get_timestamp_for_id(resp_packet_id.clone()).ok()
+                        {
                             Some(tx_ts)
                         } else {
                             defmt::error!("Did not get TX timestamp... (Step 4)");
                             None
                         }
-                }
-
-                let mut buf = [0u8; 60];
-                while let Some((data, rx_timestamp)) = recv_data(udp_socket, &mut buf, dma) {
-                    if data <= 0 {
-                        return;
                     }
 
-                    let msg_id = buf[0];
-                    let data = &buf[1..data];
-
-                    // Verify that we're receiving the correct message.
-                    if msg_id != client.expected_number {
-                        *client = Default::default();
-                        udp_socket.close();
-                        udp_socket
-                            .bind(IpListenEndpoint {
-                                addr: None,
-                                port: 1337,
-                            })
-                            .ok()
-                            .unwrap();
-                        defmt::error!("Got unexpected message {}", msg_id);
-                    } else {
-                        // Advance to the next message.
-                        client.expected_number += 1;
-                    }
-
-                    if msg_id == 0x01 {
-                        // Step 2
-                        // Client records RX time t1'
-                        defmt::trace!("Step 2");
-                        client.t1_prim = Some(rx_timestamp);
-                    } else if msg_id == 0x02 {
-                        let timestamp = Timestamp::new_raw(i64::from_le_bytes(
-                            data[0..8].try_into().ok().unwrap(),
-                        ));
-                        // Step 3
-                        // Client records TX time t1
-                        defmt::trace!("Step 3");
-                        client.t1 = Some(timestamp);
-                        client.t2_packet_id = Some(send_data(iface, udp_socket, &[0x03]).into());
-                        client.expected_number = 0x04;
-                    } else if msg_id == 0x04 {
-                        let timestamp = Timestamp::new_raw(i64::from_le_bytes(
-                            data[0..8].try_into().ok().unwrap(),
-                        ));
-                        // Step 5
-                        // Client records RX time t2'
-                        defmt::trace!("Step 5");
-                        client.t2_prim = Some(timestamp);
-                    } else if msg_id == 0x05 {
-                        // Step 6
-                        // Client records RX time t3'
-                        defmt::trace!("Step 6");
-                        client.t3_prim = Some(rx_timestamp);
-                    } else if msg_id == 0x06 {
-                        // Step 7
-                        // Client records TX time t3
-                        defmt::trace!("Step 7");
-                        let timestamp = Timestamp::new_raw(i64::from_le_bytes(
-                            data[0..8].try_into().ok().unwrap(),
-                        ));
-                        client.t3 = Some(timestamp);
-
-                        client.print_timestamps();
-
-                        let now = ptp.get_time();
-                        if let Some(offset) = client.calculate_offset() {
-                            if offset.seconds() > 0 || offset.nanos() > 200_000 {
-                                *addend_integrator = 0.0;
-                                defmt::info!("Updating time. Offset {} ", offset);
-                                let updated_time = now + offset;
-                                ptp.set_time(updated_time);
-                            } else {
-                                let mut offset_nanos = offset.nanos() as i64;
-                                if offset.is_negative() {
-                                    offset_nanos *= -1;
-                                }
-
-                                let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
-                                *addend_integrator += error as f32 / 500.;
-
-                                defmt::info!(
-                                    "Error: {}. Integrator: {}, Offset: {} ns",
-                                    error,
-                                    addend_integrator,
-                                    offset_nanos
-                                );
-
-                                let new_addend =
-                                    (start_addend as i64 + error / 4 + (*addend_integrator as i64))
-                                        as u32;
-                                ptp.set_addend(new_addend);
-                            }
+                    let mut buf = [0u8; 60];
+                    while let Some((data, rx_timestamp)) = recv_data(udp_socket, &mut buf, dma) {
+                        if data <= 0 {
+                            return;
                         }
 
-                        *client = Default::default();
+                        let msg_id = buf[0];
+                        let data = &buf[1..data];
+
+                        // Verify that we're receiving the correct message.
+                        if msg_id != client.expected_number {
+                            *client = Default::default();
+                            udp_socket.close();
+                            udp_socket
+                                .bind(IpListenEndpoint {
+                                    addr: None,
+                                    port: 1337,
+                                })
+                                .ok()
+                                .unwrap();
+                            defmt::error!("Got unexpected message {}", msg_id);
+                        } else {
+                            // Advance to the next message.
+                            client.expected_number += 1;
+                        }
+
+                        if msg_id == 0x01 {
+                            // Step 2
+                            // Client records RX time t1'
+                            defmt::trace!("Step 2");
+                            client.t1_prim = Some(rx_timestamp);
+                        } else if msg_id == 0x02 {
+                            let timestamp = Timestamp::new_raw(i64::from_le_bytes(
+                                data[0..8].try_into().ok().unwrap(),
+                            ));
+                            // Step 3
+                            // Client records TX time t1
+                            defmt::trace!("Step 3");
+                            client.t1 = Some(timestamp);
+                            client.t2_packet_id =
+                                Some(send_data(iface, udp_socket, &[0x03]).into());
+                            client.expected_number = 0x04;
+                        } else if msg_id == 0x04 {
+                            let timestamp = Timestamp::new_raw(i64::from_le_bytes(
+                                data[0..8].try_into().ok().unwrap(),
+                            ));
+                            // Step 5
+                            // Client records RX time t2'
+                            defmt::trace!("Step 5");
+                            client.t2_prim = Some(timestamp);
+                        } else if msg_id == 0x05 {
+                            // Step 6
+                            // Client records RX time t3'
+                            defmt::trace!("Step 6");
+                            client.t3_prim = Some(rx_timestamp);
+                        } else if msg_id == 0x06 {
+                            // Step 7
+                            // Client records TX time t3
+                            defmt::trace!("Step 7");
+                            let timestamp = Timestamp::new_raw(i64::from_le_bytes(
+                                data[0..8].try_into().ok().unwrap(),
+                            ));
+                            client.t3 = Some(timestamp);
+
+                            client.print_timestamps();
+
+                            let now = ptp.get_time();
+                            if let Some(offset) = client.calculate_offset() {
+                                if offset.seconds() > 0 || offset.nanos() > 200_000 {
+                                    *addend_integrator = 0.0;
+                                    defmt::info!("Updating time. Offset {} ", offset);
+                                    let updated_time = now + offset;
+                                    ptp.set_time(updated_time);
+                                } else {
+                                    let mut offset_nanos = offset.nanos() as i64;
+                                    if offset.is_negative() {
+                                        offset_nanos *= -1;
+                                    }
+
+                                    let error =
+                                        (offset_nanos * start_addend as i64) / 1_000_000_000;
+                                    *addend_integrator += error as f32 / 500.;
+
+                                    defmt::info!(
+                                        "Error: {}. Integrator: {}, Offset: {} ns",
+                                        error,
+                                        addend_integrator,
+                                        offset_nanos
+                                    );
+
+                                    let new_addend = (start_addend as i64
+                                        + error / 4
+                                        + (*addend_integrator as i64))
+                                        as u32;
+                                    ptp.set_addend(new_addend);
+                                }
+                            }
+
+                            *client = Default::default();
+                        }
                     }
                 }
-
-                while iface.poll(now(), &mut dma, sockets) {}
             },
         );
     }
