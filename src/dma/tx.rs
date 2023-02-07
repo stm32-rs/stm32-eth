@@ -295,7 +295,6 @@ impl<'a> TxRing<'a> {
             } = entry.desc_mut();
 
             if let Some(packet_id) = packet_id {
-                defmt::info!("Have info for {}. {}", packet_id, timestamp);
                 if packet_id == &id {
                     id_found = true;
                     if let Some(timestamp) = timestamp {

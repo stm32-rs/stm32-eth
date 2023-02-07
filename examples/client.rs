@@ -31,7 +31,7 @@ use core::ops::Neg;
 
 use defmt_rtt as _;
 use panic_probe as _;
-use stm32_eth::{dma::PacketId, ptp::Timestamp};
+use stm32_eth::ptp::Timestamp;
 
 mod common;
 
@@ -44,68 +44,19 @@ mod common;
 /// 6. Server sends empty message 0x05 (client records RX time t3')
 /// 7. Server sends message 0x06 with timestamp of #6 (client records TX time t3)
 
-#[derive(defmt::Format)]
-pub struct Client {
-    expected_number: u8,
+pub fn calculate_offset(
+    t1: Timestamp,
+    t1_prim: Timestamp,
+    t2: Timestamp,
+    t2_prim: Timestamp,
+) -> Timestamp {
+    let double_offset = t1_prim - t1 - t2_prim + t2;
 
-    // Message 0x01
-    t1_prim: Option<Timestamp>, // t1'
-    // Message 0x02
-    t1: Option<Timestamp>, // t1
+    let raw = double_offset.raw();
+    let offset = (raw / 2).neg();
+    let offset = Timestamp::new_raw(offset);
 
-    t2_packet_id: Option<PacketId>, // packet ID for t2
-    // Message 0x03
-    t2: Option<Timestamp>, // t2
-    // Message 0x04
-    t2_prim: Option<Timestamp>, // t2'
-
-    // Message 0x05
-    t3_prim: Option<Timestamp>, // t3'
-    t3: Option<Timestamp>,      // t3
-}
-
-impl Default for Client {
-    fn default() -> Self {
-        Self {
-            expected_number: 0,
-            t1: None,
-            t1_prim: None,
-            t2_packet_id: None,
-            t2: None,
-            t2_prim: None,
-            t3: None,
-            t3_prim: None,
-        }
-    }
-}
-
-impl Client {
-    pub fn print_timestamps(&self) {
-        defmt::debug!("Timestamp information: ");
-        defmt::debug!("t1:  {}", self.t1);
-        defmt::debug!("t1': {}", self.t1_prim);
-        defmt::debug!("t2:  {}", self.t2);
-        defmt::debug!("t2': {}", self.t2_prim);
-        defmt::debug!("t3:  {}", self.t3);
-        defmt::debug!("t3': {}", self.t3_prim);
-    }
-
-    pub fn calculate_offset(&self) -> Option<Timestamp> {
-        let t1 = self.t1?;
-        let t1_prim = self.t1_prim?;
-        let t2 = self.t2?;
-        let t2_prim = self.t2_prim?;
-        let _t3 = self.t3?;
-        let _t3_prim = self.t3_prim?;
-
-        let double_offset = t1_prim - t1 - t2_prim + t2;
-
-        let raw = double_offset.raw();
-        let offset = (raw / 2).neg();
-        let offset = Timestamp::new_raw(offset);
-
-        Some(offset)
-    }
+    offset
 }
 
 #[rtic::app(device = stm32_eth::stm32, dispatchers = [SPI1])]
@@ -121,7 +72,7 @@ mod app {
         },
     };
 
-    use crate::{common::EthernetPhy, Client};
+    use crate::common::EthernetPhy;
 
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
@@ -147,7 +98,6 @@ mod app {
 
     #[shared]
     struct Shared {
-        client: Client,
         dma: EthernetDMA<'static, 'static>,
         interface: Interface,
         sockets: SocketSet<'static>,
@@ -250,13 +200,12 @@ mod app {
             }
         };
 
-        sender::spawn().ok();
+        runner::spawn().ok();
 
         (
             Shared {
                 dma,
                 ptp,
-                client: Default::default(),
                 interface,
                 sockets,
                 udp_socket,
@@ -266,231 +215,185 @@ mod app {
         )
     }
 
-    #[task(shared = [dma, ptp, client, interface, sockets, udp_socket])]
-    fn sender(cx: sender::Context) {
-        sender::spawn_after(50.millis()).ok();
+    #[task(shared = [interface, dma, sockets, udp_socket, ptp], local = [addend_integrator: f32 = 0.0, start_addend])]
+    fn runner(cx: runner::Context) {
+        use core::convert::TryInto;
 
-        let (dma, client, interface, sockets, udp_socket) = (
-            cx.shared.dma,
-            cx.shared.client,
+        runner::spawn_after(100.millis()).ok();
+
+        let (mut interface, mut dma, mut sockets, mut udp_socket, mut ptp) = (
             cx.shared.interface,
+            cx.shared.dma,
             cx.shared.sockets,
             cx.shared.udp_socket,
-        );
-
-        (interface, sockets, dma, client, udp_socket).lock(
-            |iface, sockets, mut dma, client, udp_socket| {
-                let socket = sockets.get_mut::<udp::Socket>(*udp_socket);
-
-                *client = Default::default();
-                socket.close();
-                socket
-                    .bind(IpListenEndpoint {
-                        addr: None,
-                        port: 1337,
-                    })
-                    .ok()
-                    .unwrap();
-
-                // Step 1
-                // Client sends empty message 0x0
-                defmt::info!("Starting exchange...");
-                defmt::trace!("Step 1");
-                let (buffer, _packet_id) = socket
-                    .send_marked(
-                        iface,
-                        1,
-                        IpEndpoint {
-                            addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 1])),
-                            port: 1337,
-                        },
-                    )
-                    .unwrap();
-                buffer[0] = 0x0;
-                client.expected_number = 1;
-                iface.poll(now(), &mut dma, sockets);
-            },
-        );
-    }
-
-    #[task(binds = ETH, shared = [dma, ptp, client, interface, sockets, udp_socket], local = [start_addend, addend_integrator: f32 = 0.0], priority = 2)]
-    fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (dma, client, ptp, addend_integrator, interface, sockets, udp_socket) = (
-            cx.shared.dma,
-            cx.shared.client,
             cx.shared.ptp,
-            cx.local.addend_integrator,
-            cx.shared.interface,
-            cx.shared.sockets,
-            cx.shared.udp_socket,
         );
 
-        let start_addend = *cx.local.start_addend;
+        let (addend_integrator, start_addend) =
+            (cx.local.addend_integrator, *cx.local.start_addend);
 
-        (dma, ptp, client, interface, sockets, udp_socket).lock(
-            |mut dma, ptp, client, iface, sockets, udp_socket| {
-                use core::convert::TryInto;
+        let udp_socket = udp_socket.lock(|v| *v);
+        let mut buf = [0u8; 128];
 
-                dma.interrupt_handler();
-                ptp.interrupt_handler();
+        sockets.lock(|sockets| {
+            let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
+            udp_socket.close();
+            udp_socket
+                .bind(IpListenEndpoint {
+                    addr: None,
+                    port: 1337,
+                })
+                .ok()
+                .unwrap();
+        });
 
-                let recv_data = |udp_socket: &mut udp::Socket,
-                                 copy_buf: &mut [u8],
-                                 dma: &mut EthernetDMA<'_, '_>| {
-                    if let Ok((buf, meta)) = udp_socket.recv() {
-                        copy_buf[..buf.len()].copy_from_slice(buf);
-
-                        if let Some(timestamp) =
-                            dma.get_timestamp_for_id(meta.packet_id().unwrap()).ok()
-                        {
-                            Some((buf.len(), timestamp))
-                        } else {
-                            defmt::error!(
-                                "Failed to obtain RX timestamp for {}.",
-                                meta.packet_id().unwrap()
-                            );
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                };
-
-                let send_data =
-                    |iface: &mut Interface, udp_socket: &mut udp::Socket, buf: &[u8]| {
-                        let (buffer, tx_id) = udp_socket
-                            .send_marked(
-                                iface,
-                                buf.len(),
-                                IpEndpoint {
-                                    addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 1])),
-                                    port: 1337,
-                                },
-                            )
-                            .unwrap();
-                        buffer.copy_from_slice(buf);
-                        tx_id
-                    };
-
-                while iface.poll(now(), &mut dma, sockets) {
-                    let udp_socket = sockets.get_mut::<udp::Socket>(*udp_socket);
-
-                    if let (true, Some(resp_packet_id)) =
-                        (client.t2.is_none(), &mut client.t2_packet_id)
-                    {
-                        // Step 4
-                        // Client records TX time t2
-                        defmt::trace!("Step 4");
-                        if let Some(tx_ts) = dma.get_timestamp_for_id(resp_packet_id.clone()).ok() {
-                            client.t2 = Some(tx_ts)
-                        } else {
-                            defmt::error!("Did not get TX timestamp... (Step 4)");
-                        }
-                    }
-
-                    let mut buf = [0u8; 60];
-                    while let Some((data, rx_timestamp)) = recv_data(udp_socket, &mut buf, dma) {
-                        if data <= 0 {
-                            return;
-                        }
-
-                        let msg_id = buf[0];
-                        let data = &buf[1..data];
-
-                        // Verify that we're receiving the correct message.
-                        if msg_id != client.expected_number {
-                            *client = Default::default();
-                            udp_socket.close();
-                            udp_socket
-                                .bind(IpListenEndpoint {
-                                    addr: None,
-                                    port: 1337,
-                                })
+        macro_rules! recv {
+            () => {
+                loop {
+                    let res = (&mut sockets).lock(|sockets| {
+                        let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
+                        if let Ok((size, meta)) = udp_socket.recv_slice(&mut buf) {
+                            let timestamp = dma
+                                .lock(|dma| dma.get_timestamp_for_id(meta.packet_id().unwrap()))
                                 .ok()
                                 .unwrap();
-                            defmt::error!("Got unexpected message {}", msg_id);
+                            Ok((&buf[..size], timestamp))
                         } else {
-                            // Advance to the next message.
-                            client.expected_number += 1;
+                            Err(())
                         }
-
-                        if msg_id == 0x01 {
-                            // Step 2
-                            // Client records RX time t1'
-                            defmt::trace!("Step 2");
-                            client.t1_prim = Some(rx_timestamp);
-                        } else if msg_id == 0x02 {
-                            let timestamp = Timestamp::new_raw(i64::from_le_bytes(
-                                data[0..8].try_into().ok().unwrap(),
-                            ));
-                            // Step 3
-                            // Client records TX time t1
-                            defmt::trace!("Step 3");
-                            client.t1 = Some(timestamp);
-                            client.t2_packet_id =
-                                Some(send_data(iface, udp_socket, &[0x03]).into());
-                            client.expected_number = 0x04;
-                        } else if msg_id == 0x04 {
-                            let timestamp = Timestamp::new_raw(i64::from_le_bytes(
-                                data[0..8].try_into().ok().unwrap(),
-                            ));
-                            // Step 5
-                            // Client records RX time t2'
-                            defmt::trace!("Step 5");
-                            client.t2_prim = Some(timestamp);
-                        } else if msg_id == 0x05 {
-                            // Step 6
-                            // Client records RX time t3'
-                            defmt::trace!("Step 6");
-                            client.t3_prim = Some(rx_timestamp);
-                        } else if msg_id == 0x06 {
-                            // Step 7
-                            // Client records TX time t3
-                            defmt::trace!("Step 7");
-                            let timestamp = Timestamp::new_raw(i64::from_le_bytes(
-                                data[0..8].try_into().ok().unwrap(),
-                            ));
-                            client.t3 = Some(timestamp);
-
-                            client.print_timestamps();
-
-                            let now = ptp.get_time();
-                            if let Some(offset) = client.calculate_offset() {
-                                if offset.seconds() > 0 || offset.nanos() > 200_000 {
-                                    *addend_integrator = 0.0;
-                                    defmt::info!("Updating time. Offset {} ", offset);
-                                    let updated_time = now + offset;
-                                    ptp.set_time(updated_time);
-                                } else {
-                                    let mut offset_nanos = offset.nanos() as i64;
-                                    if offset.is_negative() {
-                                        offset_nanos *= -1;
-                                    }
-
-                                    let error =
-                                        (offset_nanos * start_addend as i64) / 1_000_000_000;
-                                    *addend_integrator += error as f32 / 500.;
-
-                                    defmt::info!(
-                                        "Error: {}. Integrator: {}, Offset: {} ns",
-                                        error,
-                                        addend_integrator,
-                                        offset_nanos
-                                    );
-
-                                    let new_addend = (start_addend as i64
-                                        + error / 4
-                                        + (*addend_integrator as i64))
-                                        as u32;
-                                    ptp.set_addend(new_addend);
-                                }
-                            }
-
-                            *client = Default::default();
-                        }
+                    });
+                    if let Ok(res) = res {
+                        break res;
                     }
                 }
-            },
+            };
+        }
+
+        macro_rules! send {
+            ($data:expr) => {{
+                let packet_id = (&mut sockets, &mut interface).lock(|sockets, interface| {
+                    let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
+
+                    let (buf, packet_id) = udp_socket
+                        .send_marked(
+                            interface,
+                            $data.len(),
+                            IpEndpoint {
+                                addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 1])),
+                                port: 1337,
+                            },
+                        )
+                        .unwrap();
+
+                    buf[..$data.len()].copy_from_slice($data);
+
+                    dma.lock(|mut dma| {
+                        interface.poll(now(), &mut dma, sockets);
+                    });
+
+                    packet_id
+                });
+
+                loop {
+                    let timestamp = dma.lock(|dma| dma.get_timestamp_for_id(packet_id).ok());
+
+                    if let Some(timestamp) = timestamp {
+                        break timestamp;
+                    }
+                }
+            }};
+        }
+
+        // Protocol:
+        // 1. Client sends empty message 0x0
+        // 2. Server sends empty message 0x01, (client records RX time t1')
+        // 3. Server sends message 0x02 with TX time of #2 (client records TX time t1)
+        // 4. Client sends empty message 0x03 (client records TX time t2)
+        // 5. Server sends message 0x04 with RX time of #4 (client records RX time t2')
+
+        defmt::info!("Step 1");
+        send!(&[0x00]);
+
+        defmt::info!("Step 2");
+        let (buf, t1_prim) = recv!();
+
+        if buf[0] != 0x01 {
+            defmt::error!("Expected message 0x01, got {}", buf);
+            return;
+        }
+
+        defmt::info!("Step 3");
+        let (buf, _) = recv!();
+
+        if buf[0] != 0x02 {
+            defmt::error!("Expected message 0x02, got {}", buf);
+            return;
+        }
+
+        let t1 = Timestamp::new_raw(i64::from_le_bytes(
+            buf[1..9].try_into().expect("Infallible"),
+        ));
+
+        defmt::info!("Step 4");
+        let t2 = send!(&[0x03]);
+
+        defmt::info!("Step 5");
+        let (buf, _) = recv!();
+
+        if buf[0] != 0x04 {
+            defmt::error!("Expected message 0x04, got {}", buf);
+            return;
+        }
+
+        let t2_prim = Timestamp::new_raw(i64::from_le_bytes(
+            buf[1..9].try_into().expect("Infallible"),
+        ));
+
+        let offset = crate::calculate_offset(t1, t1_prim, t2, t2_prim);
+
+        ptp.lock(|ptp| {
+            let now = ptp.get_time();
+            if offset.seconds() > 0 || offset.nanos() > 200_000 {
+                *addend_integrator = 0.0;
+                defmt::info!("Updating time. Offset {} ", offset);
+                let updated_time = now + offset;
+                ptp.set_time(updated_time);
+            } else {
+                let mut offset_nanos = offset.nanos() as i64;
+                if offset.is_negative() {
+                    offset_nanos *= -1;
+                }
+
+                let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
+                *addend_integrator += error as f32 / 500.;
+
+                defmt::info!(
+                    "Error: {}. Integrator: {}, Offset: {} ns",
+                    error,
+                    addend_integrator,
+                    offset_nanos
+                );
+
+                let new_addend =
+                    (start_addend as i64 + error / 4 + (*addend_integrator as i64)) as u32;
+                ptp.set_addend(new_addend);
+            }
+        });
+    }
+
+    #[task(binds = ETH, shared = [dma, ptp, interface, sockets], priority = 2)]
+    fn eth_interrupt(cx: eth_interrupt::Context) {
+        let (dma, ptp, interface, sockets) = (
+            cx.shared.dma,
+            cx.shared.ptp,
+            cx.shared.interface,
+            cx.shared.sockets,
         );
+        (dma, ptp, interface, sockets).lock(|mut dma, ptp, interface, sockets| {
+            dma.interrupt_handler();
+            ptp.interrupt_handler();
+
+            interface.poll(now(), &mut dma, sockets);
+        })
     }
 }

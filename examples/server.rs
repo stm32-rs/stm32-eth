@@ -29,14 +29,13 @@
 
 use defmt_rtt as _;
 use panic_probe as _;
-use stm32_eth::dma::PacketId;
 
 mod common;
 
 #[rtic::app(device = stm32_eth::stm32, dispatchers = [SPI1])]
 mod app {
 
-    use crate::{common::EthernetPhy, Server};
+    use crate::common::EthernetPhy;
 
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
@@ -130,21 +129,15 @@ mod app {
             udp::PacketBuffer::new(&mut rx_meta_storage[..], &mut rx_payload_storage[..]);
         let tx_buffer =
             udp::PacketBuffer::new(&mut tx_meta_storage[..], &mut tx_payload_storage[..]);
-        let mut udp_socket = udp::Socket::new(rx_buffer, tx_buffer);
-
-        udp_socket
-            .bind(IpListenEndpoint {
-                addr: None,
-                port: 1337,
-            })
-            .ok()
-            .unwrap();
+        let udp_socket = udp::Socket::new(rx_buffer, tx_buffer);
 
         let mut sockets = SocketSet::new(&mut sockets[..]);
         let udp_socket = sockets.add(udp_socket);
 
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();
+
+        runner::spawn().ok();
 
         match EthernetPhy::from_miim(mac, 0) {
             Ok(mut phy) => {
@@ -191,12 +184,13 @@ mod app {
         )
     }
 
-    #[task(shared = [interface, dma, ptp, sockets, udp_socket])]
+    #[task(shared = [interface, dma, sockets, udp_socket])]
     fn runner(cx: runner::Context) {
-        let (interface, mut dma, ptp, mut sockets, mut udp_socket) = (
+        runner::spawn().ok();
+
+        let (mut interface, mut dma, mut sockets, mut udp_socket) = (
             cx.shared.interface,
             cx.shared.dma,
-            cx.shared.ptp,
             cx.shared.sockets,
             cx.shared.udp_socket,
         );
@@ -204,15 +198,28 @@ mod app {
         let udp_socket = udp_socket.lock(|v| *v);
         let mut buf = [0u8; 128];
 
+        sockets.lock(|sockets| {
+            let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
+            udp_socket.close();
+            udp_socket
+                .bind(IpListenEndpoint {
+                    addr: None,
+                    port: 1337,
+                })
+                .ok()
+                .unwrap();
+        });
+
         macro_rules! recv {
             () => {
                 loop {
-                    let res = sockets.lock(|sockets| {
+                    let res = (&mut sockets).lock(|sockets| {
                         let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
                         if let Ok((size, meta)) = udp_socket.recv_slice(&mut buf) {
                             let timestamp = dma
                                 .lock(|dma| dma.get_timestamp_for_id(meta.packet_id().unwrap()))
-                                .ok();
+                                .ok()
+                                .unwrap();
                             Ok((&buf[..size], timestamp))
                         } else {
                             Err(())
@@ -227,7 +234,7 @@ mod app {
 
         macro_rules! send {
             ($data:expr) => {{
-                let packet_id = (sockets, interface).lock(|sockets, interface| {
+                let packet_id = (&mut sockets, &mut interface).lock(|sockets, interface| {
                     let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
 
                     let (buf, packet_id) = udp_socket
@@ -242,6 +249,11 @@ mod app {
                         .unwrap();
 
                     buf[..$data.len()].copy_from_slice($data);
+
+                    dma.lock(|mut dma| {
+                        interface.poll(now(), &mut dma, sockets);
+                    });
+
                     packet_id
                 });
 
@@ -269,7 +281,7 @@ mod app {
         defmt::info!("Step 1");
 
         if m0 != &[0x00] {
-            defmt::error!("Expected message 0x00, got {}", m0[0]);
+            defmt::error!("Expected message 0x00, got {}", m0);
             return;
         }
 
@@ -285,179 +297,32 @@ mod app {
         defmt::info!("Step 4");
         let (m3, t2_prim) = recv!();
         if m3 != &[0x03] {
-            defmt::error!("Expected message 0x03, got {}", m3[0]);
+            defmt::error!("Expected message 0x03, got {}", m3);
             return;
         }
 
         defmt::info!("Step 5");
         data[0] = 0x04;
-        data[1..9].copy_from_slice(&t2_prim.unwrap().raw().to_le_bytes());
+        data[1..9].copy_from_slice(&t2_prim.raw().to_le_bytes());
         send!(&data);
 
-        defmt::info!("Step 6");
-        let t3 = send!(&[0x05]);
-
-        defmt::info!("Step 7");
-        data[0] = 0x06;
-        data[1..9].copy_from_slice(&t3.raw().to_le_bytes());
-
-        send!(&data);
+        defmt::info!("Done.");
     }
 
-    #[task(binds = ETH, shared = [dma, ptp, interface, sockets, udp_socket], priority = 2)]
+    #[task(binds = ETH, shared = [dma, ptp, interface, sockets], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (dma, server, ptp, interface, sockets, udp_socket) = (
+        let (dma, ptp, interface, sockets) = (
             cx.shared.dma,
-            cx.shared.server,
             cx.shared.ptp,
             cx.shared.interface,
             cx.shared.sockets,
-            cx.shared.udp_socket,
         );
 
-        let recv_data =
-            |udp_socket: &mut udp::Socket, copy_buf: &mut [u8], dma: &mut EthernetDMA<'_, '_>| {
-                if let Ok((buf, meta)) = udp_socket.recv() {
-                    copy_buf[..buf.len()].copy_from_slice(buf);
+        (dma, ptp, interface, sockets).lock(|mut dma, ptp, interface, sockets| {
+            dma.interrupt_handler();
+            ptp.interrupt_handler();
 
-                    let timestamp = dma
-                        .get_timestamp_for_id(meta.packet_id().unwrap())
-                        .ok()
-                        .unwrap();
-
-                    Some((buf.len(), timestamp))
-                } else {
-                    None
-                }
-            };
-
-        let send_data = |iface: &mut Interface, udp_socket: &mut udp::Socket, buf: &[u8]| {
-            let (buffer, tx_id) = udp_socket
-                .send_marked(
-                    iface,
-                    buf.len(),
-                    IpEndpoint {
-                        addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 2])),
-                        port: 1337,
-                    },
-                )
-                .unwrap();
-            buffer.copy_from_slice(buf);
-            tx_id
-        };
-
-        (dma, ptp, server, interface, sockets, udp_socket).lock(
-            |mut dma, ptp, server, interface, sockets, udp_socket| {
-                dma.interrupt_handler();
-                ptp.interrupt_handler();
-
-                while interface.poll(now(), &mut dma, sockets) {
-                    let udp_socket = sockets.get_mut::<udp::Socket>(*udp_socket);
-
-                    if let (false, Some(t1_id)) = (server.t1_sent, &mut server.t1_id) {
-                        defmt::info!("S3 Getting info for {}", t1_id);
-                        if let Some(t1) = dma.get_timestamp_for_id(t1_id.clone()).ok() {
-                            // Step 3
-                            // Server sends message 0x02 with the TX time of #2
-                            server.expected_number = 0x03;
-
-                            defmt::info!("Step 3");
-
-                            let mut buffer = [0u8; 42];
-                            buffer[0] = 0x02;
-                            buffer[1..9].copy_from_slice(&t1.raw().to_le_bytes());
-                            send_data(interface, udp_socket, &buffer[..9]);
-                            server.t1_sent = true;
-                        } else {
-                            defmt::error!("Didn't get TX id... (Step 3)");
-                            break;
-                        }
-                    } else if let Some(t3_id) = &mut server.t3_id {
-                        defmt::info!("S7 Getting info for {}", t3_id);
-                        if let Some(t3) = dma.get_timestamp_for_id(t3_id.clone()).ok() {
-                            // Step 7.
-                            // Server sends message 0x06 with the timestsamp of #6
-                            let mut buffer = [0u8; 9];
-                            buffer[0] = 0x06;
-                            buffer[1..9].copy_from_slice(&t3.raw().to_le_bytes());
-                            send_data(interface, udp_socket, &buffer[..9]);
-                            server.t3_sent = true;
-
-                            defmt::info!("Step 7");
-
-                            // We're done, reset
-                            *server = Default::default();
-
-                            udp_socket.close();
-                            udp_socket
-                                .bind(IpListenEndpoint {
-                                    addr: None,
-                                    port: 1337,
-                                })
-                                .ok()
-                                .unwrap();
-                        } else {
-                            defmt::error!("Didn't get TX id... (Step 7)");
-                            break;
-                        }
-                    }
-
-                    let mut buf = [0u8; 60];
-                    while let Some((data, rx_timestamp)) = recv_data(udp_socket, &mut buf, dma) {
-                        if data <= 0 {
-                            return;
-                        }
-
-                        let msg_id = buf[0];
-
-                        // Verify that we're receiving the correct message.
-                        if msg_id != server.expected_number {
-                            *server = Default::default();
-                            udp_socket.close();
-                            udp_socket
-                                .bind(IpListenEndpoint {
-                                    addr: None,
-                                    port: 1337,
-                                })
-                                .ok()
-                                .unwrap();
-
-                            defmt::error!("Got unexpected message {}", msg_id);
-                        } else {
-                            defmt::info!("Got {}", msg_id);
-                            // Advance to the next message.
-                            server.expected_number += 1;
-                        }
-
-                        if msg_id == 0 {
-                            // Step 1
-                            // Step 2
-                            // Server sends empty message 0x01.
-
-                            defmt::info!("Step 1");
-                            defmt::info!("Step 2");
-                            let t1_id = send_data(interface, udp_socket, &[0x1]);
-                            server.t1_id = Some(t1_id.into());
-                            server.t1_sent = false;
-                        } else if msg_id == 0x03 {
-                            // Step 4
-                            // Step 5
-                            defmt::info!("Step 4");
-                            defmt::info!("Step 5");
-                            let mut buffer = [0u8; 9];
-                            buffer[0] = 0x04;
-                            buffer[1..9].copy_from_slice(&rx_timestamp.raw().to_le_bytes());
-                            send_data(interface, udp_socket, &buffer[..9]);
-
-                            defmt::info!("Step 6");
-                            // Step 6
-                            buffer[0] = 0x05;
-                            let t3_id = send_data(interface, udp_socket, &buffer[..1]);
-                            server.t3_id = Some(t3_id.into());
-                        }
-                    }
-                }
-            },
-        );
+            interface.poll(now(), &mut dma, sockets);
+        });
     }
 }
