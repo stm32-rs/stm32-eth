@@ -33,37 +33,6 @@ use stm32_eth::dma::PacketId;
 
 mod common;
 
-/// Protocol:
-/// 1. Client sends empty message 0x0
-/// 2. Server sends empty message 0x01, (client records RX time t1')
-/// 3. Server sends message 0x02 with TX time of #2 (client records TX time t1)
-/// 4. Client sends empty message 0x03 (client records TX time t2)
-/// 5. Server sends message 0x04 with RX time of #4 (client records RX time t2')
-/// 6. Server sends empty message 0x05 (client records RX time t3')
-/// 7. Server sends message 0x06 with timestamp of #6 (client records TX time t3)
-
-pub struct Server {
-    expected_number: u8,
-
-    t1_sent: bool,
-    t1_id: Option<PacketId>,
-
-    t3_sent: bool,
-    t3_id: Option<PacketId>,
-}
-
-impl Default for Server {
-    fn default() -> Self {
-        Self {
-            expected_number: 0,
-            t1_sent: false,
-            t1_id: None,
-            t3_sent: false,
-            t3_id: None,
-        }
-    }
-}
-
 #[rtic::app(device = stm32_eth::stm32, dispatchers = [SPI1])]
 mod app {
 
@@ -100,7 +69,6 @@ mod app {
 
     #[shared]
     struct Shared {
-        server: Server,
         dma: EthernetDMA<'static, 'static>,
         interface: Interface,
         sockets: SocketSet<'static>,
@@ -214,7 +182,6 @@ mod app {
             Shared {
                 dma,
                 ptp,
-                server: Default::default(),
                 interface,
                 sockets,
                 udp_socket,
@@ -224,7 +191,120 @@ mod app {
         )
     }
 
-    #[task(binds = ETH, shared = [dma, ptp, server, interface, sockets, udp_socket], priority = 2)]
+    #[task(shared = [interface, dma, ptp, sockets, udp_socket])]
+    fn runner(cx: runner::Context) {
+        let (interface, mut dma, ptp, mut sockets, mut udp_socket) = (
+            cx.shared.interface,
+            cx.shared.dma,
+            cx.shared.ptp,
+            cx.shared.sockets,
+            cx.shared.udp_socket,
+        );
+
+        let udp_socket = udp_socket.lock(|v| *v);
+        let mut buf = [0u8; 128];
+
+        macro_rules! recv {
+            () => {
+                loop {
+                    let res = sockets.lock(|sockets| {
+                        let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
+                        if let Ok((size, meta)) = udp_socket.recv_slice(&mut buf) {
+                            let timestamp = dma
+                                .lock(|dma| dma.get_timestamp_for_id(meta.packet_id().unwrap()))
+                                .ok();
+                            Ok((&buf[..size], timestamp))
+                        } else {
+                            Err(())
+                        }
+                    });
+                    if let Ok(res) = res {
+                        break res;
+                    }
+                }
+            };
+        }
+
+        macro_rules! send {
+            ($data:expr) => {{
+                let packet_id = (sockets, interface).lock(|sockets, interface| {
+                    let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
+
+                    let (buf, packet_id) = udp_socket
+                        .send_marked(
+                            interface,
+                            $data.len(),
+                            IpEndpoint {
+                                addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 2])),
+                                port: 1337,
+                            },
+                        )
+                        .unwrap();
+
+                    buf[..$data.len()].copy_from_slice($data);
+                    packet_id
+                });
+
+                loop {
+                    let timestamp = dma.lock(|dma| dma.get_timestamp_for_id(packet_id).ok());
+
+                    if let Some(timestamp) = timestamp {
+                        break timestamp;
+                    }
+                }
+            }};
+        }
+
+        // Protocol:
+        // 1. Client sends empty message 0x0
+        // 2. Server sends empty message 0x01, (client records RX time t1')
+        // 3. Server sends message 0x02 with TX time of #2 (client records TX time t1)
+        // 4. Client sends empty message 0x03 (client records TX time t2)
+        // 5. Server sends message 0x04 with RX time of #4 (client records RX time t2')
+        // 6. Server sends empty message 0x05 (client records RX time t3')
+        // 7. Server sends message 0x06 with timestamp of #6 (client records TX time t3)
+
+        let (m0, _) = recv!();
+
+        defmt::info!("Step 1");
+
+        if m0 != &[0x00] {
+            defmt::error!("Expected message 0x00, got {}", m0[0]);
+            return;
+        }
+
+        defmt::info!("Step 2");
+        let t1 = send!(&[0x1]);
+
+        defmt::info!("Step 3");
+        let mut data = [0u8; 9];
+        data[0] = 0x2;
+        data[1..9].copy_from_slice(&t1.raw().to_le_bytes());
+        let _ = send!(&data);
+
+        defmt::info!("Step 4");
+        let (m3, t2_prim) = recv!();
+        if m3 != &[0x03] {
+            defmt::error!("Expected message 0x03, got {}", m3[0]);
+            return;
+        }
+
+        defmt::info!("Step 5");
+        data[0] = 0x04;
+        data[1..9].copy_from_slice(&t2_prim.unwrap().raw().to_le_bytes());
+        send!(&data);
+
+        defmt::info!("Step 6");
+        let t3 = send!(&[0x05]);
+
+        defmt::info!("Step 7");
+        data[0] = 0x06;
+        data[1..9].copy_from_slice(&t3.raw().to_le_bytes());
+
+        send!(&data);
+    }
+
+    #[task(binds = ETH, shared = [dma, ptp, interface, sockets, udp_socket], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
         let (dma, server, ptp, interface, sockets, udp_socket) = (
             cx.shared.dma,
