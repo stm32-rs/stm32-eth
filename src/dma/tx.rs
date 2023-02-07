@@ -216,7 +216,9 @@ impl TxRingEntry {
             if packet_id.is_some() {
                 extra_flags |= TXDESC_0_TIMESTAMP_ENABLE | TXDESC_0_LS | TXDESC_0_FS;
             }
+
             self.desc_mut().packet_id = packet_id;
+            self.desc_mut().cached_timestamp.take();
 
             extra_flags |= TXDESC_0_IC;
 
