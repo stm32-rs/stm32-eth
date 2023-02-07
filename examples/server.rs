@@ -275,6 +275,7 @@ mod app {
                     let udp_socket = sockets.get_mut::<udp::Socket>(*udp_socket);
 
                     if let (false, Some(t1_id)) = (server.t1_sent, &mut server.t1_id) {
+                        defmt::info!("S3 Getting info for {}", t1_id);
                         if let Some(t1) = dma.get_timestamp_for_id(t1_id.clone()).ok() {
                             // Step 3
                             // Server sends message 0x02 with the TX time of #2
@@ -289,8 +290,10 @@ mod app {
                             server.t1_sent = true;
                         } else {
                             defmt::error!("Didn't get TX id... (Step 3)");
+                            break;
                         }
                     } else if let Some(t3_id) = &mut server.t3_id {
+                        defmt::info!("S7 Getting info for {}", t3_id);
                         if let Some(t3) = dma.get_timestamp_for_id(t3_id.clone()).ok() {
                             // Step 7.
                             // Server sends message 0x06 with the timestsamp of #6
@@ -304,8 +307,18 @@ mod app {
 
                             // We're done, reset
                             *server = Default::default();
+
+                            udp_socket.close();
+                            udp_socket
+                                .bind(IpListenEndpoint {
+                                    addr: None,
+                                    port: 1337,
+                                })
+                                .ok()
+                                .unwrap();
                         } else {
-                            defmt::error!("Didn'tget TX id... (Step 7)")
+                            defmt::error!("Didn't get TX id... (Step 7)");
+                            break;
                         }
                     }
 

@@ -375,19 +375,16 @@ mod app {
                 while iface.poll(now(), &mut dma, sockets) {
                     let udp_socket = sockets.get_mut::<udp::Socket>(*udp_socket);
 
-                    if let (true, Some(resp_packet_id), None) =
-                        (client.t2.is_none(), &mut client.t2_packet_id, client.t2)
+                    if let (true, Some(resp_packet_id)) =
+                        (client.t2.is_none(), &mut client.t2_packet_id)
                     {
                         // Step 4
                         // Client records TX time t2
                         defmt::trace!("Step 4");
-                        client.t2 = if let Some(tx_ts) =
-                            dma.get_timestamp_for_id(resp_packet_id.clone()).ok()
-                        {
-                            Some(tx_ts)
+                        if let Some(tx_ts) = dma.get_timestamp_for_id(resp_packet_id.clone()).ok() {
+                            client.t2 = Some(tx_ts)
                         } else {
                             defmt::error!("Did not get TX timestamp... (Step 4)");
-                            None
                         }
                     }
 
