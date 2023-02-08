@@ -71,7 +71,7 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Par
     {
         let rcc = p.RCC.constrain();
 
-        let clocks = rcc.cfgr.sysclk(100.MHz()).hclk(100.MHz());
+        let clocks = rcc.cfgr.sysclk(96.MHz()).hclk(96.MHz());
 
         #[cfg(feature = "stm32f4xx-hal")]
         let clocks = {
