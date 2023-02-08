@@ -4,21 +4,21 @@
 //! For build and run instructions, see README.md
 //!
 //! This example starts a TCP listening server at the address 10.0.0.1/24, on port 80, that
-//!  should transmit `Hello` to any connecting client, and then close the connection.
+//!  should transmit `hello` to any connecting client, and then close the connection.
 
 use defmt_rtt as _;
 use panic_probe as _;
 
 use cortex_m_rt::{entry, exception};
+use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
 use stm32_eth::stm32::{interrupt, CorePeripherals, Peripherals, SYST};
 
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
 
-use smoltcp::iface::{InterfaceBuilder, NeighborCache};
-use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
+use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer};
 use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
+use smoltcp::wire::{EthernetAddress, IpCidr, Ipv4Address, Ipv4Cidr};
 
 pub mod common;
 
@@ -27,6 +27,7 @@ use stm32_eth::{
     Parts,
 };
 
+const IP_ADDRESS: Ipv4Address = Ipv4Address::new(10, 0, 0, 1);
 const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
 static TIME: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
@@ -62,19 +63,18 @@ fn main() -> ! {
     .unwrap();
     dma.enable_interrupt();
 
-    let local_addr = Ipv4Address::new(10, 0, 0, 1);
-    let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
-    let mut ip_addrs = [ip_addr];
-    let mut neighbor_storage = [None; 16];
-    let neighbor_cache = NeighborCache::new(&mut neighbor_storage[..]);
     let ethernet_addr = EthernetAddress(SRC_MAC);
 
-    let mut sockets: [_; 1] = Default::default();
-    let mut iface = InterfaceBuilder::new(&mut dma, &mut sockets[..])
-        .hardware_addr(ethernet_addr.into())
-        .ip_addrs(&mut ip_addrs[..])
-        .neighbor_cache(neighbor_cache)
-        .finalize();
+    let mut config = Config::new();
+    config.hardware_addr = Some(ethernet_addr.into());
+    let mut iface = Interface::new(config, &mut &mut dma);
+
+    iface.update_ip_addrs(|addr| {
+        addr.push(IpCidr::Ipv4(Ipv4Cidr::new(IP_ADDRESS, 24))).ok();
+    });
+
+    let mut sockets = [SocketStorage::EMPTY];
+    let mut sockets = SocketSet::new(&mut sockets[..]);
 
     let mut server_rx_buffer = [0; 512];
     let mut server_tx_buffer = [0; 512];
@@ -82,7 +82,7 @@ fn main() -> ! {
         TcpSocketBuffer::new(&mut server_rx_buffer[..]),
         TcpSocketBuffer::new(&mut server_tx_buffer[..]),
     );
-    let server_handle = iface.add_socket(server_socket);
+    let server_handle = sockets.add(server_socket);
 
     loop {
         let time: u64 = cortex_m::interrupt::free(|cs| *TIME.borrow(cs).borrow());
@@ -91,31 +91,43 @@ fn main() -> ! {
             *eth_pending = false;
         });
 
-        iface.poll(Instant::from_millis(time as i64)).ok();
+        iface.poll(
+            Instant::from_millis(time as i64),
+            &mut &mut dma,
+            &mut sockets,
+        );
 
-        let socket = iface.get_socket::<TcpSocket>(server_handle);
+        let socket = sockets.get_mut::<TcpSocket>(server_handle);
 
         if !socket.is_listening() && !socket.is_open() {
             socket.abort();
             if let Err(e) = socket.listen(80) {
                 defmt::error!("TCP listen error: {:?}", e)
             } else {
-                defmt::info!("Listening at {}:80...", ip_addr);
+                defmt::info!("Listening at {}:80...", IP_ADDRESS);
             }
         } else {
             match socket.send_slice(b"hello\n") {
                 Ok(_) => {
-                    while iface.get_socket::<TcpSocket>(server_handle).send_queue() != 0 {
+                    while sockets.get::<TcpSocket>(server_handle).send_queue() != 0 {
                         // Poll to get the message out of the door
-                        iface.poll(Instant::from_millis(time as i64 + 1)).ok();
+                        iface.poll(
+                            Instant::from_millis(time as i64 + 1),
+                            &mut &mut dma,
+                            &mut sockets,
+                        );
                     }
 
                     // Abort the connection
-                    let socket = iface.get_socket::<TcpSocket>(server_handle);
+                    let socket = sockets.get_mut::<TcpSocket>(server_handle);
                     socket.abort();
                     defmt::info!("Transmitted hello! Closing socket...");
 
-                    iface.poll(Instant::from_millis(time as i64 + 1)).ok();
+                    iface.poll(
+                        Instant::from_millis(time as i64),
+                        &mut &mut dma,
+                        &mut sockets,
+                    );
                 }
                 Err(_) => {}
             }

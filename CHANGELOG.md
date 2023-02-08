@@ -1,5 +1,5 @@
 ## Unreleased
-No changes yet.
+* Update to `smoltcp` v0.9 [#71](https://github.com/stm32-rs/stm32-eth/pull/71).
 
 ## [0.4.0](https://github.com/stm32-rs/stm32-eth/tree/v0.4.0)
 * Remove the `smi` feature and always enable miim/smi. Use `ieee802_3_miim` for SMI access [#45](https://github.com/stm32-rs/stm32-eth/pull/45)
