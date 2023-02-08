@@ -43,12 +43,10 @@ mod app {
     use systick_monotonic::Systick;
 
     use stm32_eth::{
-        dma::{
-            EthernetDMA, PacketId, RxDescriptor, RxDescriptorRing, TxDescriptor, TxDescriptorRing,
-        },
+        dma::{EthernetDMA, PacketId},
         mac::Speed,
         ptp::{EthernetPTP, Timestamp},
-        Parts, MTU,
+        Parts,
     };
 
     #[local]
@@ -84,7 +82,6 @@ mod app {
         let Parts { dma, mac, mut ptp } =
             stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
-        #[cfg(not(feature = "stm32h7xx-hal"))]
         ptp.enable_pps(pps);
 
         defmt::info!("Enabling interrupts");

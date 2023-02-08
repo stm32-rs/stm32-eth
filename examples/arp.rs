@@ -8,6 +8,7 @@
 #![no_main]
 
 use defmt_rtt as _;
+use ieee802_3_miim::{phy::BarePhy, Phy};
 use panic_probe as _;
 
 use core::cell::RefCell;
@@ -16,14 +17,13 @@ use cortex_m_rt::{entry, exception};
 
 use cortex_m::interrupt::Mutex;
 use stm32_eth::{
-    dma::{RxDescriptor, TxDescriptor},
     stm32::{interrupt, CorePeripherals, Peripherals, SYST},
-    Parts, MTU,
+    Parts,
 };
 
 pub mod common;
 
-use stm32_eth::dma::{RxDescriptorRing, TxDescriptorRing, TxError};
+use stm32_eth::dma::TxError;
 
 const PHY_ADDR: u8 = 0;
 
@@ -55,15 +55,10 @@ fn main() -> ! {
 
     let mut last_link_up = false;
 
-    #[cfg(feature = "f-series")]
-    let mut bare_phy = BarePhy::new(_mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
+    let mut bare_phy = BarePhy::new(mac.with_mii(mdio, mdc), PHY_ADDR, Default::default());
 
     loop {
-        #[cfg(feature = "f-series")]
         let link_up = bare_phy.phy_link_up();
-
-        #[cfg(feature = "stm32h7xx-hal")]
-        let link_up = true;
 
         if link_up != last_link_up {
             if link_up {
