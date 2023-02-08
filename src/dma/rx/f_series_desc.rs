@@ -63,7 +63,7 @@ impl RxDescriptor {
     }
 
     /// Is owned by the DMA engine?
-    fn is_owned(&self) -> bool {
+    pub(super) fn is_owned(&self) -> bool {
         (self.inner_raw.read(0) & RXDESC_0_OWN) == RXDESC_0_OWN
     }
 

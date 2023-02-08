@@ -44,21 +44,11 @@ pub struct RxRing<'data, STATE> {
 }
 
 impl<'data, STATE> RxRing<'data, STATE> {
-    /// Demand that the DMA engine polls the current `RxDescriptor`
-    /// (when in `RunningState::Stopped`.)
-    pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
-        #[cfg(feature = "f-series")]
-        eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
-
-        // On H7, we poll by re-writing the tail pointer register.
-        #[cfg(feature = "stm32h7xx-hal")]
-        eth_dma
-            .dmacrx_dtpr
-            .modify(|r, w| unsafe { w.bits(r.bits()) });
-    }
-
     /// Get current `RunningState`
-    pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
+    pub fn running_state(&self) -> RunningState {
+        // SAFETY: we only perform an atomic read of `dmasr`
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
         #[cfg(feature = "f-series")]
         let rps = eth_dma.dmasr.read().rps().bits();
         #[cfg(feature = "stm32h7xx-hal")]
@@ -164,17 +154,43 @@ impl<'data> RxRing<'data, NotRunning> {
             });
         }
 
-        self.demand_poll(eth_dma);
-
-        RxRing {
+        let me = RxRing {
             ring: self.ring,
             next_entry: self.next_entry,
             state: Default::default(),
-        }
+        };
+
+        me.demand_poll();
+
+        me
     }
 }
 
 impl<'data> RxRing<'data, Running> {
+    /// Demand that the DMA engine polls the current `RxDescriptor`
+    /// (when in `RunningState::Stopped`.)
+    pub fn demand_poll(&self) {
+        // # SAFETY
+        //
+        // On F7, we only perform an atomic write to `damrpdr`.
+        //
+        // On H7, we only perform a Read-Write to `dmacrx_dtpr`,
+        // always with the same value. Running `demand_poll` concurrently
+        // with the other location in which this register is written ([`RxRing::start`])
+        // is impossible, which is guaranteed the state transition from NotRunning to
+        // Running.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
+        #[cfg(feature = "f-series")]
+        eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
+
+        // On H7, we poll by re-writing the tail pointer register.
+        #[cfg(feature = "stm32h7xx-hal")]
+        eth_dma
+            .dmacrx_dtpr
+            .modify(|r, w| unsafe { w.bits(r.bits()) });
+    }
+
     /// Stop the DMA engine.
     pub fn stop(&mut self, eth_dma: &ETHERNET_DMA) {
         #[cfg(feature = "f-series")]
@@ -185,18 +201,17 @@ impl<'data> RxRing<'data, Running> {
 
         start_reg.modify(|_, w| w.sr().clear_bit());
 
-        while self.running_state(eth_dma) != RunningState::Stopped {}
+        while self.running_state() != RunningState::Stopped {}
     }
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
     pub fn recv_next(
         &mut self,
-        eth_dma: &ETHERNET_DMA,
         #[allow(unused_variables)] packet_id: Option<PacketId>,
     ) -> Result<RxPacket, RxError> {
-        if !self.running_state(eth_dma).is_running() {
-            self.demand_poll(eth_dma);
+        if !self.running_state().is_running() {
+            self.demand_poll();
         }
 
         let entry = self.next_entry;
@@ -256,6 +271,11 @@ impl<'data> RxRing<'data, Running> {
                 timestamp,
             }
         })
+    }
+
+    pub fn available(&mut self) -> bool {
+        let (desc, _) = self.ring.get(self.next_entry);
+        !desc.is_owned()
     }
 }
 

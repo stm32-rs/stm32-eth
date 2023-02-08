@@ -39,7 +39,11 @@ pub(crate) struct TxRing<'data, STATE> {
 }
 
 impl<'data, STATE> TxRing<'data, STATE> {
-    pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
+    pub fn running_state(&self) -> RunningState {
+        // SAFETY: we only perform an atomic read of `dmasr` or
+        // `dmadsr`.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
         #[cfg(feature = "f-series")]
         let tx_status = eth_dma.dmasr.read().tps().bits();
 
@@ -182,15 +186,37 @@ impl<'data> TxRing<'data, Running> {
 
             self.next_entry = (self.next_entry + 1) % entries_len;
 
+            self.demand_poll();
+
             Ok(r)
         } else {
             Err(TxError::WouldBlock)
         }
     }
 
+    /// Check whether a descriptor is available for sending.
+    ///
+    /// If this function returns `true`, the next [`TxRing::send`] is
+    /// guaranteed to succeed.
+    pub fn available(&mut self) -> bool {
+        let (desc, _) = self.ring.get(self.next_entry);
+        !desc.is_owned()
+    }
+
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
-    pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
+    fn demand_poll(&self) {
+        // # SAFETY
+        //
+        // On F7, we only perform an atomic write to `damrpdr`.
+        //
+        // On H7, we only perform a Read-Write to `dmacrx_dtpr`,
+        // always with the same value. Running `demand_poll` concurrently
+        // with the other location in which this register is written ([`TxRing::start`])
+        // is impossible, which is guaranteed the state transition from NotRunning to
+        // Running.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
         #[cfg(feature = "stm32h7xx-hal")]
         // To issue a poll demand, write a value to
         // the tail pointer. We just re-write the
@@ -214,8 +240,8 @@ impl<'data> TxRing<'data, Running> {
     }
 
     /// Is the Tx DMA engine running?
-    pub fn is_running(&self, eth_dma: &ETHERNET_DMA) -> bool {
-        self.running_state(eth_dma).is_running()
+    pub fn is_running(&self) -> bool {
+        self.running_state().is_running()
     }
 
     pub fn stop(&mut self, eth_dma: &ETHERNET_DMA) {
@@ -227,7 +253,7 @@ impl<'data> TxRing<'data, Running> {
         // Start transmission
         start_reg.modify(|_, w| w.st().clear_bit());
 
-        while self.running_state(eth_dma) != RunningState::Stopped {}
+        while self.running_state() != RunningState::Stopped {}
     }
 }
 

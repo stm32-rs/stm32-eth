@@ -282,44 +282,31 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// It stops if the ring is full. Call `recv_next()` to free an
     /// entry and to demand poll from the hardware.
     pub fn rx_is_running(&self) -> bool {
-        self.rx_ring.running_state(self.eth_dma()).is_running()
+        self.rx_ring.running_state().is_running()
     }
 
     /// Get the current state of Tx DMA
     pub fn tx_state(&self) -> RunningState {
-        self.tx_ring.running_state(self.eth_dma())
-    }
-
-    fn recv_next_impl<'rx_borrow>(
-        eth_dma: &ETHERNET_DMA,
-        rx_ring: &'rx_borrow mut RxRing<rx::Running>,
-        rx_packet_id: Option<PacketId>,
-    ) -> Result<RxPacket<'rx_borrow>, RxError> {
-        rx_ring.recv_next(eth_dma, rx_packet_id.map(|p| p.into()))
+        self.tx_ring.running_state()
     }
 
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
     pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
-        Self::recv_next_impl(&self.parts.eth_dma, &mut self.rx_ring, packet_id)
+        self.rx_ring.recv_next(packet_id.map(|p| p.into()))
+    }
+
+    /// Check whether a frame is available for reception.
+    ///
+    /// If this function returns `true`, the next [`TxRing::recv_next`] is
+    /// guaranteed to succeed.
+    pub fn rx_available(&mut self) -> bool {
+        self.rx_ring.available()
     }
 
     /// Is Tx DMA currently running?
     pub fn tx_is_running(&self) -> bool {
-        self.tx_ring.is_running(self.eth_dma())
-    }
-
-    pub(crate) fn send_impl<F: FnOnce(&mut [u8]) -> R, R>(
-        eth_dma: &ETHERNET_DMA,
-        tx_ring: &mut TxRing<tx::Running>,
-        length: usize,
-        tx_packet_id: Option<PacketId>,
-        f: F,
-    ) -> Result<R, TxError> {
-        let result = tx_ring.send(length, tx_packet_id.map(|p| p.into()), f);
-        tx_ring.demand_poll(eth_dma);
-
-        result
+        self.tx_ring.is_running()
     }
 
     /// Send a packet
@@ -329,7 +316,15 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         packet_id: Option<PacketId>,
         f: F,
     ) -> Result<R, TxError> {
-        Self::send_impl(&self.parts.eth_dma, &mut self.tx_ring, length, packet_id, f)
+        self.tx_ring.send(length, packet_id.map(|p| p.into()), f)
+    }
+
+    /// Check whether a descriptor is available for sending.
+    ///
+    /// If this function returns `true`, the next [`EthernetDMA::send`] is
+    /// guarantted to succeed.
+    pub fn tx_available(&mut self) -> bool {
+        self.tx_ring.available()
     }
 
     #[cfg(feature = "ptp")]

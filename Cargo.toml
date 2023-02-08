@@ -34,7 +34,7 @@ siphasher = "*"
 paste = { version = "1.0", optional = true }
 
 [dependencies.smoltcp]
-version = "0.8.2"
+version = "0.9"
 default-features = false
 optional = true
 
@@ -83,7 +83,7 @@ cortex-m-rtic = "1.0"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
-smoltcp = { version = "0.8", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
+smoltcp = { version = "0.9", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
 
 [[example]]
 name = "pktgen"

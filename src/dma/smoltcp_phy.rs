@@ -1,13 +1,13 @@
-use super::{rx::RxPacket, tx::TxError, EthernetDMA};
-use core::intrinsics::transmute;
+use super::rx::{self, RxRing};
+use super::tx::{self, TxRing};
+use super::EthernetDMA;
 use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
-use smoltcp::Error;
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/smoltcp-rs/smoltcp)
-impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
-    type RxToken = EthRxToken<'a>;
-    type TxToken = EthTxToken<'a>;
+impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
+    type RxToken<'token> = EthRxToken<'token, 'rx> where Self: 'token;
+    type TxToken<'token> = EthTxToken<'token, 'tx> where Self: 'token;
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
@@ -17,65 +17,63 @@ impl<'a, 'rx, 'tx, 'b> Device<'a> for &'b mut EthernetDMA<'rx, 'tx> {
         caps
     }
 
-    fn receive(&mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        let self_ = unsafe {
-            // HACK: eliminate lifetimes
-            transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
-        };
-        let eth = self_ as *mut EthernetDMA<'a, 'a>;
-        match self_.recv_next(None) {
-            Ok(packet) => {
-                let rx = EthRxToken { packet };
-                let tx = EthTxToken { eth };
-                Some((rx, tx))
-            }
-            Err(_) => None,
+    fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+        if self.tx_available() && self.rx_available() {
+            let EthernetDMA {
+                rx_ring, tx_ring, ..
+            } = self;
+
+            let rx = EthRxToken { rx_ring };
+
+            let tx = EthTxToken { tx_ring };
+            Some((rx, tx))
+        } else {
+            None
         }
     }
 
-    fn transmit(&mut self) -> Option<Self::TxToken> {
-        let eth = unsafe {
-            transmute::<&mut EthernetDMA<'rx, 'tx>, &mut EthernetDMA<'a, 'a>>(*self)
-                as *mut EthernetDMA<'a, 'a>
-        };
-        Some(EthTxToken { eth })
+    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
+        if self.tx_available() {
+            let EthernetDMA { tx_ring, .. } = self;
+            Some(EthTxToken { tx_ring })
+        } else {
+            None
+        }
     }
 }
 
 /// An Ethernet RX token that can be consumed in order to receive
 /// an ethernet packet.
-pub struct EthRxToken<'a> {
-    packet: RxPacket<'a>,
+pub struct EthRxToken<'a, 'rx> {
+    rx_ring: &'a mut RxRing<'rx, rx::Running>,
 }
 
-impl<'a> RxToken for EthRxToken<'a> {
-    fn consume<R, F>(mut self, _timestamp: Instant, f: F) -> Result<R, Error>
+impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
+    fn consume<R, F>(self, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> Result<R, Error>,
+        F: FnOnce(&mut [u8]) -> R,
     {
-        let result = f(&mut self.packet);
-        self.packet.free();
+        // NOTE(unwrap): an `EthRxToken` is only created when `eth.rx_available()`
+        let mut packet = self.rx_ring.recv_next(None).ok().unwrap();
+        let result = f(&mut packet);
+        packet.free();
         result
     }
 }
 
-/// Just a reference to [`Eth`](../struct.EthernetDMA.html) for sending a
-/// packet later with [`consume()`](#method.consume).
-pub struct EthTxToken<'a> {
-    eth: *mut EthernetDMA<'a, 'a>,
+/// Just a reference to [`EthernetDMA`] for sending a
+/// packet later with [`TxToken::consume()`].
+pub struct EthTxToken<'a, 'tx> {
+    tx_ring: &'a mut TxRing<'tx, tx::Running>,
 }
 
-impl<'a> TxToken for EthTxToken<'a> {
-    /// Allocate a [`Buffer`](../struct.Buffer.html), yield with
-    /// `f(buffer)`, and send it as an Ethernet packet.
-    fn consume<R, F>(self, _timestamp: Instant, len: usize, f: F) -> Result<R, Error>
+impl<'dma, 'tx> TxToken for EthTxToken<'dma, 'tx> {
+    fn consume<R, F>(self, len: usize, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> Result<R, Error>,
+        F: FnOnce(&mut [u8]) -> R,
     {
-        let eth = unsafe { &mut *self.eth };
-        match eth.send(len, None, f) {
-            Err(TxError::WouldBlock) => Err(Error::Exhausted),
-            Ok(r) => r,
-        }
+        // NOTE(unwrap): an `EthTxToken` is only created if
+        // there is a descriptor available for sending.
+        self.tx_ring.send(len, None, f).ok().unwrap()
     }
 }
