@@ -115,6 +115,7 @@ mod app {
             mut ptp,
         } = stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
+        ptp.set_pps_freq(10);
         ptp.enable_pps(pps);
 
         let mut cfg = Config::new();
@@ -186,7 +187,11 @@ mod app {
 
     #[task(shared = [interface, dma, sockets, udp_socket])]
     fn runner(cx: runner::Context) {
+        use fugit::ExtU64;
+
         runner::spawn().ok();
+
+        let start = monotonics::now();
 
         let (mut interface, mut dma, mut sockets, mut udp_socket) = (
             cx.shared.interface,
@@ -213,20 +218,30 @@ mod app {
         macro_rules! recv {
             () => {
                 loop {
+                    if monotonics::now() - 500u64.millis() > start {
+                        return;
+                    }
+
                     let res = (&mut sockets).lock(|sockets| {
                         let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
                         if let Ok((size, meta)) = udp_socket.recv_slice(&mut buf) {
-                            let timestamp = dma
+                            if let Some(timestamp) = dma
                                 .lock(|dma| dma.get_timestamp_for_id(meta.packet_id().unwrap()))
                                 .ok()
-                                .unwrap();
-                            Ok((&buf[..size], timestamp))
+                            {
+                                Ok((&buf[..size], timestamp))
+                            } else {
+                                Err(true)
+                            }
                         } else {
-                            Err(())
+                            Err(false)
                         }
                     });
+
                     if let Ok(res) = res {
                         break res;
+                    } else if let Err(true) = res {
+                        return;
                     }
                 }
             };
@@ -258,6 +273,10 @@ mod app {
                 });
 
                 loop {
+                    if monotonics::now() - 500u64.millis() > start {
+                        return;
+                    }
+
                     let timestamp = dma.lock(|dma| dma.get_timestamp_for_id(packet_id).ok());
 
                     if let Some(timestamp) = timestamp {
