@@ -3,9 +3,17 @@ pub use ieee802_3_miim::*;
 
 use core::ops::{Deref, DerefMut};
 
-use crate::{peripherals::ETHERNET_MAC, stm32::ethernet_mac::MACMIIAR};
-
 use super::EthernetMAC;
+
+#[cfg(feature = "f-series")]
+mod f_series_miim;
+#[cfg(feature = "f-series")]
+use f_series_miim::{miim_read, miim_write};
+
+#[cfg(feature = "stm32h7xx-hal")]
+mod h_miim;
+#[cfg(feature = "stm32h7xx-hal")]
+use h_miim::{miim_read, miim_write};
 
 /// MDIO pin types.
 ///
@@ -20,52 +28,6 @@ pub unsafe trait MdioPin {}
 /// Only pins specified as ETH_MDC in a part's reference manual
 /// may implement this trait
 pub unsafe trait MdcPin {}
-
-#[inline(always)]
-fn miim_wait_ready(iar: &MACMIIAR) {
-    while iar.read().mb().bit_is_set() {}
-}
-
-#[inline(always)]
-fn miim_write(eth_mac: &mut ETHERNET_MAC, phy: u8, reg: u8, data: u16) {
-    miim_wait_ready(&eth_mac.macmiiar);
-    eth_mac.macmiidr.write(|w| w.md().bits(data));
-
-    miim_wait_ready(&eth_mac.macmiiar);
-
-    eth_mac.macmiiar.modify(|_, w| {
-        w.pa()
-            .bits(phy)
-            .mr()
-            .bits(reg)
-            /* Write operation MW=1*/
-            .mw()
-            .set_bit()
-            .mb()
-            .set_bit()
-    });
-    miim_wait_ready(&eth_mac.macmiiar);
-}
-
-#[inline(always)]
-fn miim_read(eth_mac: &mut ETHERNET_MAC, phy: u8, reg: u8) -> u16 {
-    miim_wait_ready(&eth_mac.macmiiar);
-    eth_mac.macmiiar.modify(|_, w| {
-        w.pa()
-            .bits(phy)
-            .mr()
-            .bits(reg)
-            /* Read operation MW=0 */
-            .mw()
-            .clear_bit()
-            .mb()
-            .set_bit()
-    });
-    miim_wait_ready(&eth_mac.macmiiar);
-
-    // Return value:
-    eth_mac.macmiidr.read().md().bits()
-}
 
 /// Serial Management Interface
 ///
@@ -118,34 +80,6 @@ where
     pub fn new(mac: &'eth mut EthernetMAC, _mdio: &'pins mut Mdio, _mdc: &'pins mut Mdc) -> Self {
         Self { mac, _mdio, _mdc }
     }
-}
-
-#[cfg(feature = "stm32f4xx-hal")]
-mod pin_impls {
-    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate};
-
-    const AF11: u8 = 11;
-
-    unsafe impl super::MdioPin for PA2<Alternate<AF11>> {}
-    unsafe impl super::MdcPin for PC1<Alternate<AF11>> {}
-}
-
-#[cfg(feature = "stm32f7xx-hal")]
-mod pin_impls {
-    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate};
-
-    const AF11: u8 = 11;
-
-    unsafe impl super::MdioPin for PA2<Alternate<AF11>> {}
-    unsafe impl super::MdcPin for PC1<Alternate<AF11>> {}
-}
-
-#[cfg(feature = "stm32f1xx-hal")]
-mod pin_impls {
-    use crate::hal::gpio::{gpioa::PA2, gpioc::PC1, Alternate, PushPull};
-
-    unsafe impl super::MdioPin for PA2<Alternate<PushPull>> {}
-    unsafe impl super::MdcPin for PC1<Alternate<PushPull>> {}
 }
 
 /// Ethernet media access control (MAC) with owned MII

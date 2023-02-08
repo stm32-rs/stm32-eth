@@ -2,9 +2,7 @@
 
 use crate::{dma::EthernetDMA, peripherals::ETHERNET_MAC, Clocks};
 
-#[cfg(feature = "f-series")]
 mod miim;
-#[cfg(feature = "f-series")]
 pub use miim::*;
 
 pub(crate) struct MacParts {
@@ -111,9 +109,7 @@ pub enum Speed {
     FullDuplexBase100Tx,
 }
 
-#[cfg(feature = "f-series")]
 use self::consts::*;
-#[cfg(feature = "f-series")]
 mod consts {
     /* For HCLK 60-100 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_42: u8 = 0;
@@ -123,8 +119,11 @@ mod consts {
     pub const ETH_MACMIIAR_CR_HCLK_DIV_16: u8 = 2;
     /* For HCLK 35-60 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_26: u8 = 3;
-    /* For HCLK over 150 MHz */
+    /* For HCLK 150-250 MHz */
     pub const ETH_MACMIIAR_CR_HCLK_DIV_102: u8 = 4;
+    /* For HCLK over 250 MHz */
+    #[cfg(feature = "stm32h7xx-hal")]
+    pub const ETH_MACMIIAR_CR_HCLK_DIV_124: u8 = 5;
 }
 
 /// HCLK must be at least 25MHz to use the ethernet peripheral.
@@ -162,24 +161,30 @@ impl EthernetMAC {
     ) -> Result<Self, WrongClock> {
         let eth_mac = &parts.eth_mac;
 
-        // TODO: configure MDIOS
-        #[cfg(feature = "f-series")]
-        {
-            let clock_frequency = clocks.hclk().to_Hz();
-            let clock_range = match clock_frequency {
-                0..=24_999_999 => return Err(WrongClock),
-                25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
-                35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
-                60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
-                100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
-                _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
-            };
+        let clock_frequency = clocks.hclk().to_Hz();
 
-            // Set clock range in MAC MII address register
-            eth_mac
-                .macmiiar
-                .modify(|_, w| unsafe { w.cr().bits(clock_range) });
-        }
+        let clock_range = match clock_frequency {
+            0..=24_999_999 => return Err(WrongClock),
+            25_000_000..=34_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_16,
+            35_000_000..=59_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_26,
+            60_000_000..=99_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_42,
+            100_000_000..=149_999_999 => ETH_MACMIIAR_CR_HCLK_DIV_62,
+            #[cfg(feature = "stm32h7xx-hal")]
+            150_000_000..=250_000_000 => ETH_MACMIIAR_CR_HCLK_DIV_102,
+            #[cfg(feature = "stm32h7xx-hal")]
+            _ => ETH_MACMIIAR_CR_HCLK_DIV_124,
+            #[cfg(feature = "f-series")]
+            _ => ETH_MACMIIAR_CR_HCLK_DIV_102,
+        };
+
+        #[cfg(feature = "f-series")]
+        // Set clock range in MAC MII address register
+        eth_mac
+            .macmiiar
+            .modify(|_, w| unsafe { w.cr().bits(clock_range) });
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        eth_mac.macmdioar.modify(|_, w| w.cr().variant(clock_range));
 
         // Configuration Register
         eth_mac.maccr.modify(|_, w| {
@@ -271,7 +276,6 @@ impl EthernetMAC {
     ///
     /// Exclusive access to the `MDIO` and `MDC` is required to ensure that are not used elsewhere
     /// for the duration of Mii communication.
-    #[cfg(feature = "f-series")]
     pub fn mii<'eth, 'pins, Mdio, Mdc>(
         &'eth mut self,
         mdio: &'pins mut Mdio,
@@ -285,7 +289,6 @@ impl EthernetMAC {
     }
 
     /// Turn this [`EthernetMAC`] into an [`EthernetMACWithMii`]
-    #[cfg(feature = "f-series")]
     pub fn with_mii<MDIO, MDC>(self, mdio: MDIO, mdc: MDC) -> EthernetMACWithMii<MDIO, MDC>
     where
         MDIO: MdioPin,

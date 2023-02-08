@@ -82,7 +82,7 @@ mod app {
         defmt::info!("Configuring ethernet");
 
         let Parts { dma, mac, mut ptp } =
-            stm32_eth::new(ethernet, rx_ring, tx_ring, clocks, pins).unwrap();
+            stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
         #[cfg(not(feature = "stm32h7xx-hal"))]
         ptp.enable_pps(pps);
@@ -90,7 +90,6 @@ mod app {
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();
 
-        #[cfg(not(feature = "stm32h7xx-hal"))]
         match EthernetPhy::from_miim(mac, 0) {
             Ok(mut phy) => {
                 defmt::info!(

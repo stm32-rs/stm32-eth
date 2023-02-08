@@ -21,9 +21,6 @@ use stm32_eth::{
     Parts, MTU,
 };
 
-#[cfg(feature = "f-series")]
-use stm32_eth::mac::{phy::BarePhy, Phy};
-
 pub mod common;
 
 use stm32_eth::dma::{RxDescriptorRing, TxDescriptorRing, TxError};

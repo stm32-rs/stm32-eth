@@ -56,12 +56,9 @@ pub use smoltcp;
 #[cfg(feature = "device-selected")]
 use {
     dma::{DmaParts, EthernetDMA, RxDescriptorRing, TxDescriptorRing},
-    mac::{EthernetMAC, MacParts, Speed, WrongClock},
+    mac::{EthernetMAC, EthernetMACWithMii, MacParts, MdcPin, MdioPin, Speed, WrongClock},
     setup::*,
 };
-
-#[cfg(all(feature = "device-selected", feature = "f-series"))]
-use mac::{EthernetMACWithMii, MdcPin, MdioPin};
 
 #[cfg(all(feature = "device-selected", feature = "ptp"))]
 use ptp::EthernetPTP;
@@ -165,7 +162,7 @@ where
 /// accessible by the peripheral. Core-Coupled Memory (CCM) is
 /// usually not accessible.
 /// - HCLK must be at least 25 MHz.
-#[cfg(all(feature = "device-selected", feature = "f-series"))]
+#[cfg(all(feature = "device-selected"))]
 pub fn new_with_mii<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
     parts: PartsIn,
     rx_buffer: RxDescriptorRing<'rx>,
@@ -194,10 +191,13 @@ where
 
     let dma_parts = DmaParts {
         eth_dma: parts.dma.into(),
+        #[cfg(feature = "stm32h7xx-hal")]
+        eth_mtl: parts.mtl,
     };
 
     let mac_parts = MacParts {
         eth_mac: parts.mac.into(),
+        #[cfg(feature = "f-series")]
         eth_mmc: parts.mmc.into(),
     };
 
@@ -206,7 +206,12 @@ where
 
     // Configure the ethernet PTP
     #[cfg(feature = "ptp")]
-    let ptp = EthernetPTP::new(parts.ptp.into(), clocks, &dma);
+    let ptp = EthernetPTP::new(
+        #[cfg(feature = "f-series")]
+        parts.ptp.into(),
+        clocks,
+        &dma,
+    );
 
     // Configure the ethernet MAC
     let mac =

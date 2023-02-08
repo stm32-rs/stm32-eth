@@ -377,8 +377,8 @@ mod pins {
 
     pub type Pps = PB5<Output<PushPull>>;
 
-    pub type Mdio = ();
-    pub type Mdc = ();
+    pub type Mdio = PA2<Alternate<11>>;
+    pub type Mdc = PC1<Alternate<11>>;
 
     pub fn setup_pins(
         gpio: Gpio,
@@ -403,8 +403,8 @@ mod pins {
         let tx_d0 = gpiog.pg13.into_input();
         let tx_d1 = gpiob.pb13.into_input();
 
-        let mdc = ();
-        let mdio = ();
+        let mdio = gpioa.pa2.into_alternate();
+        let mdc = gpioc.pc1.into_alternate();
 
         let pps = gpiob.pb5.into_push_pull_output();
 
