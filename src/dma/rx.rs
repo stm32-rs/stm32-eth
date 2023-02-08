@@ -352,17 +352,21 @@ impl<'a> RxRing<'a> {
         // Start receive
         eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
 
-        self.demand_poll(eth_dma);
+        self.demand_poll();
     }
 
     /// Demand that the DMA engine polls the current `RxDescriptor`
-    /// (when in `RunningState::Stopped`.)
-    pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
+    /// (when in [`RunningState::Stopped`].)
+    pub fn demand_poll(&self) {
+        // SAFETY: we only perform an atomic write to `dmarpdr`.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
         eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
     }
 
     /// Get current `RunningState`
-    pub fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
+    pub fn running_state(&self) -> RunningState {
+        // SAFETY: we only perform an atomic read of `dmasr`.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
         match eth_dma.dmasr.read().rps().bits() {
             //  Reset or Stop Receive Command issued
             0b000 => RunningState::Stopped,
@@ -380,16 +384,24 @@ impl<'a> RxRing<'a> {
         }
     }
 
+    /// Check if we can receive a new packet
+    pub fn next_entry_available(&self) -> bool {
+        if !self.running_state().is_running() {
+            self.demand_poll();
+        }
+
+        !self.entries[self.next_entry].desc().is_owned()
+    }
+
     /// Receive the next packet (if any is ready), or return `None`
     /// immediately.
     pub fn recv_next(
         &mut self,
-        eth_dma: &ETHERNET_DMA,
         // NOTE(allow): packet_id is unused if ptp is disabled.
         #[allow(unused_variables)] packet_id: Option<PacketId>,
     ) -> Result<RxPacket, RxError> {
-        if !self.running_state(eth_dma).is_running() {
-            self.demand_poll(eth_dma);
+        if !self.running_state().is_running() {
+            self.demand_poll();
         }
 
         let entries_len = self.entries.len();

@@ -355,6 +355,10 @@ impl<'a> TxRing<'a> {
         eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
     }
 
+    pub fn next_entry_available(&self) -> bool {
+        !self.entries[self.next_entry].desc().is_owned()
+    }
+
     pub fn send<F: FnOnce(&mut [u8]) -> R, R>(
         &mut self,
         length: usize,
@@ -373,6 +377,9 @@ impl<'a> TxRing<'a> {
                 if self.next_entry >= entries_len {
                     self.next_entry = 0;
                 }
+
+                self.demand_poll();
+
                 Ok(r)
             }
             None => Err(TxError::WouldBlock),
@@ -381,7 +388,9 @@ impl<'a> TxRing<'a> {
 
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
-    pub fn demand_poll(&self, eth_dma: &ETHERNET_DMA) {
+    pub fn demand_poll(&self) {
+        // SAFETY: we only perform an atomic write to `dmatpdr`
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
         eth_dma.dmatpdr.write(|w| {
             #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
             {
@@ -396,11 +405,14 @@ impl<'a> TxRing<'a> {
     }
 
     /// Is the Tx DMA engine running?
-    pub fn is_running(&self, eth_dma: &ETHERNET_DMA) -> bool {
-        self.running_state(eth_dma).is_running()
+    pub fn is_running(&self) -> bool {
+        self.running_state().is_running()
     }
 
-    fn running_state(&self, eth_dma: &ETHERNET_DMA) -> RunningState {
+    fn running_state(&self) -> RunningState {
+        // SAFETY: we only perform an atomic read of `dmasr`.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
         match eth_dma.dmasr.read().tps().bits() {
             // Reset or Stop Transmit Command issued
             0b000 => RunningState::Stopped,
