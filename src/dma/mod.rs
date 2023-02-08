@@ -257,6 +257,15 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
                 // Transmit Interrupt Enable
                 .tie()
                 .set_bit()
+                // Abnormal Interrupt Summary enable
+                .aie()
+                .set_bit()
+                // Receive Buffer Unavailable
+                .rbue()
+                .set_bit()
+                // Transmit Buffer Unavailable
+                .tbue()
+                .set_bit()
         });
 
         // Enable ethernet interrupts
@@ -428,6 +437,10 @@ fn eth_interrupt_handler_impl(eth_dma: &ETHERNET_DMA) -> InterruptReasonSummary 
                 .ti()
                 .set_bit()
                 .ri()
+                .set_bit()
+                .rbu()
+                .set_bit()
+                .tbu()
                 .set_bit()
         });
 

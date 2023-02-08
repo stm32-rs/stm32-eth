@@ -55,16 +55,16 @@ mod consts {
     pub const RXDESC_3_LT_MASK: u32 = 0b111 << RXDESC_3_LT_SHIFT;
     /// Length/Type Field
     #[allow(non_camel_case_types)]
-    #[repr(u8)]
+    #[repr(u32)]
     pub enum RXDESC_3_LT {
-        Length = 0b000,
-        Type = 0b001,
-        Reserved = 0b010,
-        ArpRequest = 0b011,
-        TypeWithVlan = 0b100,
-        TypeWIthDoubleVlan = 0b101,
-        MacControl = 0b110,
-        Oam = 0b111,
+        Length = 0b000 << RXDESC_3_LT_SHIFT,
+        Type = 0b001 << RXDESC_3_LT_SHIFT,
+        Reserved = 0b010 << RXDESC_3_LT_SHIFT,
+        ArpRequest = 0b011 << RXDESC_3_LT_SHIFT,
+        TypeWithVlan = 0b100 << RXDESC_3_LT_SHIFT,
+        TypeWIthDoubleVlan = 0b101 << RXDESC_3_LT_SHIFT,
+        MacControl = 0b110 << RXDESC_3_LT_SHIFT,
+        Oam = 0b111 << RXDESC_3_LT_SHIFT,
     }
 
     /// Error Summary
@@ -161,10 +161,6 @@ impl RxDescriptor {
             self.inner_raw
                 .modify(3, |w| w | RXDESC_3_OWN | RXDESC_3_IOC);
         }
-
-        cortex_m::asm::dsb();
-
-        assert!(self.is_owned());
 
         // Used to flush the store buffer as fast as possible to make the buffer available for the
         // DMA.

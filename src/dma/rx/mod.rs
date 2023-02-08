@@ -216,6 +216,7 @@ impl<'data> RxRing<'data, Running> {
 
         let entry = self.next_entry;
         let entries_len = self.ring.len();
+
         let (descriptor, buffer) = self.ring.get(entry);
 
         let mut res = descriptor.take_received(packet_id, buffer);
@@ -226,7 +227,7 @@ impl<'data> RxRing<'data, Running> {
 
         #[cfg(all(feature = "ptp", feature = "stm32h7xx-hal"))]
         let (timestamp, descriptor, buffer) = {
-            if res.as_mut().err() != Some(&mut RxError::WouldBlock) {
+            if res.is_ok() {
                 let desc_has_timestamp = descriptor.has_timestamp();
 
                 drop(descriptor);
@@ -234,12 +235,10 @@ impl<'data> RxRing<'data, Running> {
 
                 // On H7's, the timestamp is stored in the next Context
                 // descriptor.
+                let (ctx_descriptor, ctx_des_buffer) = self.ring.get(self.next_entry);
+
                 let timestamp = if desc_has_timestamp {
-                    let (ctx_descriptor, ctx_des_buffer) = self.ring.get(self.next_entry);
                     if let Some(timestamp) = ctx_descriptor.read_timestamp() {
-                        ctx_descriptor.set_owned(ctx_des_buffer);
-                        // Advance over this buffer
-                        self.next_entry = (self.next_entry + 1) % entries_len;
                         Some(timestamp)
                     } else {
                         None
@@ -247,6 +246,12 @@ impl<'data> RxRing<'data, Running> {
                 } else {
                     None
                 };
+
+                if !ctx_descriptor.is_owned() {
+                    // Advance over this buffer
+                    self.next_entry = (self.next_entry + 1) % entries_len;
+                    ctx_descriptor.set_owned(&ctx_des_buffer);
+                }
 
                 let (descriptor, buffer) = self.ring.get(entry);
 

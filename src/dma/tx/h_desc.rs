@@ -68,10 +68,10 @@ mod consts {
     #[repr(u32)]
     #[allow(non_camel_case_types)]
     pub enum TXDESC_3_CIC {
-        Disabled = 0b00,
-        IpHeaderOnly = 0b01,
-        IpHeaderAndPayloadOnly = 0b10,
-        IpHeaderAndPayloadAndPseudoHeader = 0b11,
+        Disabled = 0b00 << TXDESC_3_CIC_SHIFT,
+        IpHeaderOnly = 0b01 << TXDESC_3_CIC_SHIFT,
+        IpHeaderAndPayloadOnly = 0b10 << TXDESC_3_CIC_SHIFT,
+        IpHeaderAndPayloadAndPseudoHeader = 0b11 << TXDESC_3_CIC_SHIFT,
     }
     /// Checksum Insertion Control mask
     pub const TXDESC_3_CIC_MASK: u32 = 0b11 << TXDESC_3_CIC_SHIFT;
@@ -192,7 +192,7 @@ impl TxDescriptor {
 
             self.inner_raw.modify(3, |w| {
                 w | TXDESC_3_OWN
-                    | TXDESC_3_CIC::IpHeaderAndPayloadOnly as u32
+                    | TXDESC_3_CIC::IpHeaderAndPayloadAndPseudoHeader as u32
                     | TXDESC_3_FD
                     | TXDESC_3_LD
                     | tx_len
