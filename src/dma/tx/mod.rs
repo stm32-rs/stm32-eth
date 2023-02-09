@@ -95,8 +95,8 @@ impl<'data> TxRing<'data, NotRunning> {
     /// Start the Tx DMA engine
     pub fn start(mut self, eth_dma: &ETHERNET_DMA) -> TxRing<'data, Running> {
         // Setup ring
-        for (descriptor, buffer) in self.ring.descriptors_and_buffers() {
-            descriptor.setup(buffer);
+        for descriptor in self.ring.descriptors_mut() {
+            descriptor.setup();
         }
 
         #[cfg(feature = "f-series")]
@@ -120,10 +120,7 @@ impl<'data> TxRing<'data, NotRunning> {
 
             // Assert that the descriptors are properly aligned.
             assert!(ring_ptr as u32 & !0b11 == ring_ptr as u32);
-            assert!(
-                self.ring.last_descriptor() as *const _ as u32 & !0b11
-                    == self.ring.last_descriptor() as *const _ as u32
-            );
+            assert!(self.ring.last_descriptor() as *const _ as u32 % 4 == 0);
 
             // Set the start pointer.
             eth_dma

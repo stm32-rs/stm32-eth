@@ -65,8 +65,9 @@ impl TxDescriptor {
         }
     }
 
-    pub(super) fn setup(&mut self, buffer: &mut [u8]) {
-        self.set_buffer(buffer);
+    pub(super) fn setup(&mut self) {
+        (0..crate::dma::raw_descriptor::DESC_SIZE)
+            .for_each(|i| unsafe { self.inner_raw.write(i, 0) });
     }
 
     #[allow(unused)]
