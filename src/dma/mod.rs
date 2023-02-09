@@ -299,16 +299,16 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         self.tx_ring.running_state()
     }
 
-    /// Receive the next packet (if any is ready), or return `None`
+    /// Receive the next packet (if any is ready), or return [`Err`]
     /// immediately.
     pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
         self.rx_ring.recv_next(packet_id.map(|p| p.into()))
     }
 
-    /// Check whether a frame is available for reception.
+    /// Check if there is a packet available for reading.
     ///
-    /// If this function returns `true`, the next [`TxRing::recv_next`] is
-    /// guaranteed to succeed.
+    /// If this function returns true, it is guaranteed that the
+    /// next call to [`EthernetDMA::recv_next`] will return [`Ok`].
     pub fn rx_available(&mut self) -> bool {
         self.rx_ring.available()
     }
@@ -328,10 +328,10 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         self.tx_ring.send(length, packet_id.map(|p| p.into()), f)
     }
 
-    /// Check whether a descriptor is available for sending.
+    /// Check if sending a packet now would succeed.
     ///
-    /// If this function returns `true`, the next [`EthernetDMA::send`] is
-    /// guarantted to succeed.
+    /// If this function returns true, it is guaranteed that
+    /// the next call to [`EthernetDMA::send`] will return [`Ok`]
     pub fn tx_available(&mut self) -> bool {
         self.tx_ring.available()
     }

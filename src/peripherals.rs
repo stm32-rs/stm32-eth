@@ -260,6 +260,10 @@ mod pac_override_impl {
     impl ETHERNET_DMA {
         #[doc = r"Pointer to the register block"]
         pub const PTR: *const DmaRegisterBlock = 0x4002_9000 as *const _;
+
+        pub const fn ptr() -> *const DmaRegisterBlock {
+            Self::PTR
+        }
     }
 
     impl core::ops::Deref for ETHERNET_DMA {
