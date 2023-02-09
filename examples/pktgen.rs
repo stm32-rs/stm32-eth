@@ -37,7 +37,7 @@ fn main() -> ! {
 
     let (clocks, gpio, ethernet) = common::setup_peripherals(p);
 
-    setup_systick(&mut cp.SYST);
+    setup_systick(&mut cp.SYST, clocks.hclk().to_Hz());
 
     defmt::info!("Enabling ethernet...");
     let (eth_pins, mdio, mdc, _) = common::setup_pins(gpio);
@@ -68,6 +68,7 @@ fn main() -> ! {
         // print stats every 30 seconds
         if time >= last_stats_time + 30 {
             let t = time - last_stats_time;
+
             defmt::info!(
                 "T={}\tRx:\t{} KB/s\t{} pps\tTx:\t{} KB/s\t{} pps",
                 time,
@@ -142,8 +143,8 @@ fn main() -> ! {
     }
 }
 
-fn setup_systick(syst: &mut SYST) {
-    syst.set_reload(100 * SYST::get_ticks_per_10ms());
+fn setup_systick(syst: &mut SYST, hclk: u32) {
+    syst.set_reload(hclk.min(0x00FF_FFFF));
     syst.enable_counter();
     syst.enable_interrupt();
 
