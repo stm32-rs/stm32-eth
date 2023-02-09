@@ -369,13 +369,25 @@ mod pins {
 
     pub type RefClk = PA1<Input>;
     pub type Crs = PA7<Input>;
+
+    #[cfg(pins = "nucleo")]
     pub type TxEn = PG11<Input>;
+    #[cfg(pins = "nucleo")]
     pub type TxD0 = PG13<Input>;
+
+    #[cfg(not(pins = "nucleo"))]
+    pub type TxEn = PB11<Input>;
+    #[cfg(not(pins = "nucleo"))]
+    pub type TxD0 = PB12<Input>;
+
     pub type TxD1 = PB13<Input>;
     pub type RxD0 = PC4<Input>;
     pub type RxD1 = PC5<Input>;
 
+    #[cfg(not(pps = "alternate"))]
     pub type Pps = PB5<Output<PushPull>>;
+    #[cfg(pps = "alternate")]
+    pub type Pps = PG5<Output<PushPull>>;
 
     pub type Mdio = PA2<Alternate<11>>;
     pub type Mdc = PC1<Alternate<11>>;
@@ -388,6 +400,7 @@ mod pins {
         Mdc,
         Pps,
     ) {
+        #[allow(unused_variables)]
         let Gpio {
             gpioa,
             gpiob,
@@ -399,14 +412,22 @@ mod pins {
         let crs = gpioa.pa7.into_input();
         let rx_d0 = gpioc.pc4.into_input();
         let rx_d1 = gpioc.pc5.into_input();
-        let tx_en = gpiog.pg11.into_input();
-        let tx_d0 = gpiog.pg13.into_input();
         let tx_d1 = gpiob.pb13.into_input();
+
+        #[cfg(not(pins = "nucleo"))]
+        let (tx_en, tx_d0) = { (gpiob.pb11.into_input(), gpiob.pb12.into_input()) };
+
+        #[cfg(pins = "nucleo")]
+        let (tx_en, tx_d0) = { (gpiog.pg11.into_input(), gpiog.pg13.into_input()) };
 
         let mdio = gpioa.pa2.into_alternate();
         let mdc = gpioc.pc1.into_alternate();
 
+        #[cfg(not(pps = "alternate"))]
         let pps = gpiob.pb5.into_push_pull_output();
+
+        #[cfg(pps = "alternate")]
+        let pps = gpiog.pg5.into_push_pull_output();
 
         let pins = EthPins {
             ref_clk,
