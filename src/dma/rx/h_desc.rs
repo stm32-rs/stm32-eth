@@ -126,10 +126,6 @@ impl RxDescriptor {
         self.inner_raw.read(3) & RXDESC_3_CTXT == RXDESC_3_CTXT
     }
 
-    pub(super) fn has_timestamp(&self) -> bool {
-        (self.inner_raw.read(1) & RXDESC_1_TSA) == RXDESC_1_TSA && self.is_last()
-    }
-
     pub(super) fn frame_length(&self) -> usize {
         if self.is_owned() {
             0
@@ -214,6 +210,10 @@ impl RxDescriptor {
 
 #[cfg(feature = "ptp")]
 impl RxDescriptor {
+    pub(super) fn has_timestamp(&self) -> bool {
+        (self.inner_raw.read(1) & RXDESC_1_TSA) == RXDESC_1_TSA && self.is_last()
+    }
+
     /// Get PTP timestamps if available
     pub(super) fn read_timestamp(&self) -> Option<Timestamp> {
         if self.is_context() && !self.is_owned() {
