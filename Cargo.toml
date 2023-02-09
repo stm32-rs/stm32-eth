@@ -69,7 +69,16 @@ stm32f777 = ["stm32f7xx-hal/stm32f777", "device-selected", "fence"]
 stm32f778 = ["stm32f7xx-hal/stm32f778", "device-selected", "fence"]
 stm32f779 = ["stm32f7xx-hal/stm32f779", "device-selected", "fence"]
 
-stm32h735 = ["stm32h7xx-hal/stm32h735", "device-selected", "fence"]
+stm32h735    = ["device-selected", "fence", "stm32h7xx-hal/stm32h735", ]
+stm32h742    = ["device-selected", "fence", "stm32h7xx-hal/stm32h742",]
+stm32h742v   = ["device-selected", "fence", "stm32h7xx-hal/stm32h742v"]
+stm32h743    = ["device-selected", "fence", "stm32h7xx-hal/stm32h743"]
+stm32h743v   = ["device-selected", "fence", "stm32h7xx-hal/stm32h743v"]
+stm32h747cm7 = ["device-selected", "fence", "stm32h7xx-hal/stm32h747cm7"]
+stm32h750    = ["device-selected", "fence", "stm32h7xx-hal/stm32h750"]
+stm32h750v   = ["device-selected", "fence", "stm32h7xx-hal/stm32h750v"]
+stm32h753    = ["device-selected", "fence", "stm32h7xx-hal/stm32h753"]
+stm32h753v   = ["device-selected", "fence", "stm32h7xx-hal/stm32h753v"]
 
 smoltcp-phy = ["smoltcp"]
 
