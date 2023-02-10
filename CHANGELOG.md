@@ -1,6 +1,9 @@
 ## Unreleased
 * Update to `smoltcp` v0.9 [#71](https://github.com/stm32-rs/stm32-eth/pull/71).
 
+## [0.4.1](https://github.com/stm32-rs/stm32-eth/tree/v0.4.1)
+* Fix a bug when caching timestamps in the TX path ([#73](https://github.com/stm32-rs/stm32-eth/pull/73))
+
 ## [0.4.0](https://github.com/stm32-rs/stm32-eth/tree/v0.4.0)
 * Remove the `smi` feature and always enable miim/smi. Use `ieee802_3_miim` for SMI access [#45](https://github.com/stm32-rs/stm32-eth/pull/45)
 * Update stm32f1xx-hal and stm32f4xx-hal to their latests version as of 15-12-2022.
