@@ -134,6 +134,10 @@ jobs:
             features: smoltcp-phy
           - example: rtic-timestamp
             features: ""
+          - example: timesync-server
+            features: ptp
+          - example: timesync-client
+            features: ptp
         mcu:
           - stm32f107
           - stm32f429
