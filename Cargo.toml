@@ -94,6 +94,16 @@ required-features = [ "defmt" , "smoltcp-phy" ]
 name = "rtic-timestamp"
 required-features = [ "defmt", "ptp" ]
 
+[[example]]
+name = "timesync-client"
+path = "./examples/timesync/client.rs"
+required-features = [ "defmt", "ptp" ]
+
+[[example]]
+name = "timesync-server"
+path = "./examples/timesync/server.rs"
+required-features = [ "defmt", "ptp" ]
+
 [profile.release]
 debug = 2
 lto = true

@@ -1,5 +1,6 @@
 ## Unreleased
-* Update to `smoltcp` v0.9 [#71](https://github.com/stm32-rs/stm32-eth/pull/71).
+* Update to `smoltcp` v0.9 ([#71](https://github.com/stm32-rs/stm32-eth/pull/71))
+* Add `timesync-server` and `timesync-client` examples ([#72](https://github.com/stm32-rs/stm32-eth/pull/72))
 
 ## [0.4.1](https://github.com/stm32-rs/stm32-eth/tree/v0.4.1)
 * Fix a bug when caching timestamps in the TX path ([#73](https://github.com/stm32-rs/stm32-eth/pull/73))
