@@ -444,6 +444,12 @@ fn eth_interrupt_handler_impl(eth_dma: &ETHERNET_DMA) -> InterruptReasonSummary 
                 .set_bit()
         });
 
+        if status.fbe().bit_is_set() {
+            // TODO: add a link to a/the github issue describing this problem,
+            // and how to solve it.
+            panic!("Fatal bus error! Is the descriptor and buffer memory accessible by the Ethernet MAC/DMA?");
+        }
+
         (
             status.ri().bit_is_set(),
             status.ti().bit_is_set(),

@@ -109,16 +109,15 @@ impl<'data> RxRing<'data, NotRunning> {
 
         #[cfg(feature = "stm32h7xx-hal")]
         {
-            // TODO: assert that ethernet DMA can access
-            // the memory in these rings
-            assert!(self.ring.descriptors().count() >= 4);
+            let rx_ring_descriptors = self.ring.descriptors().count();
+            assert!(rx_ring_descriptors >= 4);
 
             // Assert that the descriptors are properly aligned.
-            assert!(ring_ptr as u32 & !0b11 == ring_ptr as u32);
-            assert!(
-                self.ring.last_descriptor_mut() as *const _ as u32 & !0b11
-                    == self.ring.last_descriptor_mut() as *const _ as u32
-            );
+            //
+            // FIXME: these require different alignment if the data is stored
+            // in AXI SRAM
+            assert!(ring_ptr as u32 % 4 == 0);
+            assert!(self.ring.last_descriptor_mut() as *const _ as u32 % 4 == 0);
 
             // Set the start pointer.
             eth_dma

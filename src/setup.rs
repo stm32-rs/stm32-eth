@@ -41,7 +41,6 @@ use crate::{
 };
 
 #[cfg(feature = "stm32h7xx-hal")]
-// TODO: implement all allowed GPIO pins.
 #[allow(unused_imports)]
 use crate::{
     dma::EthernetDMA,
