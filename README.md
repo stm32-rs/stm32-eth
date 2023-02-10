@@ -25,14 +25,14 @@ stm32-eth = { version = "0.3.0", features = ["stm32f107"] } # For stm32f107
 In `src/main.rs` add:
 
 ```rust,no_run
+use fugit::RateExtU32;
 use stm32_eth::{
+    dma::{RxDescriptor, RxDescriptorRing, TxDescriptor, TxDescriptorRing},
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::Peripherals,
-    dma::{RxRingEntry, TxRingEntry},
-    EthPins,
+    EthPins, MTU,
 };
-use fugit::RateExtU32;
 
 fn main() {
     let p = Peripherals::take().unwrap();
@@ -56,8 +56,13 @@ fn main() {
         rx_d1: gpioc.pc5,
     };
 
-    let mut rx_ring: [RxRingEntry; 16] = Default::default();
-    let mut tx_ring: [TxRingEntry; 8] = Default::default();
+    let mut rx_ring: [RxDescriptor; 16] = Default::default();
+    let mut rx_buffers: [[u8; MTU + 2]; 16] = [[0u8; MTU + 2]; 16];
+    let rx_ring = RxDescriptorRing::new(&mut rx_ring[..], &mut rx_buffers[..]);
+
+    let mut tx_ring: [TxDescriptor; 8] = Default::default();
+    let mut tx_buffers: [[u8; MTU + 2]; 8] = [[0u8; MTU + 2]; 8];
+    let tx_ring = TxDescriptorRing::new(&mut tx_ring[..], &mut tx_buffers[..]);
 
     let parts = stm32_eth::PartsIn {
         mac: p.ETHERNET_MAC,
@@ -66,14 +71,11 @@ fn main() {
         ptp: p.ETHERNET_PTP,
     };
 
-    let stm32_eth::Parts { dma: mut eth_dma, mac: _, ptp: _ } = stm32_eth::new(
-        parts,
-        &mut rx_ring[..],
-        &mut tx_ring[..],
-        clocks,
-        eth_pins,
-    )
-    .unwrap();
+    let stm32_eth::Parts {
+        dma: mut eth_dma,
+        mac: _,
+        ptp: _,
+    } = stm32_eth::new(parts, rx_ring, tx_ring, clocks, eth_pins).unwrap();
     eth_dma.enable_interrupt();
 
     if let Ok(pkt) = eth_dma.recv_next(None) {
@@ -81,9 +83,11 @@ fn main() {
     }
 
     let size = 42;
-    eth_dma.send(size, None, |buf| {
-        // write up to `size` bytes into buf before it is being sent
-    }).expect("send");
+    eth_dma
+        .send(size, None, |buf| {
+            // write up to `size` bytes into buf before it is being sent
+        })
+        .expect("send");
 }
 ```
 
