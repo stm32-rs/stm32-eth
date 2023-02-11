@@ -74,6 +74,12 @@ panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
 smoltcp = { version = "0.9", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
 
+# This isn't an actual example. It just exists so we can easily
+# test the common items :)
+[[example]]
+name = "common"
+required-features = ["defmt", "smoltcp-phy", "ptp"]
+
 [[example]]
 name = "pktgen"
 required-features = [ "defmt" ]
@@ -92,6 +98,16 @@ required-features = [ "defmt" , "smoltcp-phy" ]
 
 [[example]]
 name = "rtic-timestamp"
+required-features = [ "defmt", "ptp" ]
+
+[[example]]
+name = "timesync-client"
+path = "./examples/timesync/client.rs"
+required-features = [ "defmt", "ptp" ]
+
+[[example]]
+name = "timesync-server"
+path = "./examples/timesync/server.rs"
 required-features = [ "defmt", "ptp" ]
 
 [profile.release]
