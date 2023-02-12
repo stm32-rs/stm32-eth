@@ -2,9 +2,12 @@
 //!
 //! See [`EthernetPTP`] for a more details.
 
+use core::task::Poll;
+
 use crate::{dma::EthernetDMA, hal::rcc::Clocks, mac::EthernetMAC, peripherals::ETHERNET_PTP};
 
 mod timestamp;
+use futures::task::AtomicWaker;
 pub use timestamp::Timestamp;
 
 mod subseconds;
@@ -63,6 +66,11 @@ impl EthernetPTP {
         // time `accumulator` overflows.
         let tsa = ((half_rate_subsec_increment_hz as u64 * u32::MAX as u64) / hclk as u64) as u32;
         (stssi, tsa)
+    }
+
+    fn waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
     }
 
     pub(crate) fn new(
@@ -174,12 +182,20 @@ impl EthernetPTP {
         while ptp.ptptscr.read().tsstu().bit_is_set() {}
     }
 
+    /// Get the current time
+    pub fn now() -> Timestamp {
+        Self::get_time()
+    }
+
     /// Get the current time.
-    pub fn get_time(&self) -> Timestamp {
+    pub fn get_time() -> Timestamp {
         let try_read_time = || {
-            let seconds = self.eth_ptp.ptptshr.read().bits();
-            let subseconds = self.eth_ptp.ptptslr.read().bits();
-            let seconds_after = self.eth_ptp.ptptshr.read().bits();
+            // SAFETY: we only atomically read registers.
+            let eth_ptp = unsafe { &*ETHERNET_PTP::ptr() };
+
+            let seconds = eth_ptp.ptptshr.read().bits();
+            let subseconds = eth_ptp.ptptslr.read().bits();
+            let seconds_after = eth_ptp.ptptshr.read().bits();
 
             if seconds == seconds_after {
                 Ok(Timestamp::from_parts(seconds, subseconds))
@@ -230,15 +246,36 @@ impl EthernetPTP {
         EthernetMAC::unmask_timestamp_trigger_interrupt();
     }
 
+    /// Wait until the specified time.
+    pub async fn wait_until(&mut self, timestamp: Timestamp) {
+        self.configure_target_time_interrupt(timestamp);
+        core::future::poll_fn(|ctx| {
+            if EthernetPTP::get_time().raw() >= timestamp.raw() {
+                Poll::Ready(())
+            } else if EthernetPTP::interrupt_handler() {
+                Poll::Ready(())
+            } else {
+                EthernetPTP::waker().register(ctx.waker());
+                Poll::Pending
+            }
+        })
+        .await;
+    }
+
     /// Returns a boolean indicating whether or not the interrupt
     /// was caused by a Timestamp trigger and clears the interrupt
     /// flag.
-    pub fn interrupt_handler(&mut self) -> bool {
-        let is_tsint = self.eth_ptp.ptptssr.read().tsttr().bit_is_set();
+    pub fn interrupt_handler() -> bool {
+        // SAFETY: we only perform one atomic read.
+        let eth_ptp = unsafe { &*ETHERNET_PTP::ptr() };
+
+        let is_tsint = eth_ptp.ptptssr.read().tsttr().bit_is_set();
         if is_tsint {
-            self.eth_ptp.ptptscr.modify(|_, w| w.tsite().clear_bit());
             EthernetMAC::mask_timestamp_trigger_interrupt();
         }
+
+        EthernetPTP::waker().wake();
+
         is_tsint
     }
 

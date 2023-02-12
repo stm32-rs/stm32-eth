@@ -26,9 +26,6 @@ use hal::rcc::Clocks;
 
 #[cfg(feature = "device-selected")]
 pub mod dma;
-#[doc(inline)]
-#[cfg(feature = "device-selected")]
-pub use dma::eth_interrupt_handler;
 
 #[cfg(feature = "device-selected")]
 pub mod mac;
@@ -57,6 +54,41 @@ use {
 
 #[cfg(all(feature = "device-selected", feature = "ptp"))]
 use ptp::EthernetPTP;
+
+/// A summary of the reasons for the occurence of an
+/// interrupt
+pub struct InterruptReason {
+    /// A packet has arrived and is ready for processing.
+    pub rx: bool,
+    /// A packet was sent, and a TX slot has freed up.
+    pub tx: bool,
+    /// A DMA error occured.
+    pub dma_error: bool,
+    #[cfg(feature = "ptp")]
+    /// The target time configured for PTP has
+    /// passed.
+    pub time_passed: bool,
+}
+
+/// Handle the `ETH` interrupt.
+///
+/// This function wakes wakers and resets
+/// interrupt bits relevant in that interrupt.
+#[cfg(feature = "device-selected")]
+pub fn eth_interrupt_handler() -> InterruptReason {
+    let dma = EthernetDMA::interrupt_handler();
+
+    #[cfg(feature = "ptp")]
+    let is_time_trigger = EthernetPTP::interrupt_handler();
+
+    InterruptReason {
+        rx: dma.is_rx,
+        tx: dma.is_tx,
+        dma_error: dma.is_error,
+        #[cfg(feature = "ptp")]
+        time_passed: is_time_trigger,
+    }
+}
 
 /// Create and initialise the ethernet driver.
 ///
