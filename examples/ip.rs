@@ -156,7 +156,5 @@ fn ETH() {
         *eth_pending = true;
     });
 
-    // Clear interrupt flags
-    let p = unsafe { Peripherals::steal() };
-    stm32_eth::eth_interrupt_handler(&p.ETHERNET_DMA);
+    stm32_eth::eth_interrupt_handler();
 }
