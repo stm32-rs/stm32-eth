@@ -37,7 +37,7 @@ default-features = false
 optional = true
 
 [features]
-default = [ "defmt", "ptp", "async-await" ]
+default = [ "defmt", "ptp" ]
 device-selected = []
 fence = []
 ptp = [ ]
