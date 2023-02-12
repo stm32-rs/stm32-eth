@@ -64,7 +64,7 @@ pub struct InterruptReason {
     pub tx: bool,
     /// A DMA error occured.
     pub dma_error: bool,
-    #[cfg(feature = "ptp")]
+    #[cfg(all(feature = "ptp", not(feature = "stm32f1xx-hal")))]
     /// The target time configured for PTP has
     /// passed.
     pub time_passed: bool,
@@ -78,14 +78,14 @@ pub struct InterruptReason {
 pub fn eth_interrupt_handler() -> InterruptReason {
     let dma = EthernetDMA::interrupt_handler();
 
-    #[cfg(feature = "ptp")]
+    #[cfg(all(feature = "ptp", not(feature = "stm32f1xx-hal")))]
     let is_time_trigger = EthernetPTP::interrupt_handler();
 
     InterruptReason {
         rx: dma.is_rx,
         tx: dma.is_tx,
         dma_error: dma.is_error,
-        #[cfg(feature = "ptp")]
+        #[cfg(all(feature = "ptp", not(feature = "stm32f1xx-hal")))]
         time_passed: is_time_trigger,
     }
 }
