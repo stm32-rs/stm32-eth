@@ -78,8 +78,16 @@ smoltcp = { version = "0.9", features = [ "medium-ethernet", "proto-ipv4", "sock
 [dev-dependencies.rtic]
 package = "cortex-m-rtic"
 version = "1.0"
-# git = "https://github.com/rtic-rs/cortex-m-rtic.git"
-# rev = "613b3c59fc841caa3ca8c4d7ac440fbfa2f71fd1"
+
+[dev-dependencies.async-rtic]
+package = "cortex-m-rtic"
+git = "https://github.com/rtic-rs/cortex-m-rtic.git"
+rev = "613b3c59fc841caa3ca8c4d7ac440fbfa2f71fd1"
+
+[dev-dependencies.arbiter]
+package = "rtic-arbiter"
+git = "https://github.com/rtic-rs/cortex-m-rtic.git"
+rev = "364edb707ebf7baa2e7bdd1b1e6b02156d7b5569"
 
 # This isn't an actual example. It just exists so we can easily
 # test the common items :)
@@ -116,6 +124,10 @@ required-features = [ "defmt", "ptp" ]
 name = "timesync-server"
 path = "./examples/timesync/server.rs"
 required-features = [ "defmt", "ptp" ]
+
+[[example]]
+name = "async-rtic-timestamp"
+required-features = [ "defmt", "ptp", "async-await" ]
 
 [profile.release]
 debug = 2
