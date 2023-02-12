@@ -83,7 +83,7 @@ impl<'a> RxRing<'a> {
 
     /// Demand that the DMA engine polls the current `RxDescriptor`
     /// (when in [`RunningState::Stopped`].)
-    pub fn demand_poll(&self) {
+    fn demand_poll(&self) {
         // SAFETY: we only perform an atomic write to `dmarpdr`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
         eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
@@ -163,9 +163,9 @@ impl<'a> RxRing<'a> {
     /// The returned [`RxPacket`] can be used as a slice, and
     /// will contain the ethernet data.
     #[cfg(feature = "async-await")]
-    pub async fn recv(&mut self) -> RxPacket {
+    pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
         let (entry_num, length) = core::future::poll_fn(|ctx| {
-            let res = self.recv_next_impl(None);
+            let res = self.recv_next_impl(packet_id.clone());
 
             match res {
                 Ok(value) => Poll::Ready(value),

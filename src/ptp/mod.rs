@@ -252,6 +252,8 @@ impl EthernetPTP {
     pub async fn wait_until(&mut self, timestamp: Timestamp) {
         self.configure_target_time_interrupt(timestamp);
         core::future::poll_fn(|ctx| {
+            // This is the happy path, the status bits have
+            // usually been reset at this point.
             if EthernetPTP::get_time().raw() >= timestamp.raw() {
                 Poll::Ready(())
             } else if EthernetPTP::interrupt_handler() {

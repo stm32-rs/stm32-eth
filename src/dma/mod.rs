@@ -214,8 +214,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 
     /// Receive a packet.
     #[cfg(feature = "async-await")]
-    pub async fn recv(&mut self) -> RxPacket {
-        self.rx_ring.recv().await
+    pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
+        self.rx_ring.recv(packet_id).await
     }
 
     /// Is Rx DMA currently running?
