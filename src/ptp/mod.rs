@@ -252,11 +252,9 @@ impl EthernetPTP {
     pub async fn wait_until(&mut self, timestamp: Timestamp) {
         self.configure_target_time_interrupt(timestamp);
         core::future::poll_fn(|ctx| {
-            // This is the happy path, the status bits have
-            // usually been reset at this point.
-            if EthernetPTP::get_time().raw() >= timestamp.raw() {
+            if EthernetPTP::read_and_clear_interrupt_flag() {
                 Poll::Ready(())
-            } else if EthernetPTP::interrupt_handler() {
+            } else if EthernetPTP::get_time().raw() >= timestamp.raw() {
                 Poll::Ready(())
             } else {
                 EthernetPTP::waker().register(ctx.waker());
@@ -266,20 +264,33 @@ impl EthernetPTP {
         .await;
     }
 
+    #[inline(always)]
+    fn read_and_clear_interrupt_flag() -> bool {
+        let eth_ptp = unsafe { &*ETHERNET_PTP::ptr() };
+        eth_ptp.ptptssr.read().tsttr().bit_is_set()
+    }
+
     /// Returns a boolean indicating whether or not the interrupt
     /// was caused by a Timestamp trigger and clears the interrupt
     /// flag.
     pub fn interrupt_handler() -> bool {
         // SAFETY: we only perform one atomic read.
-        let eth_ptp = unsafe { &*ETHERNET_PTP::ptr() };
+        let eth_mac = unsafe { &*crate::peripherals::ETHERNET_MAC::ptr() };
 
-        let is_tsint = eth_ptp.ptptssr.read().tsttr().bit_is_set();
+        let is_tsint = eth_mac.macsr.read().tsts().bit_is_set();
         if is_tsint {
             EthernetMAC::mask_timestamp_trigger_interrupt();
         }
 
         #[cfg(feature = "async-await")]
-        EthernetPTP::waker().wake();
+        if let Some(waker) = EthernetPTP::waker().take() {
+            waker.wake();
+        } else {
+            EthernetPTP::read_and_clear_interrupt_flag();
+        }
+
+        #[cfg(not(feature = "async-await"))]
+        EthernetPTP::read_and_clear_interrupt_flag();
 
         is_tsint
     }
