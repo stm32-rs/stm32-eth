@@ -76,14 +76,22 @@ fn main() {
     .unwrap();
     eth_dma.enable_interrupt();
 
-    if let Ok(pkt) = eth_dma.recv_next(None) {
-        // handle received pkt
-    }
+    loop {
+        if let Ok(pkt) = eth_dma.recv_next(None) {
+            // handle received pkt
+        }
 
-    let size = 42;
-    eth_dma.send(size, None, |buf| {
-        // write up to `size` bytes into buf before it is being sent
-    }).expect("send");
+        let size = 42;
+        eth_dma.send(size, None, |buf| {
+            // write up to `size` bytes into buf before it is being sent
+        }).expect("send");
+    }
+}
+
+use stm32_eth::stm32::interrupt;
+#[interrupt]
+fn ETH() {
+    stm32_eth::eth_interrupt_handler();
 }
 ```
 
