@@ -29,7 +29,7 @@ ieee802_3_miim = "0.8"
 cortex-m = "0.7"
 log = { version = "0.4", optional = true }
 defmt = { version = "0.3", optional = true }
-futures = { version = "0.3", default-features = false, features = ["async-await"] }
+futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 
 [dependencies.smoltcp]
 version = "0.9"
@@ -37,10 +37,11 @@ default-features = false
 optional = true
 
 [features]
-default = [ "defmt", "ptp" ]
+default = [ "defmt", "ptp", "async-await" ]
 device-selected = []
 fence = []
 ptp = [ ]
+async-await = ["dep:futures"]
 
 stm32f107 = ["stm32f1xx-hal/stm32f107", "device-selected"]
 

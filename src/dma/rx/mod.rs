@@ -1,19 +1,18 @@
-use core::task::Poll;
-
-use futures::task::AtomicWaker;
-
 pub(crate) use self::descriptor::RxDescriptor;
 
 use self::descriptor::RxDescriptorError;
 pub use self::descriptor::RxRingEntry;
 
-use super::{PacketId, PacketIdNotFound};
+use super::PacketId;
 use crate::peripherals::ETHERNET_DMA;
 
 mod descriptor;
 
 #[cfg(feature = "ptp")]
-use crate::ptp::Timestamp;
+use crate::{dma::PacketIdNotFound, ptp::Timestamp};
+
+#[cfg(feature = "async-await")]
+use core::task::Poll;
 
 /// Errors that can occur during RX
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -40,16 +39,14 @@ impl From<RxDescriptorError> for RxError {
 pub struct RxRing<'a> {
     entries: &'a mut [RxRingEntry],
     next_entry: usize,
-    waker: &'static AtomicWaker,
 }
 
 impl<'a> RxRing<'a> {
     /// Allocate
-    pub fn new(entries: &'a mut [RxRingEntry], waker: &'static AtomicWaker) -> Self {
+    pub fn new(entries: &'a mut [RxRingEntry]) -> Self {
         RxRing {
             entries,
             next_entry: 0,
-            waker,
         }
     }
 
@@ -165,6 +162,7 @@ impl<'a> RxRing<'a> {
     ///
     /// The returned [`RxPacket`] can be used as a slice, and
     /// will contain the ethernet data.
+    #[cfg(feature = "async-await")]
     pub async fn recv(&mut self) -> RxPacket {
         let (entry_num, length) = core::future::poll_fn(|ctx| {
             let res = self.recv_next_impl(None);
@@ -172,7 +170,7 @@ impl<'a> RxRing<'a> {
             match res {
                 Ok(value) => Poll::Ready(value),
                 Err(_) => {
-                    self.waker.register(ctx.waker());
+                    crate::dma::EthernetDMA::rx_waker().register(ctx.waker());
                     Poll::Pending
                 }
             }

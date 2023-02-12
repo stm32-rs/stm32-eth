@@ -3,8 +3,10 @@ use crate::dma::{
     ring::{RingDescriptor, RingEntry},
 };
 
+use crate::dma::PacketId;
+
 #[cfg(feature = "ptp")]
-use crate::{dma::PacketId, ptp::Timestamp};
+use crate::ptp::Timestamp;
 
 /// Errors that can occur during RX
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -17,6 +19,8 @@ pub(crate) enum RxDescriptorError {
 }
 
 /// RX timestamp valid
+/// NOTE(allow): unused if not(feature = "ptp")
+#[allow(unused)]
 const RXDESC_0_TIMESTAMP_VALID: u32 = 1 << 7;
 /// Owned by DMA engine
 const RXDESC_0_OWN: u32 = 1 << 31;
@@ -76,8 +80,6 @@ impl RxDescriptor {
     ///
     /// Overrides old timestamp data
     pub fn set_owned(&mut self) {
-        self.cached_timestamp = self.timestamp();
-
         self.write_buffer1();
         self.write_buffer2();
 

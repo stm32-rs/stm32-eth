@@ -2,13 +2,13 @@
 //!
 //! See [`EthernetPTP`] for a more details.
 
-use core::task::Poll;
-
 use crate::{dma::EthernetDMA, hal::rcc::Clocks, mac::EthernetMAC, peripherals::ETHERNET_PTP};
 
 mod timestamp;
-use futures::task::AtomicWaker;
 pub use timestamp::Timestamp;
+
+#[cfg(feature = "async-await")]
+use {core::task::Poll, futures::task::AtomicWaker};
 
 mod subseconds;
 pub use subseconds::{Subseconds, NANOS_PER_SECOND, SUBSECONDS_PER_SECOND, SUBSECONDS_TO_SECONDS};
@@ -66,11 +66,6 @@ impl EthernetPTP {
         // time `accumulator` overflows.
         let tsa = ((half_rate_subsec_increment_hz as u64 * u32::MAX as u64) / hclk as u64) as u32;
         (stssi, tsa)
-    }
-
-    fn waker() -> &'static AtomicWaker {
-        static WAKER: AtomicWaker = AtomicWaker::new();
-        &WAKER
     }
 
     pub(crate) fn new(
@@ -225,6 +220,12 @@ impl EthernetPTP {
 /// clear the flag as the register required to do so does not exist.
 #[cfg(not(feature = "stm32f1xx-hal"))]
 impl EthernetPTP {
+    #[cfg(feature = "async-await")]
+    fn waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
+    }
+
     /// Configure the target time.
     fn set_target_time(&mut self, timestamp: Timestamp) {
         let (high, low) = (timestamp.seconds(), timestamp.subseconds_signed());
@@ -247,6 +248,7 @@ impl EthernetPTP {
     }
 
     /// Wait until the specified time.
+    #[cfg(feature = "async-await")]
     pub async fn wait_until(&mut self, timestamp: Timestamp) {
         self.configure_target_time_interrupt(timestamp);
         core::future::poll_fn(|ctx| {
@@ -274,6 +276,7 @@ impl EthernetPTP {
             EthernetMAC::mask_timestamp_trigger_interrupt();
         }
 
+        #[cfg(feature = "async-await")]
         EthernetPTP::waker().wake();
 
         is_tsint

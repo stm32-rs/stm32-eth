@@ -1,9 +1,6 @@
 //! Ethernet DMA access and configuration.
 
-use core::task::Poll;
-
 use cortex_m::peripheral::NVIC;
-use futures::task::AtomicWaker;
 
 use crate::{peripherals::ETHERNET_DMA, stm32::Interrupt};
 
@@ -11,6 +8,12 @@ use crate::{peripherals::ETHERNET_DMA, stm32::Interrupt};
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::*;
+
+#[cfg(feature = "async-await")]
+use futures::task::AtomicWaker;
+
+#[cfg(feature = "ptp")]
+use core::task::Poll;
 
 pub(crate) mod desc;
 
@@ -115,8 +118,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 
         let mut dma = EthernetDMA {
             eth_dma,
-            rx_ring: RxRing::new(rx_buffer, EthernetDMA::rx_waker()),
-            tx_ring: TxRing::new(tx_buffer, EthernetDMA::tx_waker()),
+            rx_ring: RxRing::new(rx_buffer),
+            tx_ring: TxRing::new(tx_buffer),
         };
 
         dma.rx_ring.start(&dma.eth_dma);
@@ -125,11 +128,13 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         dma
     }
 
+    #[cfg(feature = "async-await")]
     pub(crate) fn rx_waker() -> &'static AtomicWaker {
         static WAKER: AtomicWaker = AtomicWaker::new();
         &WAKER
     }
 
+    #[cfg(feature = "async-await")]
     pub(crate) fn tx_waker() -> &'static AtomicWaker {
         static WAKER: AtomicWaker = AtomicWaker::new();
         &WAKER
@@ -144,8 +149,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// Enable RX and TX interrupts
     ///
     /// In your handler you must call
-    /// [`EthernetDMA::interrupt_handler()`] to
-    /// clear interrupt pending bits. Otherwise the interrupt will
+    /// [`EthernetDMA::interrupt_handler()`] or [`stm32_eth::eth_interrupt_handler`](crate::eth_interrupt_handler)
+    /// to clear interrupt pending bits. Otherwise the interrupt will
     /// reoccur immediately.
     pub fn enable_interrupt(&self) {
         self.eth_dma.dmaier.modify(|_, w| {
@@ -184,12 +189,15 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
             .dmasr
             .write(|w| w.nis().set_bit().ts().set_bit().rs().set_bit());
 
-        if status.is_tx {
-            EthernetDMA::tx_waker().wake();
-        }
+        #[cfg(feature = "async-await")]
+        {
+            if status.is_tx {
+                EthernetDMA::tx_waker().wake();
+            }
 
-        if status.is_rx {
-            EthernetDMA::rx_waker().wake();
+            if status.is_rx {
+                EthernetDMA::rx_waker().wake();
+            }
         }
 
         status
@@ -205,6 +213,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     }
 
     /// Receive a packet.
+    #[cfg(feature = "async-await")]
     pub async fn recv(&mut self) -> RxPacket {
         self.rx_ring.recv().await
     }

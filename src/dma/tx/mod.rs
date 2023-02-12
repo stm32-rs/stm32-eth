@@ -6,12 +6,9 @@ use super::{PacketIdNotFound, Timestamp};
 
 mod descriptor;
 pub use descriptor::{TxDescriptor, TxRingEntry};
-use futures::task::AtomicWaker;
 
-use core::{
-    sync::atomic::{self, Ordering},
-    task::Poll,
-};
+#[cfg(any(feature = "ptp", feature = "async-await"))]
+use core::task::Poll;
 
 /// Errors that can occur during Ethernet TX
 #[derive(Debug, PartialEq)]
@@ -24,18 +21,16 @@ pub enum TxError {
 pub struct TxRing<'a> {
     pub(crate) entries: &'a mut [TxRingEntry],
     next_entry: usize,
-    waker: &'static AtomicWaker,
 }
 
 impl<'ring> TxRing<'ring> {
     /// Allocate
     ///
     /// `start()` will be needed before `send()`
-    pub fn new(entries: &'ring mut [TxRingEntry], waker: &'static AtomicWaker) -> Self {
+    pub fn new(entries: &'ring mut [TxRingEntry]) -> Self {
         TxRing {
             entries,
             next_entry: 0,
-            waker,
         }
     }
 
@@ -64,7 +59,7 @@ impl<'ring> TxRing<'ring> {
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]
-        atomic::fence(Ordering::Release);
+        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
 
         // We don't need a compiler fence here because all interactions with `Descriptor` are
         // volatiles
@@ -130,6 +125,7 @@ impl<'ring> TxRing<'ring> {
     ///
     /// When all data is copied into the TX buffer, use [`TxPacket::send()`]
     /// to transmit it.
+    #[cfg(feature = "async-await")]
     pub async fn prepare_packet<'borrow>(
         &'borrow mut self,
         length: usize,
@@ -138,7 +134,7 @@ impl<'ring> TxRing<'ring> {
         let entry = core::future::poll_fn(|ctx| match self.send_next_impl() {
             Ok(packet) => Poll::Ready(packet),
             Err(_) => {
-                self.waker.register(ctx.waker());
+                crate::dma::EthernetDMA::tx_waker().register(ctx.waker());
                 Poll::Pending
             }
         })
@@ -153,10 +149,6 @@ impl<'ring> TxRing<'ring> {
             length,
             packet_id,
         }
-    }
-
-    pub(crate) fn entry_available(&self, index: usize) -> bool {
-        self.entries[index].is_available()
     }
 
     /// Demand that the DMA engine polls the current `TxDescriptor`
@@ -215,6 +207,10 @@ impl TxRing<'_> {
                 }
             },
         )
+    }
+
+    pub(crate) fn entry_available(&self, index: usize) -> bool {
+        self.entries[index].is_available()
     }
 
     fn entry_timestamp(&self, index: usize) -> Option<Timestamp> {
