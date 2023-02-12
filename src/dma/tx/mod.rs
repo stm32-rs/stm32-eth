@@ -250,23 +250,17 @@ impl TxRing<'_> {
     }
 
     /// Wait until the timestamp for the given ID is available.
+    #[cfg(feature = "async-await")]
     pub async fn timestamp(
         &mut self,
         packet_id: &PacketId,
     ) -> Result<Option<Timestamp>, PacketIdNotFound> {
         core::future::poll_fn(move |ctx| {
-            let entry = if let Some(entry) = self.entry_for_id(packet_id) {
-                entry
-            } else {
-                return Poll::Ready(Err(PacketIdNotFound));
-            };
-
-            if self.entry_available(entry) {
-                Poll::Ready(Ok(self.entry_timestamp(entry)))
-            } else {
-                ctx.waker().wake_by_ref();
-                Poll::Pending
+            let res = self.poll_timestamp(packet_id);
+            if res.is_pending() {
+                crate::dma::EthernetDMA::tx_waker().register(ctx.waker());
             }
+            res
         })
         .await
     }

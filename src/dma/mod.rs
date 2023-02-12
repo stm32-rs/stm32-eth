@@ -212,12 +212,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         self.rx_ring.recv_next(packet_id.map(Into::into))
     }
 
-    /// Receive a packet.
-    #[cfg(feature = "async-await")]
-    pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
-        self.rx_ring.recv(packet_id).await
-    }
-
     /// Is Rx DMA currently running?
     ///
     /// It stops if the ring is full. Call [`EthernetDMA::recv_next()`] to free an
@@ -264,6 +258,26 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// the next call to [`EthernetDMA::send`] will return [`Ok`]
     pub fn tx_available(&mut self) -> bool {
         self.tx_ring.next_entry_available()
+    }
+
+    /// Receive a packet.
+    ///
+    /// See [`RxRing::recv`].
+    #[cfg(feature = "async-await")]
+    pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
+        self.rx_ring.recv(packet_id).await
+    }
+
+    /// Prepare a packet for sending.
+    ///
+    /// See [`TxRing::prepare_packet`].
+    #[cfg(feature = "async-await")]
+    pub async fn prepare_packet<'borrow>(
+        &'borrow mut self,
+        length: usize,
+        packet_id: Option<PacketId>,
+    ) -> TxPacket<'borrow, 'tx> {
+        self.tx_ring.prepare_packet(length, packet_id).await
     }
 }
 
@@ -315,6 +329,7 @@ impl EthernetDMA<'_, '_> {
     }
 
     /// Get the TX timestamp for the given ID.
+    #[cfg(feature = "async-await")]
     pub async fn tx_timestamp(
         &mut self,
         packet_id: &PacketId,

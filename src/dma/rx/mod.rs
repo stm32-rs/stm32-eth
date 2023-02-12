@@ -164,7 +164,7 @@ impl<'a> RxRing<'a> {
     /// will contain the ethernet data.
     #[cfg(feature = "async-await")]
     pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
-        let (entry_num, length) = core::future::poll_fn(|ctx| {
+        let (entry, length) = core::future::poll_fn(|ctx| {
             let res = self.recv_next_impl(packet_id.clone());
 
             match res {
@@ -178,7 +178,7 @@ impl<'a> RxRing<'a> {
         .await;
 
         RxPacket {
-            entry: &mut self.entries[entry_num],
+            entry: &mut self.entries[entry],
             length,
         }
     }
