@@ -41,15 +41,13 @@ extern crate async_rtic as rtic;
 mod app {
 
     use async_rtic as rtic;
+    use rtic_channel::{Channel, Receiver, Sender};
 
     use crate::common::EthernetPhy;
 
-    use fugit::ExtU64;
-
-    use arbiter::Arbiter;
+    use rtic_arbiter::Arbiter;
 
     use ieee802_3_miim::{phy::PhySpeed, Phy};
-    use systick_monotonic::Systick;
 
     use stm32_eth::{
         dma::{EthernetDMA, PacketId, RxRing, RxRingEntry, TxRing, TxRingEntry},
@@ -66,25 +64,24 @@ mod app {
     #[shared]
     struct Shared {}
 
-    #[monotonic(binds = SysTick, default = true)]
-    type Monotonic = Systick<1000>;
-
     #[init(local = [
         rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
         tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
         dma: MaybeUninit<EthernetDMA<'static, 'static>> = MaybeUninit::uninit(),
         arbiter: MaybeUninit<Arbiter<EthernetPTP> > = MaybeUninit::uninit(),
+        // We use a channel to signal when 1 second has passed.
+        // We should use `rtic_monotonic`, but its embedded-hal
+        // version requirements conflict with that of stm32f4xx-hal.
+        tx_channel: Channel<(), 1> = Channel::new(),
     ])]
-    fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
+    fn init(cx: init::Context) -> (Shared, Local) {
         defmt::info!("Pre-init");
-        let core = cx.core;
         let p = cx.device;
 
         let rx_ring = cx.local.rx_ring;
         let tx_ring = cx.local.tx_ring;
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
-        let mono = Systick::new(core.SYST, clocks.hclk().raw());
 
         defmt::info!("Setting up pins");
         let (pins, mdio, mdc, pps) = crate::common::setup_pins(gpio);
@@ -104,6 +101,7 @@ mod app {
         dma.enable_interrupt();
 
         let (rx, tx) = dma.split();
+        let (do_tx_send, do_tx_recv) = cx.local.tx_channel.split();
 
         match EthernetPhy::from_miim(mac, 0) {
             Ok(mut phy) => {
@@ -137,11 +135,11 @@ mod app {
             }
         };
 
-        sender::spawn(tx).ok();
+        sender::spawn(tx, do_tx_recv).ok();
         receiver::spawn(rx, arbiter).ok();
-        ptp_scheduler::spawn(arbiter).ok();
+        ptp_scheduler::spawn(arbiter, do_tx_send).ok();
 
-        (Shared {}, Local {}, init::Monotonics(mono))
+        (Shared {}, Local {})
     }
 
     #[task]
@@ -211,33 +209,50 @@ mod app {
     }
 
     #[task]
-    async fn ptp_scheduler(_: ptp_scheduler::Context, ptp: &'static Arbiter<EthernetPTP>) {
+    async fn ptp_scheduler(
+        _: ptp_scheduler::Context,
+        ptp: &'static Arbiter<EthernetPTP>,
+        mut do_tx_recv: Sender<'static, (), 1>,
+    ) {
+        let mut last_tx = EthernetPTP::now();
         loop {
             let mut ptp = ptp.access().await;
-            let start = EthernetPTP::now();
-            let int_time = start + Timestamp::new_raw(Subseconds::MAX_VALUE as i64);
+
+            let int_time = last_tx + Timestamp::new_raw(Subseconds::MAX_VALUE as i64 / 2);
             ptp.wait_until(int_time).await;
+
             let now = EthernetPTP::now();
 
-            defmt::info!("Got to PTP time after {}.", now - start);
+            do_tx_recv.send(()).await.ok();
+            defmt::info!("Got to PTP time after {}. It is now {}", now - last_tx, now);
+
+            last_tx = int_time;
         }
     }
 
     #[task]
-    async fn sender(_: sender::Context, tx: &'static mut TxRing<'static>) {
+    async fn sender(
+        _: sender::Context,
+        tx: &'static mut TxRing<'static>,
+        mut receiver: Receiver<'static, (), 1>,
+    ) {
         let mut tx_id_ctr = 0x8000_0000;
 
         const SIZE: usize = 42;
 
         loop {
+            receiver.recv().await.ok();
+
+            defmt::info!("Starting TX. It is now {}", EthernetPTP::now());
+
             // Obtain the current time to use as the "TX time" of our frame. It is clearly
             // incorrect, but works well enough in low-activity systems (such as this example).
-            let now = EthernetPTP::now();
-            let start = monotonics::now();
 
             const DST_MAC: [u8; 6] = [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56];
             const SRC_MAC: [u8; 6] = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
             const ETH_TYPE: [u8; 2] = [0xFF, 0xFF]; // Custom/unknown ethertype
+
+            let now = EthernetPTP::now();
 
             let tx_id_val = tx_id_ctr;
             let packet_id = PacketId(tx_id_val);
@@ -259,8 +274,6 @@ mod app {
             if let Ok(Some(timestamp)) = timestamp {
                 defmt::info!("Tx timestamp: {}", timestamp);
             }
-
-            monotonics::delay_until(start + 500.millis()).await;
         }
     }
 
