@@ -19,7 +19,7 @@ pub enum TxError {
 
 /// Tx DMA state
 pub struct TxRing<'a> {
-    pub(crate) entries: &'a mut [TxRingEntry],
+    entries: &'a mut [TxRingEntry],
     next_entry: usize,
 }
 
@@ -27,7 +27,7 @@ impl<'ring> TxRing<'ring> {
     /// Allocate
     ///
     /// `start()` will be needed before `send()`
-    pub fn new(entries: &'ring mut [TxRingEntry]) -> Self {
+    pub(crate) fn new(entries: &'ring mut [TxRingEntry]) -> Self {
         TxRing {
             entries,
             next_entry: 0,
@@ -35,7 +35,7 @@ impl<'ring> TxRing<'ring> {
     }
 
     /// Start the Tx DMA engine
-    pub fn start(&mut self, eth_dma: &ETHERNET_DMA) {
+    pub(crate) fn start(&mut self, eth_dma: &ETHERNET_DMA) {
         // Setup ring
         {
             let mut previous: Option<&mut TxRingEntry> = None;
@@ -153,7 +153,7 @@ impl<'ring> TxRing<'ring> {
 
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
-    pub fn demand_poll(&self) {
+    pub(crate) fn demand_poll(&self) {
         // SAFETY: we only perform an atomic write to `dmatpdr`
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
         eth_dma.dmatpdr.write(|w| {
@@ -174,7 +174,7 @@ impl<'ring> TxRing<'ring> {
         self.running_state().is_running()
     }
 
-    fn running_state(&self) -> RunningState {
+    pub(crate) fn running_state(&self) -> RunningState {
         // SAFETY: we only perform an atomic read of `dmasr`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
 
@@ -209,7 +209,7 @@ impl TxRing<'_> {
         )
     }
 
-    pub(crate) fn entry_available(&self, index: usize) -> bool {
+    fn entry_available(&self, index: usize) -> bool {
         self.entries[index].is_available()
     }
 

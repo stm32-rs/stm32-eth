@@ -43,7 +43,7 @@ pub struct RxRing<'a> {
 
 impl<'a> RxRing<'a> {
     /// Allocate
-    pub fn new(entries: &'a mut [RxRingEntry]) -> Self {
+    pub(crate) fn new(entries: &'a mut [RxRingEntry]) -> Self {
         RxRing {
             entries,
             next_entry: 0,
@@ -51,7 +51,7 @@ impl<'a> RxRing<'a> {
     }
 
     /// Setup the DMA engine (**required**)
-    pub fn start(&mut self, eth_dma: &ETHERNET_DMA) {
+    pub(crate) fn start(&mut self, eth_dma: &ETHERNET_DMA) {
         // Setup ring
         {
             let mut previous: Option<&mut RxRingEntry> = None;
