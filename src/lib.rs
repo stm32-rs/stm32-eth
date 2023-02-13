@@ -57,6 +57,8 @@ use ptp::EthernetPTP;
 
 /// A summary of the reasons for the occurence of an
 /// interrupt
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InterruptReason {
     /// A packet has arrived and is ready for processing.
     pub rx: bool,
