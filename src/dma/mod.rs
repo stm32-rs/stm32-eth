@@ -281,6 +281,15 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     }
 }
 
+impl Drop for EthernetDMA<'_, '_> {
+    // On drop, stop all DMA actions.
+    fn drop(&mut self) {
+        self.tx_ring.stop(&self.eth_dma);
+
+        self.rx_ring.stop(&self.eth_dma);
+    }
+}
+
 #[cfg(feature = "ptp")]
 impl EthernetDMA<'_, '_> {
     /// Try to get the timestamp for the given packet ID.

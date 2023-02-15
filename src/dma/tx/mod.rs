@@ -68,6 +68,16 @@ impl<'ring> TxRing<'ring> {
         eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
     }
 
+    /// Stop the TX DMA
+    pub(crate) fn stop(&self, eth_dma: &ETHERNET_DMA) {
+        eth_dma.dmaomr.modify(|_, w| w.st().clear_bit());
+
+        // DMA accesses do not stop before the running state
+        // of the DMA has changed to something other than
+        // running.
+        while self.is_running() {}
+    }
+
     /// If this returns `true`, the next `send` will succeed.
     pub fn next_entry_available(&self) -> bool {
         !self.entries[self.next_entry].is_available()

@@ -81,6 +81,16 @@ impl<'a> RxRing<'a> {
         self.demand_poll();
     }
 
+    /// Stop the RX DMA
+    pub(crate) fn stop(&self, eth_dma: &ETHERNET_DMA) {
+        eth_dma.dmaomr.modify(|_, w| w.sr().clear_bit());
+
+        // DMA accesses do not stop before the running state
+        // of the DMA has changed to something other than
+        // running.
+        while self.running_state().is_running() {}
+    }
+
     /// Demand that the DMA engine polls the current `RxDescriptor`
     /// (when in [`RunningState::Stopped`].)
     fn demand_poll(&self) {
