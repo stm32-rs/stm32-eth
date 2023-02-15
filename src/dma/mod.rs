@@ -12,7 +12,7 @@ pub use smoltcp_phy::*;
 #[cfg(feature = "async-await")]
 use futures::task::AtomicWaker;
 
-#[cfg(feature = "ptp")]
+#[cfg(any(feature = "ptp", feature = "async-await"))]
 use core::task::Poll;
 
 pub(crate) mod desc;
@@ -278,6 +278,24 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         packet_id: Option<PacketId>,
     ) -> TxPacket<'borrow, 'tx> {
         self.tx_ring.prepare_packet(length, packet_id).await
+    }
+
+    /// Wait for an RX or TX interrupt to have
+    /// occured.
+    #[cfg(feature = "async-await")]
+    pub async fn rx_or_tx(&mut self) {
+        let mut polled_once = false;
+        core::future::poll_fn(|ctx| {
+            if polled_once {
+                Poll::Ready(())
+            } else {
+                polled_once = true;
+                EthernetDMA::rx_waker().register(ctx.waker());
+                EthernetDMA::tx_waker().register(ctx.waker());
+                Poll::Pending
+            }
+        })
+        .await;
     }
 }
 
