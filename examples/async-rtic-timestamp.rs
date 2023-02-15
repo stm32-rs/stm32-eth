@@ -6,7 +6,8 @@
 //!
 //! This example is used to demonstrate async abilities, and requires nightly to build.
 //!
-//! A very rudimentary PTP synchronization example built using RTIC, on the async branch.
+//! A very rudimentary PTP synchronization example built using RTICv2. This example requires a
+//! **nightly** toolchain.
 //!
 //! The example requires that at least two nodes are running at the same time,
 //! and the time synchronization that occurs does not explicitly compensate for
