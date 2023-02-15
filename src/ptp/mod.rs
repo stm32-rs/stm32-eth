@@ -7,7 +7,7 @@ use crate::{dma::EthernetDMA, hal::rcc::Clocks, mac::EthernetMAC, peripherals::E
 mod timestamp;
 pub use timestamp::Timestamp;
 
-#[cfg(feature = "async-await")]
+#[cfg(all(not(feature = "stm32f1xx-hal"), feature = "async-await"))]
 use {core::task::Poll, futures::task::AtomicWaker};
 
 mod subseconds;
