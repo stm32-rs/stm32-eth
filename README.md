@@ -15,9 +15,9 @@ Pull requests are welcome :)
 Add one of the following to the `[dependencies]` section in your `Cargo.toml` (with the correct MCU specified):
 
 ```toml
-stm32-eth = { version = "0.3.0", features = ["stm32f429"] } # For stm32f4xx-like MCUs
-stm32-eth = { version = "0.3.0", features = ["stm32f767"] } # For stm32f7xx-like MCUs
-stm32-eth = { version = "0.3.0", features = ["stm32f107"] } # For stm32f107
+stm32-eth = { version = "0.4.1", features = ["stm32f429"] } # For stm32f4xx-like MCUs
+stm32-eth = { version = "0.4.1", features = ["stm32f767"] } # For stm32f7xx-like MCUs
+stm32-eth = { version = "0.4.1", features = ["stm32f107"] } # For stm32f107
 ```
 
 `stm32_eth` re-exports the underlying HAL as `stm32_eth::hal`.
