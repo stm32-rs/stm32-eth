@@ -128,18 +128,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         dma
     }
 
-    #[cfg(feature = "async-await")]
-    pub(crate) fn rx_waker() -> &'static AtomicWaker {
-        static WAKER: AtomicWaker = AtomicWaker::new();
-        &WAKER
-    }
-
-    #[cfg(feature = "async-await")]
-    pub(crate) fn tx_waker() -> &'static AtomicWaker {
-        static WAKER: AtomicWaker = AtomicWaker::new();
-        &WAKER
-    }
-
     /// Split the [`EthernetDMA`] into concurrently operating send and
     /// receive parts.
     pub fn split(&mut self) -> (&mut RxRing<'rx>, &mut TxRing<'tx>) {
@@ -259,11 +247,32 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     pub fn tx_available(&mut self) -> bool {
         self.tx_ring.next_entry_available()
     }
+}
+
+impl Drop for EthernetDMA<'_, '_> {
+    // On drop, stop all DMA actions.
+    fn drop(&mut self) {
+        self.tx_ring.stop(&self.eth_dma);
+
+        self.rx_ring.stop(&self.eth_dma);
+    }
+}
+
+#[cfg(feature = "async-await")]
+impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
+    pub(crate) fn rx_waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
+    }
+
+    pub(crate) fn tx_waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
+    }
 
     /// Receive a packet.
     ///
     /// See [`RxRing::recv`].
-    #[cfg(feature = "async-await")]
     pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
         self.rx_ring.recv(packet_id).await
     }
@@ -271,7 +280,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// Prepare a packet for sending.
     ///
     /// See [`TxRing::prepare_packet`].
-    #[cfg(feature = "async-await")]
     pub async fn prepare_packet<'borrow>(
         &'borrow mut self,
         length: usize,
@@ -282,7 +290,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 
     /// Wait for an RX or TX interrupt to have
     /// occured.
-    #[cfg(feature = "async-await")]
     pub async fn rx_or_tx(&mut self) {
         let mut polled_once = false;
         core::future::poll_fn(|ctx| {
@@ -296,15 +303,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
             }
         })
         .await;
-    }
-}
-
-impl Drop for EthernetDMA<'_, '_> {
-    // On drop, stop all DMA actions.
-    fn drop(&mut self) {
-        self.tx_ring.stop(&self.eth_dma);
-
-        self.rx_ring.stop(&self.eth_dma);
     }
 }
 
