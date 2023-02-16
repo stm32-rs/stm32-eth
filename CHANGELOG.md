@@ -2,8 +2,12 @@
 * Update to `smoltcp` v0.9 ([#71])
 * Add `timesync-server` and `timesync-client` examples ([#72])
 * Remove argument from `eth_interrupt_handler` ([#75], fixes [#44])
-* Make EthernetDMA drop safe, add `fn split`, feature `async-await`, and `async-rtic-timestamp` example ([#75])
-
+* [#75]
+    * Make EthernetDMA drop safe
+    * Add `EthernetDMA::split`: support for using RX and TX independently
+    * Make the interrupt handler methods and `EthernetPTP::get_time` static FNs
+    * Add feature `async-await`, used for accessing RX and/or TX asynchronously, as well as the ethernet PTP timestamp interrupt
+    * Add `async-rtic-timestamp` exmaple (nightly only)
 
 [#44]: https://github.com/stm32-rs/stm32-eth/issues/44
 [#71]: https://github.com/stm32-rs/stm32-eth/pull/71
