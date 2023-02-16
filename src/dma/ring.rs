@@ -1,32 +1,46 @@
-use aligned::{Aligned, A8};
-use core::ops::{Deref, DerefMut};
-
 use super::{rx::RxDescriptor, tx::TxDescriptor, MTU};
 
 pub trait RingDescriptor {
     fn setup(&mut self, buffer: *const u8, len: usize, next: Option<&Self>);
 }
 
-/// An entry in a DMA Descriptor ring
-pub struct RingEntry<T: Clone + RingDescriptor> {
-    desc: Aligned<A8, [T; 1]>,
-    buffer: Aligned<A8, [u8; MTU]>,
+#[repr(C, align(8))]
+pub struct Buffer {
+    buffer: [u8; MTU],
 }
 
-impl<T: Clone + RingDescriptor> Clone for RingEntry<T> {
-    fn clone(&self) -> Self {
-        RingEntry {
-            desc: Aligned((*self.desc).clone()),
-            buffer: Aligned(*self.buffer),
-        }
+impl Buffer {
+    pub const fn new() -> Self {
+        Self { buffer: [0; MTU] }
     }
 }
 
-impl<T: Clone + RingDescriptor + Default> Default for RingEntry<T> {
+impl core::ops::Deref for Buffer {
+    type Target = [u8; MTU];
+
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
+    }
+}
+
+impl core::ops::DerefMut for Buffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.buffer
+    }
+}
+
+/// An entry in a DMA Descriptor ring
+#[repr(C, align(8))]
+pub struct RingEntry<T: RingDescriptor> {
+    desc: T,
+    buffer: Buffer,
+}
+
+impl<T: RingDescriptor + Default> Default for RingEntry<T> {
     fn default() -> Self {
         RingEntry {
-            desc: Aligned([T::default()]),
-            buffer: Aligned([0; MTU]),
+            desc: T::default(),
+            buffer: Buffer::new(),
         }
     }
 }
@@ -38,8 +52,8 @@ impl RingEntry<TxDescriptor> {
     /// Creates a RingEntry with a TxDescriptor.
     pub const fn new() -> Self {
         RingEntry {
-            desc: Aligned([TxDescriptor::new()]),
-            buffer: Aligned([0; MTU]),
+            desc: TxDescriptor::new(),
+            buffer: Buffer::new(),
         }
     }
 }
@@ -51,13 +65,13 @@ impl RingEntry<RxDescriptor> {
     /// Creates a RingEntry with a RxDescriptor.
     pub const fn new() -> Self {
         RingEntry {
-            desc: Aligned([RxDescriptor::new()]),
-            buffer: Aligned([0; MTU]),
+            desc: RxDescriptor::new(),
+            buffer: Buffer::new(),
         }
     }
 }
 
-impl<T: Clone + RingDescriptor> RingEntry<T> {
+impl<T: RingDescriptor> RingEntry<T> {
     pub(crate) fn setup(&mut self, next: Option<&Self>) {
         let buffer = self.buffer.as_ptr();
         let len = self.buffer.len();
@@ -67,12 +81,12 @@ impl<T: Clone + RingDescriptor> RingEntry<T> {
 
     #[inline]
     pub(crate) fn desc(&self) -> &T {
-        &self.desc.deref()[0]
+        &self.desc
     }
 
     #[inline]
     pub(crate) fn desc_mut(&mut self) -> &mut T {
-        &mut self.desc.deref_mut()[0]
+        &mut self.desc
     }
 
     #[inline]

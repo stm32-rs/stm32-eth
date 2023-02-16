@@ -9,6 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
   style:
@@ -90,16 +91,21 @@ jobs:
         run: |
           cargo build --release --target=${{ matrix.target }} --features ${{ matrix.features }}
 
-  build-no-ptp:
-    name: build-no-ptp
+  build-feature-mixer:
+    name: build-feature-mixer
     runs-on: ubuntu-20.04
     strategy:
       matrix:
         target:
           - x86_64-unknown-linux-gnu
+        features:
+          - "ptp,async-await"
+          - "ptp"
+          - "async-await"
+          - ""
         toolchain:
           - stable
-        features:
+        mcu:
           - stm32f107
           - stm32f407
           - stm32f745
@@ -115,7 +121,7 @@ jobs:
 
       - name: cargo build
         run: |
-          cargo build --release --target=${{ matrix.target }} --features ${{ matrix.features }} --no-default-features
+          cargo build --release --target=${{ matrix.target }} --features "${{ matrix.mcu }}" --features "${{ matrix.features }}" --no-default-features
 
   # Test that all of the examples compile
   # for stm32f429
@@ -204,7 +210,7 @@ jobs:
       - test
       - examples
       - examples-common
-      - build-no-ptp
+      - build-feature-mixer
     runs-on: ubuntu-20.04
     steps:
       - name: Mark the job as a success

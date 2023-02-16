@@ -80,6 +80,7 @@ pub fn calculate_offset(
 mod app {
 
     use crate::common::EthernetPhy;
+    use core::task::Poll;
 
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
@@ -100,13 +101,12 @@ mod app {
     #[local]
     struct Local {
         start_addend: u32,
-    }
-
-    #[shared]
-    struct Shared {
         dma: EthernetDMA<'static, 'static>,
         ptp: EthernetPTP,
     }
+
+    #[shared]
+    struct Shared {}
 
     #[monotonic(binds = SysTick, default = true)]
     type Monotonic = Systick<1000>;
@@ -179,21 +179,25 @@ mod app {
         runner::spawn().ok();
 
         (
-            Shared { dma, ptp },
-            Local { start_addend },
+            Shared {},
+            Local {
+                start_addend,
+                ptp,
+                dma,
+            },
             init::Monotonics(mono),
         )
     }
 
-    #[task(shared = [dma, ptp], local = [addend_integrator: f32 = 0.0, start_addend, packet_id: u32 = 0])]
+    #[task(local = [addend_integrator: f32 = 0.0, start_addend, packet_id: u32 = 0, dma, ptp])]
     fn runner(cx: runner::Context) {
         use fugit::ExtU64;
 
         runner::spawn_after(100.millis()).ok();
 
-        let start = monotonics::now();
+        let (dma, ptp) = (cx.local.dma, cx.local.ptp);
 
-        let (mut dma, mut ptp) = (cx.shared.dma, cx.shared.ptp);
+        let start = monotonics::now();
 
         let (addend_integrator, start_addend, packet_id) = (
             cx.local.addend_integrator,
@@ -210,26 +214,24 @@ mod app {
                         return;
                     }
 
-                    let res = dma.lock(|dma| {
-                        if let Ok(rx_packet) = dma.recv_next(None) {
-                            if rx_packet.len() > 14
-                                && &rx_packet[6..12] == &SERVER_ADDR
-                                && &rx_packet[12..14] == &ETHER_TYPE
-                            {
-                                if let Some(timestamp) = rx_packet.timestamp() {
-                                    let data_len = rx_packet.len() - 14;
-                                    buf[..data_len].copy_from_slice(&rx_packet[14..14 + data_len]);
-                                    Ok((&buf[..data_len], timestamp))
-                                } else {
-                                    Err(true)
-                                }
+                    let res = if let Ok(rx_packet) = dma.recv_next(None) {
+                        if rx_packet.len() > 14
+                            && &rx_packet[6..12] == &SERVER_ADDR
+                            && &rx_packet[12..14] == &ETHER_TYPE
+                        {
+                            if let Some(timestamp) = rx_packet.timestamp() {
+                                let data_len = rx_packet.len() - 14;
+                                buf[..data_len].copy_from_slice(&rx_packet[14..14 + data_len]);
+                                Ok((&buf[..data_len], timestamp))
                             } else {
-                                Err(false)
+                                Err(true)
                             }
                         } else {
                             Err(false)
                         }
-                    });
+                    } else {
+                        Err(false)
+                    };
 
                     if let Ok(res) = res {
                         break res;
@@ -245,15 +247,14 @@ mod app {
                 let current_id = PacketId(*packet_id);
                 *packet_id += 1;
                 let current_clone = current_id.clone();
-                dma.lock(|dma| {
-                    dma.send(14 + $data.len(), Some(current_clone), |buf| {
-                        buf[0..6].copy_from_slice(&BROADCAST);
-                        buf[6..12].copy_from_slice(&CLIENT_ADDR);
-                        buf[12..14].copy_from_slice(&ETHER_TYPE);
-                        buf[14..14 + $data.len()].copy_from_slice($data);
-                    })
-                    .unwrap();
-                });
+
+                dma.send(14 + $data.len(), Some(current_clone), |buf| {
+                    buf[0..6].copy_from_slice(&BROADCAST);
+                    buf[6..12].copy_from_slice(&CLIENT_ADDR);
+                    buf[12..14].copy_from_slice(&ETHER_TYPE);
+                    buf[14..14 + $data.len()].copy_from_slice($data);
+                })
+                .unwrap();
 
                 loop {
                     if monotonics::now() - 500u64.millis() > start {
@@ -261,7 +262,7 @@ mod app {
                     }
 
                     let current_id = current_id.clone();
-                    if let Ok(timestamp) = dma.lock(|dma| dma.get_timestamp_for_id(current_id)) {
+                    if let Poll::Ready(Ok(Some(timestamp))) = dma.poll_timestamp(&current_id) {
                         break timestamp;
                     }
                 }
@@ -310,42 +311,39 @@ mod app {
 
         let offset = crate::calculate_offset(t1, t1_prim, t2, t2_prim);
 
-        ptp.lock(|ptp| {
-            let now = ptp.get_time();
-            if offset.seconds() > 0 || offset.nanos() > 200_000 {
-                *addend_integrator = 0.0;
-                defmt::info!("Updating time. Offset {} ", offset);
-                let updated_time = now + offset;
-                ptp.set_time(updated_time);
-            } else {
-                let mut offset_nanos = offset.nanos() as i64;
-                if offset.is_negative() {
-                    offset_nanos *= -1;
-                }
-
-                let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
-                *addend_integrator += error as f32 / 500.;
-
-                defmt::info!(
-                    "Error: {}. Integrator: {}, Offset: {} ns",
-                    error,
-                    addend_integrator,
-                    offset_nanos
-                );
-
-                defmt::debug!(
-                    "DATA: {}, {}, {}, {}",
-                    error,
-                    addend_integrator,
-                    offset_nanos,
-                    now
-                );
-
-                let new_addend =
-                    (start_addend as i64 + error / 4 + (*addend_integrator as i64)) as u32;
-                ptp.set_addend(new_addend);
+        let now = EthernetPTP::get_time();
+        if offset.seconds() > 0 || offset.nanos() > 200_000 {
+            *addend_integrator = 0.0;
+            defmt::info!("Updating time. Offset {} ", offset);
+            let updated_time = now + offset;
+            ptp.set_time(updated_time);
+        } else {
+            let mut offset_nanos = offset.nanos() as i64;
+            if offset.is_negative() {
+                offset_nanos *= -1;
             }
-        });
+
+            let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
+            *addend_integrator += error as f32 / 500.;
+
+            defmt::info!(
+                "Error: {}. Integrator: {}, Offset: {} ns",
+                error,
+                addend_integrator,
+                offset_nanos
+            );
+
+            defmt::debug!(
+                "DATA: {}, {}, {}, {}",
+                error,
+                addend_integrator,
+                offset_nanos,
+                now
+            );
+
+            let new_addend = (start_addend as i64 + error / 4 + (*addend_integrator as i64)) as u32;
+            ptp.set_addend(new_addend);
+        }
 
         defmt::debug!(
             "The exchange took {} ms",
@@ -353,14 +351,8 @@ mod app {
         );
     }
 
-    #[task(binds = ETH, shared = [dma, ptp], priority = 2)]
-    fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (dma, ptp) = (cx.shared.dma, cx.shared.ptp);
-        (dma, ptp).lock(|dma, _ptp| {
-            dma.interrupt_handler();
-
-            #[cfg(not(feature = "stm32f107"))]
-            _ptp.interrupt_handler();
-        })
+    #[task(binds = ETH, priority = 2)]
+    fn eth_interrupt(_: eth_interrupt::Context) {
+        stm32_eth::eth_interrupt_handler();
     }
 }

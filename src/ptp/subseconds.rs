@@ -22,6 +22,9 @@ impl Subseconds {
     /// The maximum possible [`Subseconds`]
     pub const MAX: Self = Self(SUBSECONDS_PER_SECOND);
 
+    /// Zero [`Subseconds`]
+    pub const ZERO: Self = Self(0);
+
     /// Create a new [`Subseconds`] from the provided value.
     ///
     /// The returned [`Subseconds`] represents a time of `value / 2^31` seconds.

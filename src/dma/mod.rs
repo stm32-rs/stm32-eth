@@ -1,7 +1,5 @@
 //! Ethernet DMA access and configuration.
 
-use core::borrow::Borrow;
-
 use cortex_m::peripheral::NVIC;
 
 use crate::{peripherals::ETHERNET_DMA, stm32::Interrupt};
@@ -11,17 +9,21 @@ mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
 pub use smoltcp_phy::*;
 
+#[cfg(feature = "async-await")]
+use futures::task::AtomicWaker;
+
+#[cfg(any(feature = "ptp", feature = "async-await"))]
+use core::task::Poll;
+
 pub(crate) mod desc;
 
 pub(crate) mod ring;
 
 mod rx;
-use rx::RxRing;
-pub use rx::{RxError, RxPacket, RxRingEntry};
+pub use rx::{RunningState as RxRunningState, RxError, RxPacket, RxRing, RxRingEntry};
 
 mod tx;
-use tx::TxRing;
-pub use tx::{TxError, TxRingEntry};
+pub use tx::{RunningState as TxRunningState, TxError, TxPacket, TxRing, TxRingEntry};
 
 #[cfg(feature = "ptp")]
 use crate::ptp::Timestamp;
@@ -32,17 +34,11 @@ pub use packet_id::PacketId;
 /// From the datasheet: *VLAN Frame maxsize = 1522*
 pub(crate) const MTU: usize = 1522;
 
-/// An error that can occur when retrieving a timestamp from an
-/// RX or TX descriptor handled by the DMA.
-#[cfg(feature = "ptp")]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum TimestampError {
-    /// The descriptor with the given packet ID has not been
-    /// timestamped yet.
-    NotYetTimestamped,
-    /// No active descriptors have the given packet ID.
-    IdNotFound,
-}
+#[derive(Clone, Copy, Debug, PartialEq)]
+/// This struct is returned if a packet ID is not associated
+/// with any TX or RX descriptors.
+pub struct PacketIdNotFound;
 
 /// Ethernet DMA.
 pub struct EthernetDMA<'rx, 'tx> {
@@ -132,12 +128,23 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         dma
     }
 
+    /// Split the [`EthernetDMA`] into concurrently operating send and
+    /// receive parts.
+    pub fn split(&mut self) -> (&mut RxRing<'rx>, &mut TxRing<'tx>) {
+        (&mut self.rx_ring, &mut self.tx_ring)
+    }
+
     /// Enable RX and TX interrupts
     ///
     /// In your handler you must call
-    /// [`eth_interrupt_handler()`](fn.eth_interrupt_handler.html) to
-    /// clear interrupt pending bits. Otherwise the interrupt will
-    /// reoccur immediately.
+    /// [`EthernetDMA::interrupt_handler()`] or [`stm32_eth::eth_interrupt_handler`](crate::eth_interrupt_handler)
+    /// to clear interrupt pending bits. Otherwise the interrupt will reoccur immediately.
+    ///
+    /// [`EthernetPTP::interrupt_handler()`]: crate::ptp::EthernetPTP::interrupt_handler
+    #[cfg_attr(
+        feature = "ptp",
+        doc = "If you have PTP enabled, you must also call [`EthernetPTP::interrupt_handler()`] if you wish to make use of the PTP timestamp trigger feature."
+    )]
     pub fn enable_interrupt(&self) {
         self.eth_dma.dmaier.modify(|_, w| {
             w
@@ -158,31 +165,52 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         }
     }
 
-    /// Calls [`eth_interrupt_handler()`]
-    #[cfg_attr(
-        feature = "ptp",
-        doc = " and collects/caches TX timestamps. (See [`EthernetDMA::get_timestamp_for_id`] for retrieval)"
-    )]
-    pub fn interrupt_handler(&mut self) -> InterruptReasonSummary {
-        let eth_dma = &self.eth_dma;
-        let status = eth_interrupt_handler_impl(eth_dma);
-        #[cfg(feature = "ptp")]
-        self.collect_timestamps();
+    /// Handle the DMA parts of the `ETH` interrupt.
+    pub fn interrupt_handler() -> InterruptReasonSummary {
+        // SAFETY: we only perform atomic reads/writes through `eth_dma`.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
+        let status = eth_dma.dmasr.read();
+
+        let status = InterruptReasonSummary {
+            is_rx: status.rs().bit_is_set(),
+            is_tx: status.ts().bit_is_set(),
+            is_error: status.ais().bit_is_set(),
+        };
+
+        eth_dma
+            .dmasr
+            .write(|w| w.nis().set_bit().ts().set_bit().rs().set_bit());
+
+        #[cfg(feature = "async-await")]
+        {
+            if status.is_tx {
+                EthernetDMA::tx_waker().wake();
+            }
+
+            if status.is_rx {
+                EthernetDMA::rx_waker().wake();
+            }
+        }
+
         status
+    }
+
+    /// Try to receive a packet.
+    ///
+    /// If no packet is available, this function returns [`Err(RxError::WouldBlock)`](RxError::WouldBlock).
+    ///
+    /// It may also return another kind of [`RxError`].
+    pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
+        self.rx_ring.recv_next(packet_id.map(Into::into))
     }
 
     /// Is Rx DMA currently running?
     ///
-    /// It stops if the ring is full. Call `recv_next()` to free an
+    /// It stops if the ring is full. Call [`EthernetDMA::recv_next()`] to free an
     /// entry and to demand poll from the hardware.
     pub fn rx_is_running(&self) -> bool {
         self.rx_ring.running_state().is_running()
-    }
-
-    /// Receive the next packet (if any is ready), or return [`Err`]
-    /// immediately.
-    pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
-        self.rx_ring.recv_next(packet_id.map(|p| p.into()))
     }
 
     /// Is Tx DMA currently running?
@@ -190,47 +218,23 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         self.tx_ring.is_running()
     }
 
-    /// Send a packet
-    pub fn send<F: FnOnce(&mut [u8]) -> R, R>(
+    /// Try to send a packet with data.
+    ///
+    /// If there are no free TX slots, this function will
+    /// return [`Err(TxError::WouldBlock)`](TxError::WouldBlock).
+    pub fn send<F>(
         &mut self,
         length: usize,
         packet_id: Option<PacketId>,
         f: F,
-    ) -> Result<R, TxError> {
-        self.tx_ring.send(length, packet_id.map(|p| p.into()), f)
-    }
-
-    #[cfg(feature = "ptp")]
-    /// Get a timestamp for the given ID
-    ///
-    /// Both RX and TX timestamps can be obtained reliably as follows:
-    /// 1. When an ethernet interrupt occurs, call [`EthernetDMA::interrupt_handler`] (_not_ [`eth_interrupt_handler`]).
-    /// 2. Before calling [`interrupt_handler`](EthernetDMA::interrupt_handler) again, retrieve timestamps of sent and received frames using this function.
-    ///
-    /// Retrieving RX timestamps can also be done using [`RxPacket::timestamp`].
-    pub fn get_timestamp_for_id<'a, PKT>(
-        &mut self,
-        packet_id: PKT,
-    ) -> Result<Timestamp, TimestampError>
+    ) -> Result<(), TxError>
     where
-        PKT: Into<PacketId>,
+        F: FnOnce(&mut [u8]),
     {
-        let Self {
-            tx_ring, rx_ring, ..
-        } = self;
-
-        let internal_packet_id = packet_id.into();
-
-        tx_ring
-            .get_timestamp_for_id(internal_packet_id.clone())
-            .or_else(|_| rx_ring.get_timestamp_for_id(internal_packet_id))
-    }
-
-    /// Collect the timestamps from the TX descriptor
-    /// ring
-    #[cfg(feature = "ptp")]
-    fn collect_timestamps(&mut self) {
-        self.tx_ring.collect_timestamps();
+        let mut tx_packet = self.tx_ring.send_next(length, packet_id)?;
+        f(&mut tx_packet);
+        tx_packet.send();
+        Ok(())
     }
 
     /// Check if there is a packet available for reading.
@@ -250,6 +254,120 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     }
 }
 
+impl Drop for EthernetDMA<'_, '_> {
+    // On drop, stop all DMA actions.
+    fn drop(&mut self) {
+        self.tx_ring.stop(&self.eth_dma);
+
+        self.rx_ring.stop(&self.eth_dma);
+    }
+}
+
+#[cfg(feature = "async-await")]
+impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
+    pub(crate) fn rx_waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
+    }
+
+    pub(crate) fn tx_waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
+    }
+
+    /// Receive a packet.
+    ///
+    /// See [`RxRing::recv`].
+    pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
+        self.rx_ring.recv(packet_id).await
+    }
+
+    /// Prepare a packet for sending.
+    ///
+    /// See [`TxRing::prepare_packet`].
+    pub async fn prepare_packet<'borrow>(
+        &'borrow mut self,
+        length: usize,
+        packet_id: Option<PacketId>,
+    ) -> TxPacket<'borrow, 'tx> {
+        self.tx_ring.prepare_packet(length, packet_id).await
+    }
+
+    /// Wait for an RX or TX interrupt to have
+    /// occured.
+    pub async fn rx_or_tx(&mut self) {
+        let mut polled_once = false;
+        core::future::poll_fn(|ctx| {
+            if polled_once {
+                Poll::Ready(())
+            } else {
+                polled_once = true;
+                EthernetDMA::rx_waker().register(ctx.waker());
+                EthernetDMA::tx_waker().register(ctx.waker());
+                Poll::Pending
+            }
+        })
+        .await;
+    }
+}
+
+#[cfg(feature = "ptp")]
+impl EthernetDMA<'_, '_> {
+    /// Try to get the timestamp for the given packet ID.
+    ///
+    /// This function will attempt to find both RX and TX timestamps,
+    /// so make sure that the provided packet ID is unique between the two.
+    pub fn poll_timestamp(
+        &self,
+        packet_id: &PacketId,
+    ) -> Poll<Result<Option<Timestamp>, PacketIdNotFound>> {
+        // Check if it's a TX packet
+        let tx = self.poll_tx_timestamp(packet_id);
+
+        if tx != Poll::Ready(Err(PacketIdNotFound)) {
+            return tx;
+        }
+
+        // It's not a TX packet, check if it's an RX packet
+        Poll::Ready(self.rx_timestamp(packet_id))
+    }
+
+    /// Get the RX timestamp for the given packet ID.
+    pub fn rx_timestamp(
+        &self,
+        packet_id: &PacketId,
+    ) -> Result<Option<Timestamp>, PacketIdNotFound> {
+        self.rx_ring.timestamp(packet_id)
+    }
+
+    /// Blockingly wait until the TX timestamp for
+    /// the given ID is available.
+    pub fn wait_for_tx_timestamp(
+        &self,
+        packet_id: &PacketId,
+    ) -> Result<Option<Timestamp>, PacketIdNotFound> {
+        self.tx_ring.wait_for_timestamp(packet_id)
+    }
+
+    /// Poll to check if the TX timestamp for the given
+    /// ID is available.
+    pub fn poll_tx_timestamp(
+        &self,
+        packet_id: &PacketId,
+    ) -> Poll<Result<Option<Timestamp>, PacketIdNotFound>> {
+        self.tx_ring.poll_timestamp(packet_id)
+    }
+
+    /// Get the TX timestamp for the given ID.
+    #[cfg(feature = "async-await")]
+    pub async fn tx_timestamp(
+        &mut self,
+        packet_id: &PacketId,
+    ) -> Result<Option<Timestamp>, PacketIdNotFound> {
+        self.tx_ring.timestamp(packet_id).await
+    }
+}
+
 /// A summary of the reasons for the interrupt
 /// that occured
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -261,31 +379,4 @@ pub struct InterruptReasonSummary {
     pub is_tx: bool,
     /// The interrupt was caused by an error event.
     pub is_error: bool,
-}
-
-/// The handler for `ETH` interrupts.
-///
-/// There are two ways to call this:
-///
-/// * Indirectly by using [`EthernetDMA::interrupt_handler`] driver instance that your interrupt handler has access to.
-/// * By unsafely getting `Peripherals`.
-pub fn eth_interrupt_handler(eth_dma: &crate::hal::pac::ETHERNET_DMA) -> InterruptReasonSummary {
-    let eth_dma: &ETHERNET_DMA = eth_dma.borrow();
-    eth_interrupt_handler_impl(eth_dma)
-}
-
-fn eth_interrupt_handler_impl(eth_dma: &ETHERNET_DMA) -> InterruptReasonSummary {
-    let status = eth_dma.dmasr.read();
-
-    let status = InterruptReasonSummary {
-        is_rx: status.rs().bit_is_set(),
-        is_tx: status.ts().bit_is_set(),
-        is_error: status.ais().bit_is_set(),
-    };
-
-    eth_dma
-        .dmasr
-        .write(|w| w.nis().set_bit().ts().set_bit().rs().set_bit());
-
-    status
 }

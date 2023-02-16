@@ -16,7 +16,7 @@ travis-ci = { repository = "astro/stm32-eth", branch = "master" }
 maintenance = { status = "experimental" }
 
 [package.metadata.docs.rs]
-features = ["smoltcp-phy", "smoltcp/socket-raw", "stm32f429"]
+features = ["smoltcp-phy", "stm32f429", "async-await"]
 
 [dependencies]
 volatile-register = "0.2"
@@ -29,6 +29,7 @@ ieee802_3_miim = "0.8"
 cortex-m = "0.7"
 log = { version = "0.4", optional = true }
 defmt = { version = "0.3", optional = true }
+futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 
 [dependencies.smoltcp]
 version = "0.9"
@@ -40,6 +41,7 @@ default = [ "defmt", "ptp" ]
 device-selected = []
 fence = []
 ptp = [ ]
+async-await = ["dep:futures"]
 
 stm32f107 = ["stm32f1xx-hal/stm32f107", "device-selected"]
 
@@ -68,11 +70,29 @@ smoltcp-phy = ["smoltcp"]
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 fugit = "0.3"
-cortex-m-rtic = "1.0"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
 smoltcp = { version = "0.9", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
+
+[dev-dependencies.rtic]
+package = "cortex-m-rtic"
+version = "1.0"
+
+[dev-dependencies.async-rtic]
+package = "rtic"
+git = "https://github.com/rtic-rs/cortex-m-rtic.git"
+rev = "364edb707ebf7baa2e7bdd1b1e6b02156d7b5569"
+
+[dev-dependencies.rtic-arbiter]
+package = "rtic-arbiter"
+git = "https://github.com/rtic-rs/cortex-m-rtic.git"
+rev = "364edb707ebf7baa2e7bdd1b1e6b02156d7b5569"
+
+[dev-dependencies.rtic-channel]
+package = "rtic-channel"
+git = "https://github.com/rtic-rs/cortex-m-rtic.git"
+rev = "364edb707ebf7baa2e7bdd1b1e6b02156d7b5569"
 
 # This isn't an actual example. It just exists so we can easily
 # test the common items :)
@@ -109,6 +129,10 @@ required-features = [ "defmt", "ptp" ]
 name = "timesync-server"
 path = "./examples/timesync/server.rs"
 required-features = [ "defmt", "ptp" ]
+
+[[example]]
+name = "async-rtic-timestamp"
+required-features = [ "defmt", "ptp", "async-await" ]
 
 [profile.release]
 debug = 2

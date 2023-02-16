@@ -21,6 +21,7 @@ mod common;
 mod app {
 
     use crate::common::EthernetPhy;
+    use core::task::Poll;
 
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
@@ -28,7 +29,6 @@ mod app {
     use stm32_eth::{
         dma::{EthernetDMA, PacketId, RxRingEntry, TxRingEntry},
         mac::Speed,
-        ptp::EthernetPTP,
         Parts,
     };
 
@@ -39,13 +39,12 @@ mod app {
     const ETHER_TYPE: [u8; 2] = [0xFF, 0xFF];
 
     #[local]
-    struct Local {}
+    struct Local {
+        dma: EthernetDMA<'static, 'static>,
+    }
 
     #[shared]
-    struct Shared {
-        dma: EthernetDMA<'static, 'static>,
-        ptp: EthernetPTP,
-    }
+    struct Shared {}
 
     #[monotonic(binds = SysTick, default = true)]
     type Monotonic = Systick<1000>;
@@ -115,10 +114,10 @@ mod app {
             }
         };
 
-        (Shared { dma, ptp }, Local {}, init::Monotonics(mono))
+        (Shared {}, Local { dma }, init::Monotonics(mono))
     }
 
-    #[task(shared = [dma], local = [packet_id: u32 = 0])]
+    #[task(local = [packet_id: u32 = 0, dma])]
     fn runner(cx: runner::Context) {
         use fugit::ExtU64;
 
@@ -126,8 +125,7 @@ mod app {
 
         let start = monotonics::now();
 
-        let mut dma = cx.shared.dma;
-        let packet_id = cx.local.packet_id;
+        let (packet_id, dma) = (cx.local.packet_id, cx.local.dma);
 
         let mut buf = [0u8; 128];
 
@@ -138,26 +136,24 @@ mod app {
                         return;
                     }
 
-                    let res = dma.lock(|dma| {
-                        if let Ok(rx_packet) = dma.recv_next(None) {
-                            if rx_packet.len() > 14
-                                && &rx_packet[6..12] == &CLIENT_ADDR
-                                && &rx_packet[12..14] == &ETHER_TYPE
-                            {
-                                if let Some(timestamp) = rx_packet.timestamp() {
-                                    let data_len = rx_packet.len() - 14;
-                                    buf[..data_len].copy_from_slice(&rx_packet[14..14 + data_len]);
-                                    Ok((&buf[..data_len], timestamp))
-                                } else {
-                                    Err(true)
-                                }
+                    let res = if let Ok(rx_packet) = dma.recv_next(None) {
+                        if rx_packet.len() > 14
+                            && &rx_packet[6..12] == &CLIENT_ADDR
+                            && &rx_packet[12..14] == &ETHER_TYPE
+                        {
+                            if let Some(timestamp) = rx_packet.timestamp() {
+                                let data_len = rx_packet.len() - 14;
+                                buf[..data_len].copy_from_slice(&rx_packet[14..14 + data_len]);
+                                Ok((&buf[..data_len], timestamp))
                             } else {
-                                Err(false)
+                                Err(true)
                             }
                         } else {
                             Err(false)
                         }
-                    });
+                    } else {
+                        Err(false)
+                    };
 
                     if let Ok(res) = res {
                         break res;
@@ -173,15 +169,13 @@ mod app {
                 let current_id = PacketId(*packet_id);
                 *packet_id += 1;
                 let current_clone = current_id.clone();
-                dma.lock(|dma| {
-                    dma.send(14 + $data.len(), Some(current_clone), |buf| {
-                        buf[0..6].copy_from_slice(&BROADCAST);
-                        buf[6..12].copy_from_slice(&SERVER_ADDR);
-                        buf[12..14].copy_from_slice(&ETHER_TYPE);
-                        buf[14..14 + $data.len()].copy_from_slice($data);
-                    })
-                    .unwrap();
-                });
+                dma.send(14 + $data.len(), Some(current_clone), |buf| {
+                    buf[0..6].copy_from_slice(&BROADCAST);
+                    buf[6..12].copy_from_slice(&SERVER_ADDR);
+                    buf[12..14].copy_from_slice(&ETHER_TYPE);
+                    buf[14..14 + $data.len()].copy_from_slice($data);
+                })
+                .unwrap();
 
                 loop {
                     if monotonics::now() - 500u64.millis() > start {
@@ -189,7 +183,7 @@ mod app {
                     }
 
                     let current_id = current_id.clone();
-                    if let Ok(timestamp) = dma.lock(|dma| dma.get_timestamp_for_id(current_id)) {
+                    if let Poll::Ready(Ok(Some(timestamp))) = dma.poll_timestamp(&current_id) {
                         break timestamp;
                     }
                 }
@@ -233,14 +227,8 @@ mod app {
         );
     }
 
-    #[task(binds = ETH, shared = [dma, ptp], priority = 2)]
-    fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (dma, ptp) = (cx.shared.dma, cx.shared.ptp);
-
-        (dma, ptp).lock(|dma, _ptp| {
-            dma.interrupt_handler();
-            #[cfg(not(feature = "stm32f107"))]
-            _ptp.interrupt_handler();
-        });
+    #[task(binds = ETH, priority = 2)]
+    fn eth_interrupt(_: eth_interrupt::Context) {
+        stm32_eth::eth_interrupt_handler();
     }
 }
