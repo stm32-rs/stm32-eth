@@ -270,6 +270,8 @@ impl EthernetPTP {
         eth_ptp.ptptssr.read().tsttr().bit_is_set()
     }
 
+    /// Handle the PTP parts of the `ETH` interrupt.
+    ///
     /// Returns a boolean indicating whether or not the interrupt
     /// was caused by a Timestamp trigger and clears the interrupt
     /// flag.

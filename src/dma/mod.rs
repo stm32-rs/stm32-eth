@@ -138,8 +138,13 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     ///
     /// In your handler you must call
     /// [`EthernetDMA::interrupt_handler()`] or [`stm32_eth::eth_interrupt_handler`](crate::eth_interrupt_handler)
-    /// to clear interrupt pending bits. Otherwise the interrupt will
-    /// reoccur immediately.
+    /// to clear interrupt pending bits. Otherwise the interrupt will reoccur immediately.
+    ///
+    /// [`EthernetPTP::interrupt_handler()`]: crate::ptp::EthernetPTP::interrupt_handler
+    #[cfg_attr(
+        feature = "ptp",
+        doc = "If you have PTP enabled, you must also call [`EthernetPTP::interrupt_handler()`] if you wish to make use of the PTP timestamp trigger feature."
+    )]
     pub fn enable_interrupt(&self) {
         self.eth_dma.dmaier.modify(|_, w| {
             w
@@ -160,7 +165,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         }
     }
 
-    /// Handle the DMA parts of the ETH interrupt.
+    /// Handle the DMA parts of the `ETH` interrupt.
     pub fn interrupt_handler() -> InterruptReasonSummary {
         // SAFETY: we only perform atomic reads/writes through `eth_dma`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
