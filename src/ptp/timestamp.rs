@@ -1,5 +1,3 @@
-use crate::dma::desc::Descriptor;
-
 use super::{Subseconds, NANOS_PER_SECOND};
 
 /// A timestamp produced by the PTP periperhal
@@ -117,28 +115,6 @@ impl Timestamp {
         let subseconds = low & !(Self::SIGN_BIT);
 
         Timestamp::new_unchecked(negative, high, subseconds)
-    }
-
-    /// Create a timestamp from the given descriptor
-    pub fn from_descriptor(desc: &Descriptor) -> Option<Self> {
-        #[cfg(not(feature = "stm32f1xx-hal"))]
-        {
-            let (high, low) = { (desc.read(7), desc.read(6)) };
-            Some(Self::from_parts(high, low))
-        }
-
-        #[cfg(feature = "stm32f1xx-hal")]
-        {
-            let (high, low) = { (desc.read(3), desc.read(2)) };
-
-            // The timestamp registers are written to all-ones if
-            // timestamping was no succesfull
-            if high == 0xFFFF_FFFF && low == 0xFFFF_FFFF {
-                None
-            } else {
-                Some(Self::from_parts(high, low))
-            }
-        }
     }
 }
 

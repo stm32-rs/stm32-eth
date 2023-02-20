@@ -63,3 +63,10 @@ mod impl_pps_pin {
         }
     }
 }
+
+#[cfg(feature = "stm32h7xx-hal")]
+mod impl_pps_pin {
+    use crate::hal::gpio::{Alternate, Output, PushPull, PB5, PG8};
+
+    impl_pps_pin!([PG8<Output<PushPull>>, PG8<Alternate<11>>], [PB5<Output<PushPull>>, PB5<Alternate<11>>]);
+}
