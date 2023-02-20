@@ -7,6 +7,9 @@ pub use crate::hal::pac::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_PTP};
 #[cfg(feature = "stm32f4xx-hal")]
 pub use pac_override_impl::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_PTP};
 
+#[cfg(feature = "stm32h7xx-hal")]
+pub use crate::hal::pac::{ETHERNET_DMA, ETHERNET_MAC};
+
 #[cfg(feature = "stm32f4xx-hal")]
 mod pac_override_impl {
     #![allow(non_camel_case_types)]

@@ -7,6 +7,9 @@
 #[cfg(not(feature = "device-selected"))]
 compile_error!("No device was selected! Exactly one stm32fxxx feature must be selected.");
 
+#[cfg(feature = "stm32h7xx-hal")]
+pub use stm32h7xx_hal as hal;
+
 /// Re-export
 #[cfg(feature = "stm32f7xx-hal")]
 pub use stm32f7xx_hal as hal;
@@ -21,8 +24,12 @@ pub use stm32f1xx_hal as hal;
 
 #[cfg(feature = "device-selected")]
 pub use hal::pac as stm32;
-#[cfg(feature = "device-selected")]
+
+#[cfg(all(feature = "device-selected", not(feature = "stm32h7xx-hal")))]
 use hal::rcc::Clocks;
+
+#[cfg(all(feature = "device-selected", feature = "stm32h7xx-hal"))]
+use hal::rcc::CoreClocks as Clocks;
 
 #[cfg(feature = "device-selected")]
 pub mod dma;
