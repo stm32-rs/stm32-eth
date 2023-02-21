@@ -1,11 +1,14 @@
-pub(crate) use self::descriptor::RxDescriptor;
+pub use descriptor::RxDescriptor;
 
-use self::descriptor::RxDescriptorError;
-pub use self::descriptor::RxRingEntry;
-
-use super::PacketId;
+use super::{generic_ring::DescriptorRing, PacketId};
 use crate::peripherals::ETHERNET_DMA;
 
+#[cfg(feature = "f-series")]
+#[path = "./f_series_descriptor.rs"]
+mod descriptor;
+
+#[cfg(feature = "stm32h7xx-hal")]
+#[path = "./h_descriptor.rs"]
 mod descriptor;
 
 #[cfg(feature = "ptp")]
@@ -13,6 +16,16 @@ use crate::{dma::PacketIdNotFound, ptp::Timestamp};
 
 #[cfg(feature = "async-await")]
 use core::task::Poll;
+
+/// Errors that can occur during RX
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, PartialEq)]
+pub(crate) enum RxDescriptorError {
+    /// The received packet was truncated
+    Truncated,
+    /// An error occured with the DMA
+    DmaError,
+}
 
 /// Errors that can occur during RX
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -35,17 +48,20 @@ impl From<RxDescriptorError> for RxError {
     }
 }
 
+/// An RX descriptor ring.
+pub type RxDescriptorRing<'rx> = DescriptorRing<'rx, RxDescriptor>;
+
 /// Rx DMA state
 pub struct RxRing<'a> {
-    entries: &'a mut [RxRingEntry],
+    ring: RxDescriptorRing<'a>,
     next_entry: usize,
 }
 
 impl<'a> RxRing<'a> {
     /// Allocate
-    pub(crate) fn new(entries: &'a mut [RxRingEntry]) -> Self {
+    pub(crate) fn new(ring: RxDescriptorRing<'a>) -> Self {
         RxRing {
-            entries,
+            ring,
             next_entry: 0,
         }
     }
@@ -53,38 +69,83 @@ impl<'a> RxRing<'a> {
     /// Setup the DMA engine (**required**)
     pub(crate) fn start(&mut self, eth_dma: &ETHERNET_DMA) {
         // Setup ring
-        {
-            let mut previous: Option<&mut RxRingEntry> = None;
-            for entry in self.entries.iter_mut() {
-                if let Some(prev_entry) = &mut previous {
-                    prev_entry.setup(Some(entry));
-                }
-                previous = Some(entry);
-            }
-            if let Some(entry) = &mut previous {
-                entry.setup(None);
-            }
+        let ring_len = self.ring.len();
+        for (idx, (entry, buffer)) in self.ring.descriptors_and_buffers().enumerate() {
+            entry.setup(idx == ring_len - 1, buffer);
         }
+
         self.next_entry = 0;
-        let ring_ptr = self.entries[0].desc() as *const RxDescriptor;
+        let ring_ptr = self.ring.descriptors_start_address();
 
-        // Register RxDescriptor
-        eth_dma
-            .dmardlar
-            .write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
+        #[cfg(feature = "f-series")]
+        {
+            // Set the RxDma ring start address.
+            eth_dma
+                .dmardlar
+                .write(|w| unsafe { w.srl().bits(ring_ptr as u32) });
 
-        // We already have fences in `set_owned`, which is called in `setup`
+            // // Start receive
+            eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
+        }
 
-        // Start receive
-        eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            let rx_ring_descriptors = self.ring.descriptors().count();
+            assert!(rx_ring_descriptors >= 4);
 
-        self.demand_poll();
+            // Assert that the descriptors are properly aligned.
+            //
+            // FIXME: these require different alignment if the data is stored
+            // in AXI SRAM
+            assert!(ring_ptr as u32 % 4 == 0);
+            assert!(self.ring.last_descriptor_mut() as *const _ as u32 % 4 == 0);
+
+            // Set the start pointer.
+            eth_dma
+                .dmacrx_dlar
+                .write(|w| unsafe { w.bits(ring_ptr as u32) });
+
+            // Set the Receive Descriptor Ring Length
+            eth_dma.dmacrx_rlr.write(|w| {
+                w.rdrl()
+                    .variant((self.ring.descriptors().count() - 1) as u16)
+            });
+
+            // Set the tail pointer
+            eth_dma
+                .dmacrx_dtpr
+                .write(|w| unsafe { w.bits(self.ring.last_descriptor() as *const _ as u32) });
+
+            // Set receive buffer size
+            let receive_buffer_size = self.ring.last_buffer().len() as u16;
+            assert!(receive_buffer_size % 4 == 0);
+
+            eth_dma.dmacrx_cr.modify(|_, w| unsafe {
+                w
+                    // Start receive
+                    .sr()
+                    .set_bit()
+                    // Set receive buffer size
+                    .rbsz()
+                    .bits(receive_buffer_size >> 1)
+                    // AUtomatically flush on bus error
+                    .rpf()
+                    .set_bit()
+            });
+        }
+
+        Self::demand_poll();
     }
 
     /// Stop the RX DMA
     pub(crate) fn stop(&self, eth_dma: &ETHERNET_DMA) {
-        eth_dma.dmaomr.modify(|_, w| w.sr().clear_bit());
+        #[cfg(feature = "f-series")]
+        let start_reg = &eth_dma.dmaomr;
 
+        #[cfg(feature = "stm32h7xx-hal")]
+        let start_reg = &eth_dma.dmacrx_cr;
+
+        start_reg.modify(|_, w| w.sr().clear_bit());
         // DMA accesses do not stop before the running state
         // of the DMA has changed to something other than
         // running.
@@ -93,17 +154,44 @@ impl<'a> RxRing<'a> {
 
     /// Demand that the DMA engine polls the current `RxDescriptor`
     /// (when in [`RunningState::Stopped`].)
-    fn demand_poll(&self) {
-        // SAFETY: we only perform an atomic write to `dmarpdr`.
+    fn demand_poll() {
+        // # SAFETY
+        //
+        // On F7, we only perform an atomic write to `damrpdr`.
+        //
+        // On H7, we only perform a Read-Write to `dmacrx_dtpr`,
+        // always with the same value. Running `demand_poll` concurrently
+        // with the other location in which this register is written ([`RxRing::start`])
+        // is impossible, which is guaranteed the state transition from NotRunning to
+        // Running.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
+        #[cfg(feature = "f-series")]
         eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
+
+        // On H7, we poll by re-writing the tail pointer register.
+        #[cfg(feature = "stm32h7xx-hal")]
+        eth_dma
+            .dmacrx_dtpr
+            .modify(|r, w| unsafe { w.bits(r.bits()) });
     }
 
     /// Get current `RunningState`
     pub fn running_state(&self) -> RunningState {
         // SAFETY: we only perform an atomic read of `dmasr`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
-        match eth_dma.dmasr.read().rps().bits() {
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        if eth_dma.dmacsr.read().fbe().bit_is_set() {
+            super::EthernetDMA::panic_fbe();
+        }
+
+        #[cfg(feature = "f-series")]
+        let rps = eth_dma.dmasr.read().rps().bits();
+        #[cfg(feature = "stm32h7xx-hal")]
+        let rps = eth_dma.dmadsr.read().rps0().bits();
+
+        match rps {
             //  Reset or Stop Receive Command issued
             0b000 => RunningState::Stopped,
             //  Fetching receive transfer descriptor
@@ -116,17 +204,16 @@ impl<'a> RxRing<'a> {
             0b101 => RunningState::Running,
             //  Transferring the receive packet data from receive buffer to host memory
             0b111 => RunningState::Running,
+            #[cfg(feature = "stm32h7xx-hal")]
+            // Timestamp write state
+            0b110 => RunningState::Running,
             _ => RunningState::Unknown,
         }
     }
 
     /// Check if we can receive a new packet
     pub fn next_entry_available(&self) -> bool {
-        if !self.running_state().is_running() {
-            self.demand_poll();
-        }
-
-        self.entries[self.next_entry].is_available()
+        self.ring.descriptor(self.next_entry).is_available()
     }
 
     /// Receive the next packet (if any is ready).
@@ -138,21 +225,21 @@ impl<'a> RxRing<'a> {
         &mut self,
         // NOTE(allow): packet_id is unused if ptp is disabled.
         #[allow(unused_variables)] packet_id: Option<PacketId>,
-    ) -> Result<(usize, usize), RxError> {
+    ) -> Result<usize, RxError> {
         if !self.running_state().is_running() {
-            self.demand_poll();
+            Self::demand_poll();
         }
 
-        let entries_len = self.entries.len();
-        let entry_num = self.next_entry;
-        let entry = &mut self.entries[entry_num];
+        if self.next_entry_available() {
+            let entries_len = self.ring.len();
+            let (desc, buffer) = self.ring.get_mut(self.next_entry);
 
-        if entry.is_available() {
-            let length = entry.recv(packet_id)?;
+            desc.recv(packet_id, buffer)?;
 
+            let entry_num = self.next_entry;
             self.next_entry = (self.next_entry + 1) % entries_len;
 
-            Ok((entry_num, length))
+            Ok(entry_num)
         } else {
             Err(RxError::WouldBlock)
         }
@@ -161,9 +248,35 @@ impl<'a> RxRing<'a> {
     /// Receive the next packet (if any is ready), or return [`Err`]
     /// immediately.
     pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
-        let (entry, length) = self.recv_next_impl(packet_id.map(|p| p.into()))?;
+        let entries_len = self.ring.len();
+        let entry = self.recv_next_impl(packet_id.map(|p| p.into()))?;
+
+        #[cfg(feature = "f-series")]
+        let (desc, buffer) = self.ring.get_mut(entry);
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        let (desc, buffer) = {
+            let (desc, buffer, next_desc, next_buffer) = self.ring.get_mut_and_next(entry);
+
+            // Read the timestamp from the next context descriptor, if it's available.
+            if next_desc.is_context() {
+                #[cfg(feature = "ptp")]
+                if desc.has_timestamp() {
+                    let timestamp = next_desc.read_timestamp();
+                    desc.attach_timestamp(timestamp);
+                }
+                next_desc.set_owned(next_buffer);
+                self.next_entry = (self.next_entry + 1) % entries_len;
+            }
+
+            (desc, buffer)
+        };
+
+        let length = desc.frame_len();
+
         Ok(RxPacket {
-            entry: &mut self.entries[entry],
+            entry: desc,
+            buffer,
             length,
         })
     }
@@ -174,7 +287,7 @@ impl<'a> RxRing<'a> {
     /// will contain the ethernet data.
     #[cfg(feature = "async-await")]
     pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
-        let (entry, length) = core::future::poll_fn(|ctx| {
+        let entry = core::future::poll_fn(|ctx| {
             let res = self.recv_next_impl(packet_id.clone());
 
             match res {
@@ -187,8 +300,12 @@ impl<'a> RxRing<'a> {
         })
         .await;
 
+        let (desc, buffer) = self.ring.get_mut(entry);
+        let length = desc.frame_len();
+
         RxPacket {
-            entry: &mut self.entries[entry],
+            entry: desc,
+            buffer,
             length,
         }
     }
@@ -198,15 +315,16 @@ impl<'a> RxRing<'a> {
 impl<'a> RxRing<'a> {
     /// Get the timestamp for a specific ID
     pub fn timestamp(&self, id: &PacketId) -> Result<Option<Timestamp>, PacketIdNotFound> {
-        let entry = self.entries.iter().find(|e| e.has_packet_id(id));
+        let entry = self.ring.descriptors().find(|e| e.has_packet_id(id));
 
         let entry = entry.ok_or(PacketIdNotFound)?;
 
-        Ok(entry.read_timestamp())
+        Ok(entry.timestamp())
     }
 }
 
 /// Running state of the `RxRing`
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(PartialEq, Eq, Debug)]
 pub enum RunningState {
     /// Running state is unknown.
@@ -228,32 +346,33 @@ impl RunningState {
 ///
 /// This packet implements [Deref<\[u8\]>](core::ops::Deref) and should be used
 /// as a slice.
-pub struct RxPacket<'a> {
-    entry: &'a mut RxRingEntry,
+pub struct RxPacket<'a, 'buf> {
+    entry: &'a mut RxDescriptor,
+    buffer: &'buf mut [u8],
     length: usize,
 }
 
-impl<'a> core::ops::Deref for RxPacket<'a> {
+impl core::ops::Deref for RxPacket<'_, '_> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &self.entry.as_slice()[0..self.length]
+        &self.buffer[..self.length]
     }
 }
 
-impl<'a> core::ops::DerefMut for RxPacket<'a> {
+impl<'a> core::ops::DerefMut for RxPacket<'_, '_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.entry.as_mut_slice()[0..self.length]
+        &mut self.buffer[..self.length]
     }
 }
 
-impl<'a> Drop for RxPacket<'a> {
+impl Drop for RxPacket<'_, '_> {
     fn drop(&mut self) {
-        self.entry.desc_mut().set_owned();
+        self.entry.set_owned(self.buffer);
     }
 }
 
-impl<'a> RxPacket<'a> {
+impl RxPacket<'_, '_> {
     /// Pass the received packet back to the DMA engine.
     pub fn free(self) {
         drop(self)
@@ -262,6 +381,6 @@ impl<'a> RxPacket<'a> {
     /// Get the timestamp associated with this packet
     #[cfg(feature = "ptp")]
     pub fn timestamp(&self) -> Option<Timestamp> {
-        self.entry.read_timestamp()
+        self.entry.timestamp()
     }
 }

@@ -1,14 +1,24 @@
-use super::PacketId;
+use super::{generic_ring::DescriptorRing, PacketId};
 use crate::peripherals::ETHERNET_DMA;
 
 #[cfg(feature = "ptp")]
 use super::{PacketIdNotFound, Timestamp};
 
+#[cfg(feature = "f-series")]
+#[path = "./f_series_descriptor.rs"]
 mod descriptor;
-pub use descriptor::{TxDescriptor, TxRingEntry};
+
+#[cfg(feature = "stm32h7xx-hal")]
+#[path = "./h_descriptor.rs"]
+mod descriptor;
+
+pub use descriptor::TxDescriptor;
 
 #[cfg(any(feature = "ptp", feature = "async-await"))]
 use core::task::Poll;
+
+/// A TX descriptor ring.
+pub type TxDescriptorRing<'rx> = DescriptorRing<'rx, TxDescriptor>;
 
 /// Errors that can occur during Ethernet TX
 #[derive(Debug, PartialEq)]
@@ -19,7 +29,7 @@ pub enum TxError {
 
 /// Tx DMA state
 pub struct TxRing<'a> {
-    entries: &'a mut [TxRingEntry],
+    ring: TxDescriptorRing<'a>,
     next_entry: usize,
 }
 
@@ -27,35 +37,61 @@ impl<'ring> TxRing<'ring> {
     /// Allocate
     ///
     /// `start()` will be needed before `send()`
-    pub(crate) fn new(entries: &'ring mut [TxRingEntry]) -> Self {
+    pub(crate) fn new(ring: TxDescriptorRing<'ring>) -> Self {
         TxRing {
-            entries,
+            ring,
             next_entry: 0,
         }
     }
 
     /// Start the Tx DMA engine
     pub(crate) fn start(&mut self, eth_dma: &ETHERNET_DMA) {
-        // Setup ring
-        {
-            let mut previous: Option<&mut TxRingEntry> = None;
-            for entry in self.entries.iter_mut() {
-                if let Some(prev_entry) = &mut previous {
-                    prev_entry.setup(Some(entry));
-                }
-                previous = Some(entry);
-            }
-            if let Some(entry) = &mut previous {
-                entry.setup(None);
-            }
+        for descriptor in self.ring.descriptors_mut() {
+            descriptor.setup();
         }
 
-        let ring_ptr = self.entries[0].desc() as *const TxDescriptor;
-        // Register TxDescriptor
-        eth_dma
-            .dmatdlar
-            // Note: unsafe block required for `stm32f107`.
-            .write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
+        let ring_ptr = self.ring.descriptors_start_address();
+
+        #[cfg(feature = "f-series")]
+        {
+            // Set end of ring register
+            self.ring.last_descriptor_mut().set_end_of_ring();
+
+            // Register TxDescriptor
+            eth_dma
+                .dmatdlar
+                // Note: unsafe block required for `stm32f107`.
+                .write(|w| unsafe { w.stl().bits(ring_ptr as u32) });
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            let tx_descriptor_count = self.ring.descriptors().count();
+            assert!(tx_descriptor_count >= 4);
+
+            // Assert that the descriptors are properly aligned.
+            //
+            // FIXME: these require different alignment if the data is stored
+            // in AXI SRAM
+            assert!(ring_ptr as u32 % 4 == 0);
+            assert!(self.ring.last_descriptor() as *const _ as u32 % 4 == 0);
+
+            // Set the start pointer.
+            eth_dma
+                .dmactx_dlar
+                .write(|w| unsafe { w.bits(ring_ptr as u32) });
+
+            // Set the Transmit Descriptor Ring Length
+            eth_dma.dmactx_rlr.write(|w| {
+                w.tdrl()
+                    .variant((self.ring.descriptors().count() - 1) as u16)
+            });
+
+            // Set the tail pointer
+            eth_dma
+                .dmactx_dtpr
+                .write(|w| unsafe { w.bits(self.ring.last_descriptor_mut() as *const _ as u32) });
+        }
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]
@@ -64,13 +100,23 @@ impl<'ring> TxRing<'ring> {
         // We don't need a compiler fence here because all interactions with `Descriptor` are
         // volatiles
 
+        #[cfg(feature = "f-series")]
+        let start_reg = &eth_dma.dmaomr;
+        #[cfg(feature = "stm32h7xx-hal")]
+        let start_reg = &eth_dma.dmactx_cr;
+
         // Start transmission
-        eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
+        start_reg.modify(|_, w| w.st().set_bit());
     }
 
     /// Stop the TX DMA
     pub(crate) fn stop(&self, eth_dma: &ETHERNET_DMA) {
-        eth_dma.dmaomr.modify(|_, w| w.st().clear_bit());
+        #[cfg(feature = "f-series")]
+        let start_reg = &eth_dma.dmaomr;
+        #[cfg(feature = "stm32h7xx-hal")]
+        let start_reg = &eth_dma.dmactx_cr;
+
+        start_reg.modify(|_, w| w.st().clear_bit());
 
         // DMA accesses do not stop before the running state
         // of the DMA has changed to something other than
@@ -78,9 +124,13 @@ impl<'ring> TxRing<'ring> {
         while self.is_running() {}
     }
 
+    fn entry_available(&self, index: usize) -> bool {
+        self.ring.descriptor(index).is_available()
+    }
+
     /// If this returns `true`, the next `send` will succeed.
     pub fn next_entry_available(&self) -> bool {
-        !self.entries[self.next_entry].is_available()
+        self.entry_available(self.next_entry)
     }
 
     /// Check if we can send the next TX entry.
@@ -89,12 +139,10 @@ impl<'ring> TxRing<'ring> {
     /// that [`self.entries[res].send()`](TxRingEntry::send) is called
     /// before a new invocation of `send_next_impl`.
     fn send_next_impl(&mut self) -> Result<usize, TxError> {
-        let entries_len = self.entries.len();
-        let entry_num = self.next_entry;
-        let entry = &mut self.entries[entry_num];
+        if self.next_entry_available() {
+            let entry_num = self.next_entry;
 
-        if entry.is_available() {
-            self.next_entry = (self.next_entry + 1) % entries_len;
+            self.next_entry = (self.next_entry + 1) % self.ring.len();
             Ok(entry_num)
         } else {
             Err(TxError::WouldBlock)
@@ -109,19 +157,20 @@ impl<'ring> TxRing<'ring> {
     ///
     /// When all data is copied into the TX buffer, use [`TxPacket::send()`]
     /// to transmit it.
-    pub fn send_next<'borrow>(
-        &'borrow mut self,
+    pub fn send_next(
+        &mut self,
         length: usize,
         packet_id: Option<PacketId>,
-    ) -> Result<TxPacket<'borrow, 'ring>, TxError> {
+    ) -> Result<TxPacket, TxError> {
         let entry = self.send_next_impl()?;
-        let tx_buffer = self.entries[entry].buffer_mut();
+
+        let (desc, tx_buffer) = self.ring.get_mut(entry);
 
         assert!(length <= tx_buffer.len(), "Not enough space in TX buffer");
 
         Ok(TxPacket {
-            ring: self,
-            idx: entry,
+            desc,
+            buffer: tx_buffer,
             length,
             packet_id,
         })
@@ -136,11 +185,11 @@ impl<'ring> TxRing<'ring> {
     /// When all data is copied into the TX buffer, use [`TxPacket::send()`]
     /// to transmit it.
     #[cfg(feature = "async-await")]
-    pub async fn prepare_packet<'borrow>(
-        &'borrow mut self,
+    pub async fn prepare_packet<'tx>(
+        &'tx mut self,
         length: usize,
         packet_id: Option<PacketId>,
-    ) -> TxPacket<'borrow, 'ring> {
+    ) -> TxPacket {
         let entry = core::future::poll_fn(|ctx| match self.send_next_impl() {
             Ok(packet) => Poll::Ready(packet),
             Err(_) => {
@@ -150,12 +199,13 @@ impl<'ring> TxRing<'ring> {
         })
         .await;
 
-        let tx_buffer = self.entries[entry].buffer_mut();
+        let (desc, tx_buffer) = self.ring.get_mut(entry);
+
         assert!(length <= tx_buffer.len(), "Not enough space in TX buffer");
 
         TxPacket {
-            ring: self,
-            idx: entry,
+            desc,
+            buffer: tx_buffer,
             length,
             packet_id,
         }
@@ -163,9 +213,27 @@ impl<'ring> TxRing<'ring> {
 
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
-    pub(crate) fn demand_poll(&self) {
-        // SAFETY: we only perform an atomic write to `dmatpdr`
+    pub(crate) fn demand_poll() {
+        // # SAFETY
+        //
+        // On F-series, we only perform an atomic write to `damrpdr`.
+        //
+        // On H7, we only perform a Read-Write to `dmacrx_dtpr`,
+        // always with the same value. Running `demand_poll` concurrently
+        // with the other location in which this register is written ([`TxRing::start`])
+        // is impossible, which is guaranteed the state transition from NotRunning to
+        // Running.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        // To issue a poll demand, write a value to
+        // the tail pointer. We just re-write the
+        // current value.
+        eth_dma
+            .dmactx_dtpr
+            .modify(|r, w| unsafe { w.bits(r.bits()) });
+
+        #[cfg(feature = "f-series")]
         eth_dma.dmatpdr.write(|w| {
             #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
             {
@@ -185,10 +253,22 @@ impl<'ring> TxRing<'ring> {
     }
 
     pub(crate) fn running_state(&self) -> RunningState {
-        // SAFETY: we only perform an atomic read of `dmasr`.
+        // SAFETY: we only perform an atomic read of `dmasr` or
+        // `dmadsr`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
 
-        match eth_dma.dmasr.read().tps().bits() {
+        #[cfg(feature = "stm32h7xx-hal")]
+        if eth_dma.dmacsr.read().fbe().bit_is_set() {
+            super::EthernetDMA::panic_fbe();
+        }
+
+        #[cfg(feature = "f-series")]
+        let tx_status = eth_dma.dmasr.read().tps().bits();
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        let tx_status = eth_dma.dmadsr.read().tps0().bits();
+
+        match tx_status {
             // Reset or Stop Transmit Command issued
             0b000 => RunningState::Stopped,
             // Fetching transmit transfer descriptor
@@ -197,9 +277,22 @@ impl<'ring> TxRing<'ring> {
             0b010 => RunningState::Running,
             // Reading Data from host memory buffer and queuing it to transmit buffer
             0b011 => RunningState::Running,
-            0b100 | 0b101 => RunningState::Reserved,
+
+            0b101 => RunningState::Reserved,
+
             // Transmit descriptor unavailable
             0b110 => RunningState::Suspended,
+
+            #[cfg(feature = "f-series")]
+            0b100 => RunningState::Reserved,
+
+            // Timestamp write
+            #[cfg(feature = "stm32h7xx-hal")]
+            0b100 => RunningState::Running,
+            // Closing Tx descriptor
+            #[cfg(feature = "stm32h7xx-hal")]
+            0b111 => RunningState::Running,
+
             _ => RunningState::Unknown,
         }
     }
@@ -208,23 +301,17 @@ impl<'ring> TxRing<'ring> {
 #[cfg(feature = "ptp")]
 impl TxRing<'_> {
     fn entry_for_id(&self, id: &PacketId) -> Option<usize> {
-        self.entries.iter().enumerate().find_map(
-            |(idx, e)| {
-                if e.has_packet_id(id) {
-                    Some(idx)
-                } else {
-                    None
-                }
-            },
-        )
-    }
-
-    fn entry_available(&self, index: usize) -> bool {
-        self.entries[index].is_available()
+        self.ring.descriptors().enumerate().find_map(|(idx, e)| {
+            if e.has_packet_id(id) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
     }
 
     fn entry_timestamp(&self, index: usize) -> Option<Timestamp> {
-        self.entries[index].timestamp()
+        self.ring.descriptor(index).timestamp()
     }
 
     /// Blockingly wait untill the timestamp for the
@@ -277,6 +364,7 @@ impl TxRing<'_> {
 }
 
 #[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 /// The run state of the TX DMA.
 pub enum RunningState {
     /// Reset or Stop Transmit Command issued
@@ -308,37 +396,38 @@ impl RunningState {
 ///
 /// [`Deref`]: core::ops::Deref
 /// [`DerefMut`]: core::ops::DerefMut
-pub struct TxPacket<'borrow, 'ring> {
-    ring: &'borrow mut TxRing<'ring>,
-    idx: usize,
+pub struct TxPacket<'borrow> {
+    desc: &'borrow mut TxDescriptor,
+    buffer: &'borrow mut [u8],
     length: usize,
     packet_id: Option<PacketId>,
 }
 
-impl core::ops::Deref for TxPacket<'_, '_> {
+impl core::ops::Deref for TxPacket<'_> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &self.ring.entries[self.idx].buffer()[..self.length]
+        &self.buffer[..self.length]
     }
 }
 
-impl core::ops::DerefMut for TxPacket<'_, '_> {
+impl core::ops::DerefMut for TxPacket<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.ring.entries[self.idx].buffer_mut()[..self.length]
+        &mut self.buffer[..self.length]
     }
 }
 
-impl TxPacket<'_, '_> {
+impl TxPacket<'_> {
     /// Send this packet!
     pub fn send(self) {
         drop(self);
     }
 }
 
-impl Drop for TxPacket<'_, '_> {
+impl Drop for TxPacket<'_> {
     fn drop(&mut self) {
-        self.ring.entries[self.idx].send(self.length, self.packet_id.clone());
-        self.ring.demand_poll();
+        self.desc
+            .send(self.packet_id.clone(), &self.buffer[..self.length]);
+        TxRing::demand_poll();
     }
 }

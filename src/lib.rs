@@ -54,7 +54,7 @@ pub use smoltcp;
 
 #[cfg(feature = "device-selected")]
 use {
-    dma::{EthernetDMA, RxRingEntry, TxRingEntry},
+    dma::{DmaParts, EthernetDMA, RxDescriptorRing, TxDescriptorRing},
     mac::{EthernetMAC, EthernetMACWithMii, MacParts, MdcPin, MdioPin, Speed, WrongClock},
     setup::*,
 };
@@ -120,8 +120,8 @@ pub fn eth_interrupt_handler() -> InterruptReason {
 #[cfg(feature = "device-selected")]
 pub fn new<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>(
     parts: PartsIn,
-    rx_buffer: &'rx mut [RxRingEntry],
-    tx_buffer: &'tx mut [TxRingEntry],
+    rx_buffer: RxDescriptorRing<'rx>,
+    tx_buffer: TxDescriptorRing<'tx>,
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
 ) -> Result<Parts<'rx, 'tx, EthernetMAC>, WrongClock>
@@ -140,8 +140,14 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    let dma_parts = DmaParts {
+        eth_dma: parts.dma.into(),
+        #[cfg(feature = "stm32h7xx-hal")]
+        eth_mtl: parts.mtl,
+    };
+
     // Congfigure and start up the ethernet DMA.
-    let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(dma_parts, rx_buffer, tx_buffer);
 
     // Configure the ethernet PTP
     #[cfg(feature = "ptp")]
@@ -194,8 +200,8 @@ where
 #[cfg(feature = "device-selected")]
 pub fn new_with_mii<'rx, 'tx, REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1, MDIO, MDC>(
     parts: PartsIn,
-    rx_buffer: &'rx mut [RxRingEntry],
-    tx_buffer: &'tx mut [TxRingEntry],
+    rx_buffer: RxDescriptorRing<'rx>,
+    tx_buffer: TxDescriptorRing<'tx>,
     clocks: Clocks,
     pins: EthPins<REFCLK, CRS, TXEN, TXD0, TXD1, RXD0, RXD1>,
     mdio: MDIO,
@@ -218,8 +224,14 @@ where
     // Set up the clocks and reset the MAC periperhal
     setup::setup();
 
+    let dma_parts = DmaParts {
+        eth_dma: parts.dma.into(),
+        #[cfg(feature = "stm32h7xx-hal")]
+        eth_mtl: parts.mtl,
+    };
+
     // Congfigure and start up the ethernet DMA.
-    let dma = EthernetDMA::new(parts.dma.into(), rx_buffer, tx_buffer);
+    let dma = EthernetDMA::new(dma_parts, rx_buffer, tx_buffer);
 
     // Configure the ethernet PTP
     #[cfg(feature = "ptp")]

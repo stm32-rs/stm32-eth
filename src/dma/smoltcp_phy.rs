@@ -55,6 +55,7 @@ impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
     {
         // NOTE(unwrap): an `EthRxToken` is only created when `eth.rx_available()`
         let mut packet = self.rx_ring.recv_next(None).ok().unwrap();
+
         let result = f(&mut packet);
         packet.free();
         result

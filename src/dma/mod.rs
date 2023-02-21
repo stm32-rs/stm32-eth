@@ -15,15 +15,17 @@ use futures::task::AtomicWaker;
 #[cfg(any(feature = "ptp", feature = "async-await"))]
 use core::task::Poll;
 
-pub(crate) mod desc;
-
-pub(crate) mod ring;
+pub(crate) mod generic_ring;
 
 mod rx;
-pub use rx::{RunningState as RxRunningState, RxError, RxPacket, RxRing, RxRingEntry};
+pub use rx::{
+    RunningState as RxRunningState, RxDescriptor, RxDescriptorRing, RxError, RxPacket, RxRing,
+};
 
 mod tx;
-pub use tx::{RunningState as TxRunningState, TxError, TxPacket, TxRing, TxRingEntry};
+pub use tx::{
+    RunningState as TxRunningState, TxDescriptor, TxDescriptorRing, TxError, TxPacket, TxRing,
+};
 
 #[cfg(feature = "ptp")]
 use crate::ptp::Timestamp;
@@ -31,8 +33,27 @@ use crate::ptp::Timestamp;
 mod packet_id;
 pub use packet_id::PacketId;
 
+const _RXDESC_SIZE: usize = core::mem::size_of::<RxDescriptor>();
+const _TXDESC_SIZE: usize = core::mem::size_of::<TxDescriptor>();
+
+/// Assert that our descriptors have the same size.
+///
+/// This is necessary as we only have a single Descriptor Skip Length
+/// value which applies to both TX and RX descriptors.
+const _ASSERT_DESCRIPTOR_SIZES: () = assert!(_RXDESC_SIZE == _TXDESC_SIZE);
+
+const DESC_WORD_SKIP: u8 = ((_RXDESC_SIZE / 4) - self::generic_ring::DESC_SIZE) as u8;
+
+const _ASSERT_DESC_WORD_SKIP_SIZE: () = assert!(DESC_WORD_SKIP <= 0b111);
+
 /// From the datasheet: *VLAN Frame maxsize = 1522*
-pub(crate) const MTU: usize = 1522;
+pub const MTU: usize = 1522;
+
+pub(crate) struct DmaParts {
+    pub eth_dma: ETHERNET_DMA,
+    #[cfg(feature = "stm32h7xx-hal")]
+    pub eth_mtl: crate::stm32::ETHERNET_MTL,
+}
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -42,12 +63,16 @@ pub struct PacketIdNotFound;
 
 /// Ethernet DMA.
 pub struct EthernetDMA<'rx, 'tx> {
-    pub(crate) eth_dma: ETHERNET_DMA,
-    pub(crate) rx_ring: RxRing<'rx>,
-    pub(crate) tx_ring: TxRing<'tx>,
+    parts: DmaParts,
+    rx_ring: RxRing<'rx>,
+    tx_ring: TxRing<'tx>,
 }
 
 impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
+    fn eth_dma(&self) -> &ETHERNET_DMA {
+        &self.parts.eth_dma
+    }
+
     /// Create and initialise the ethernet DMA
     ///
     /// # Note
@@ -55,75 +80,143 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// accessible by the peripheral. Core-Coupled Memory (CCM) is
     /// usually not accessible.
     pub(crate) fn new(
-        eth_dma: ETHERNET_DMA,
-        rx_buffer: &'rx mut [RxRingEntry],
-        tx_buffer: &'tx mut [TxRingEntry],
+        parts: DmaParts,
+        rx_buffer: RxDescriptorRing<'rx>,
+        tx_buffer: TxDescriptorRing<'tx>,
     ) -> Self {
-        // reset DMA bus mode register
-        eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
+        let DmaParts {
+            eth_dma,
+            #[cfg(feature = "stm32h7xx-hal")]
+            eth_mtl,
+        } = &parts;
 
-        // Wait until done
-        while eth_dma.dmabmr.read().sr().bit_is_set() {}
+        #[cfg(feature = "f-series")]
+        {
+            // reset DMA bus mode register
+            eth_dma.dmabmr.modify(|_, w| w.sr().set_bit());
+            // Wait until done
+            while eth_dma.dmabmr.read().sr().bit_is_set() {}
 
-        // operation mode register
-        eth_dma.dmaomr.modify(|_, w| {
-            // Dropping of TCP/IP checksum error frames disable
-            w.dtcefd()
-                .set_bit()
-                // Receive store and forward
-                .rsf()
-                .set_bit()
-                // Disable flushing of received frames
-                .dfrf()
-                .set_bit()
-                // Transmit store and forward
-                .tsf()
-                .set_bit()
-                // Forward error frames
-                .fef()
-                .set_bit()
-                // Operate on second frame
-                .osf()
-                .set_bit()
-        });
-
-        // bus mode register
-        eth_dma.dmabmr.modify(|_, w| {
-            // For any non-f107 chips, we must use enhanced descriptor format to support checksum
-            // offloading and/or timestamps.
-            #[cfg(not(feature = "stm32f1xx-hal"))]
-            let w = w.edfe().set_bit();
-
-            unsafe {
-                // Address-aligned beats
-                w.aab()
+            // operation mode register
+            eth_dma.dmaomr.modify(|_, w| {
+                // Dropping of TCP/IP checksum error frames disable
+                w.dtcefd()
                     .set_bit()
-                    // Fixed burst
-                    .fb()
+                    // Receive store and forward
+                    .rsf()
                     .set_bit()
-                    // Rx DMA PBL
-                    .rdp()
-                    .bits(32)
-                    // Programmable burst length
-                    .pbl()
-                    .bits(32)
-                    // Rx Tx priority ratio 2:1
-                    .pm()
-                    .bits(0b01)
-                    // Use separate PBL
-                    .usp()
+                    // Disable flushing of received frames
+                    .dfrf()
                     .set_bit()
-            }
-        });
+                    // Transmit store and forward
+                    .tsf()
+                    .set_bit()
+                    // Forward error frames
+                    .fef()
+                    .set_bit()
+                    // Operate on second frame
+                    .osf()
+                    .set_bit()
+            });
+
+            // bus mode register
+            eth_dma.dmabmr.modify(|_, w| {
+                // For any non-f107 chips, we must use enhanced descriptor format to support checksum
+                // offloading and/or timestamps.
+                #[cfg(not(feature = "stm32f1xx-hal"))]
+                let w = w.edfe().set_bit();
+
+                unsafe {
+                    // Address-aligned beats
+                    w.aab()
+                        .set_bit()
+                        // Fixed burst
+                        .fb()
+                        .set_bit()
+                        // Rx DMA PBL
+                        .rdp()
+                        .bits(32)
+                        // Programmable burst length
+                        .pbl()
+                        .bits(32)
+                        // Rx Tx priority ratio 2:1
+                        .pm()
+                        .bits(0b01)
+                        // Use separate PBL
+                        .usp()
+                        .set_bit()
+                }
+            });
+
+            // Configure word skip length.
+            eth_dma.dmabmr.modify(|_, w| w.dsl().bits(DESC_WORD_SKIP));
+        }
+
+        #[cfg(feature = "stm32h7xx-hal")]
+        {
+            // reset DMA bus mode register
+            parts.eth_dma.dmamr.modify(|_, w| w.swr().set_bit());
+            // Wait until done
+            while eth_dma.dmamr.read().swr().bit_is_set() {}
+
+            // Rx Tx priority ratio 2:1
+            eth_dma.dmamr.modify(|_, w| w.pr().variant(0b001));
+
+            eth_dma
+                .dmaccr
+                .modify(|_, w| w.dsl().variant(DESC_WORD_SKIP));
+
+            // Operation mode registers
+            eth_mtl.mtlrx_qomr.modify(|_, w| {
+                w
+                    // Dropping of TCP/IP checksum error frames disable
+                    .dis_tcp_ef()
+                    .set_bit()
+                    // Receive store and forward
+                    .rsf()
+                    .set_bit()
+                    // Forward error frames
+                    .fep()
+                    .set_bit()
+                    // Forward undersized but good frames
+                    .fup()
+                    .set_bit()
+            });
+
+            // Transmit store and forward
+            eth_mtl.mtltx_qomr.modify(|_, w| w.tsf().set_bit());
+
+            eth_dma.dmasbmr.modify(|_, w| w.aal().set_bit());
+
+            eth_dma.dmacrx_cr.modify(|_, w| {
+                w
+                    // RX DMA programmable burst length.
+                    .rxpbl()
+                    .variant(32)
+                    // Receive buffer size
+                    .rbsz()
+                    .variant(rx_buffer.first_buffer().len() as u16)
+            });
+
+            eth_dma.dmactx_cr.modify(|_, w| {
+                w
+                    // TX DMA programmable burst length.
+                    .txpbl()
+                    .variant(32)
+                    // Operate on second packet
+                    .osf()
+                    .set_bit()
+            });
+        }
 
         let mut dma = EthernetDMA {
-            eth_dma,
+            parts,
             rx_ring: RxRing::new(rx_buffer),
             tx_ring: TxRing::new(tx_buffer),
         };
 
-        dma.rx_ring.start(&dma.eth_dma);
-        dma.tx_ring.start(&dma.eth_dma);
+        dma.rx_ring.start(&dma.parts.eth_dma);
+        dma.tx_ring.start(&dma.parts.eth_dma);
 
         dma
     }
@@ -146,7 +239,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         doc = "If you have PTP enabled, you must also call [`EthernetPTP::interrupt_handler()`] if you wish to make use of the PTP timestamp trigger feature."
     )]
     pub fn enable_interrupt(&self) {
-        self.eth_dma.dmaier.modify(|_, w| {
+        #[cfg(feature = "f-series")]
+        self.eth_dma().dmaier.modify(|_, w| {
             w
                 // Normal interrupt summary enable
                 .nise()
@@ -159,10 +253,47 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
                 .set_bit()
         });
 
+        #[cfg(feature = "stm32h7xx-hal")]
+        self.eth_dma().dmacier.modify(|_, w| {
+            w
+                // Normal interrupt summary enable
+                .nie()
+                .set_bit()
+                // Receive Interrupt Enable
+                .rie()
+                .set_bit()
+                // Transmit Interrupt Enable
+                .tie()
+                .set_bit()
+                // Abnormal Interrupt Summary enable
+                .aie()
+                .set_bit()
+                // Receive Buffer Unavailable
+                .rbue()
+                .set_bit()
+                // Transmit Buffer Unavailable
+                .tbue()
+                .set_bit()
+        });
+
         // Enable ethernet interrupts
         unsafe {
             NVIC::unmask(Interrupt::ETH);
         }
+    }
+
+    #[cfg(feature = "stm32h7xx-hal")]
+    fn panic_fbe() -> ! {
+        // SAFETY: we only perform atomic reads/writes through `eth_dma`.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+
+        let tx_descriptor_addr = eth_dma.dmaccatx_dr.read().bits();
+        let tx_buffer_addr = eth_dma.dmaccatx_br.read().bits();
+
+        let rx_descriptor_addr = eth_dma.dmaccarx_dr.read().bits();
+        let rx_buffer_addr = eth_dma.dmaccarx_br.read().bits();
+
+        panic!("Fatal bus error! Is the descriptor and buffer memory accessible by the Ethernet MAC/DMA? TXDESC: {:08X}, TXBUF: {:08X}, RXDESC: {:08X}, TXDESC: {:08X}", tx_descriptor_addr, tx_buffer_addr, rx_descriptor_addr, rx_buffer_addr);
     }
 
     /// Handle the DMA parts of the `ETH` interrupt.
@@ -170,17 +301,70 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         // SAFETY: we only perform atomic reads/writes through `eth_dma`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
 
-        let status = eth_dma.dmasr.read();
+        #[cfg(feature = "f-series")]
+        let (is_rx, is_tx, is_error) = {
+            // Read register
+            let status = eth_dma.dmasr.read();
 
-        let status = InterruptReasonSummary {
-            is_rx: status.rs().bit_is_set(),
-            is_tx: status.ts().bit_is_set(),
-            is_error: status.ais().bit_is_set(),
+            // Reset bits
+            eth_dma.dmasr.write(|w| {
+                w.nis()
+                    .set_bit()
+                    .ts()
+                    .set_bit()
+                    .rs()
+                    .set_bit()
+                    .ais()
+                    .set_bit()
+            });
+
+            (
+                status.rs().bit_is_set(),
+                status.ts().bit_is_set(),
+                status.ais().bit_is_set(),
+            )
         };
 
-        eth_dma
-            .dmasr
-            .write(|w| w.nis().set_bit().ts().set_bit().rs().set_bit());
+        #[cfg(feature = "stm32h7xx-hal")]
+        let (is_rx, is_tx, is_error) = {
+            // Read register
+            let status = eth_dma.dmacsr.read();
+
+            // Reset bits
+            eth_dma.dmacsr.write(|w| {
+                w.nis()
+                    .set_bit()
+                    .ais()
+                    .set_bit()
+                    .ti()
+                    .set_bit()
+                    .ri()
+                    .set_bit()
+                    .rbu()
+                    .set_bit()
+                    .tbu()
+                    .set_bit()
+            });
+
+            if status.fbe().bit_is_set() {
+                // TODO: add a link to a/the github issue describing this problem,
+                // and how to solve it.
+
+                EthernetDMA::panic_fbe();
+            }
+
+            (
+                status.ri().bit_is_set(),
+                status.ti().bit_is_set(),
+                status.ais().bit_is_set(),
+            )
+        };
+
+        let status = InterruptReasonSummary {
+            is_rx,
+            is_tx,
+            is_error,
+        };
 
         #[cfg(feature = "async-await")]
         {
@@ -234,6 +418,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         let mut tx_packet = self.tx_ring.send_next(length, packet_id)?;
         f(&mut tx_packet);
         tx_packet.send();
+
         Ok(())
     }
 
@@ -257,9 +442,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
 impl Drop for EthernetDMA<'_, '_> {
     // On drop, stop all DMA actions.
     fn drop(&mut self) {
-        self.tx_ring.stop(&self.eth_dma);
-
-        self.rx_ring.stop(&self.eth_dma);
+        self.tx_ring.stop(self.eth_dma());
+        self.rx_ring.stop(self.eth_dma());
     }
 }
 
@@ -285,11 +469,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// Prepare a packet for sending.
     ///
     /// See [`TxRing::prepare_packet`].
-    pub async fn prepare_packet<'borrow>(
-        &'borrow mut self,
-        length: usize,
-        packet_id: Option<PacketId>,
-    ) -> TxPacket<'borrow, 'tx> {
+    pub async fn prepare_packet(&mut self, length: usize, packet_id: Option<PacketId>) -> TxPacket {
         self.tx_ring.prepare_packet(length, packet_id).await
     }
 
