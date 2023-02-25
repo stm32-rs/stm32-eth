@@ -1,5 +1,4 @@
 fn main() {
-    #[cfg(feature = "stm32f1xx-hal")]
     println!("cargo:rustc-link-search=memory.x");
 
     let hse = std::env::var("STM32_ETH_EXAMPLE_HSE");

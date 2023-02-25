@@ -5,13 +5,22 @@
 //!
 //! Note that this module isn't an example by itself.
 
+use core::mem::MaybeUninit;
+
 use defmt_rtt as _;
 use panic_probe as _;
 
 use stm32_eth::{
-    hal::{gpio::GpioExt, rcc::Clocks},
+    dma::{RxDescriptor, RxDescriptorRing, TxDescriptor, TxDescriptorRing, MTU},
+    hal::gpio::GpioExt,
     PartsIn,
 };
+
+#[cfg(feature = "f-series")]
+use stm32_eth::hal::rcc::Clocks;
+
+#[cfg(feature = "stm32h7xx-hal")]
+use stm32_eth::hal::rcc::CoreClocks as Clocks;
 
 pub use pins::{setup_pins, Gpio};
 
@@ -24,6 +33,33 @@ use stm32_eth::hal::rcc::RccExt;
 #[allow(unused)]
 fn main() {}
 
+const NUM_DESCRIPTORS: usize = 4;
+
+// On H7s, the ethernet DMA does not have access to the normal ram
+// so we must explicitly put them in SRAM.
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+static mut TX_DESCRIPTORS: MaybeUninit<[TxDescriptor; NUM_DESCRIPTORS]> = MaybeUninit::uninit();
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+static mut TX_BUFFERS: MaybeUninit<[[u8; MTU + 2]; NUM_DESCRIPTORS]> = MaybeUninit::uninit();
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+static mut RX_DESCRIPTORS: MaybeUninit<[RxDescriptor; NUM_DESCRIPTORS]> = MaybeUninit::uninit();
+#[cfg_attr(feature = "stm32h7xx-hal", link_section = ".sram1.eth")]
+static mut RX_BUFFERS: MaybeUninit<[[u8; MTU + 2]; NUM_DESCRIPTORS]> = MaybeUninit::uninit();
+
+/// Set up the buffers to be used
+pub fn setup_rings() -> (RxDescriptorRing<'static>, TxDescriptorRing<'static>) {
+    let tx_desc = unsafe { TX_DESCRIPTORS.write([TxDescriptor::new(); NUM_DESCRIPTORS]) };
+    let tx_buf = unsafe { TX_BUFFERS.write([[0u8; MTU + 2]; NUM_DESCRIPTORS]) };
+
+    let rx_desc = unsafe { RX_DESCRIPTORS.write([RxDescriptor::new(); NUM_DESCRIPTORS]) };
+    let rx_buf = unsafe { RX_BUFFERS.write([[0u8; MTU + 2]; NUM_DESCRIPTORS]) };
+
+    (
+        RxDescriptorRing::new(rx_desc, rx_buf),
+        TxDescriptorRing::new(tx_desc, tx_buf),
+    )
+}
+
 /// Setup the clocks and return clocks and a GPIO struct that
 /// can be used to set up all of the pins.
 ///
@@ -33,8 +69,11 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Par
     let ethernet = PartsIn {
         dma: p.ETHERNET_DMA,
         mac: p.ETHERNET_MAC,
+        #[cfg(feature = "stm32h7xx-hal")]
+        mtl: p.ETHERNET_MTL,
+        #[cfg(feature = "f-series")]
         mmc: p.ETHERNET_MMC,
-        #[cfg(feature = "ptp")]
+        #[cfg(all(feature = "ptp", feature = "f-series"))]
         ptp: p.ETHERNET_PTP,
     };
 
@@ -105,6 +144,40 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Par
             gpioa: p.GPIOA.split(),
             gpiob: p.GPIOB.split(),
             gpioc: p.GPIOC.split(),
+        };
+
+        (clocks, gpio, ethernet)
+    }
+
+    #[cfg(feature = "stm32h7xx-hal")]
+    {
+        use stm32_eth::hal::pwr::PwrExt;
+
+        let rcc = p.RCC.constrain();
+        let pwr = p.PWR.constrain();
+
+        let syscfg = p.SYSCFG;
+
+        let pwrcfg = pwr.vos1().freeze();
+
+        let rcc = rcc.hclk(200.MHz()).sys_ck(200.MHz());
+
+        let rcc = if cfg!(hse = "bypass") {
+            rcc.bypass_hse().use_hse(8.MHz())
+        } else if cfg!(hse = "oscillator") {
+            rcc.use_hse(8.MHz())
+        } else {
+            rcc
+        };
+
+        let ccdr = rcc.freeze(pwrcfg, &syscfg);
+        let clocks = ccdr.clocks;
+
+        let gpio = Gpio {
+            gpioa: p.GPIOA.split(ccdr.peripheral.GPIOA),
+            gpiob: p.GPIOB.split(ccdr.peripheral.GPIOB),
+            gpioc: p.GPIOC.split(ccdr.peripheral.GPIOC),
+            gpiog: p.GPIOG.split(ccdr.peripheral.GPIOG),
         };
 
         (clocks, gpio, ethernet)
@@ -275,6 +348,96 @@ mod pins {
         let tx_d1 = gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh);
 
         let pps = gpiob.pb5.into_push_pull_output(&mut gpiob.crl);
+
+        let pins = EthPins {
+            ref_clk,
+            crs,
+            tx_en,
+            tx_d0,
+            tx_d1,
+            rx_d0,
+            rx_d1,
+        };
+
+        (pins, mdio, mdc, pps)
+    }
+}
+
+#[cfg(feature = "stm32h7xx-hal")]
+mod pins {
+    use stm32_eth::{
+        hal::gpio::{Input, PushPull, *},
+        EthPins,
+    };
+
+    pub struct Gpio {
+        pub gpioa: gpioa::Parts,
+        pub gpiob: gpiob::Parts,
+        pub gpioc: gpioc::Parts,
+        pub gpiog: gpiog::Parts,
+    }
+
+    pub type RefClk = PA1<Input>;
+    pub type Crs = PA7<Input>;
+
+    #[cfg(pins = "nucleo")]
+    pub type TxEn = PG11<Input>;
+    #[cfg(pins = "nucleo")]
+    pub type TxD0 = PG13<Input>;
+
+    #[cfg(not(pins = "nucleo"))]
+    pub type TxEn = PB11<Input>;
+    #[cfg(not(pins = "nucleo"))]
+    pub type TxD0 = PB12<Input>;
+
+    pub type TxD1 = PB13<Input>;
+    pub type RxD0 = PC4<Input>;
+    pub type RxD1 = PC5<Input>;
+
+    #[cfg(not(pps = "alternate"))]
+    pub type Pps = PB5<Output<PushPull>>;
+    #[cfg(pps = "alternate")]
+    pub type Pps = PG5<Output<PushPull>>;
+
+    pub type Mdio = PA2<Alternate<11>>;
+    pub type Mdc = PC1<Alternate<11>>;
+
+    pub fn setup_pins(
+        gpio: Gpio,
+    ) -> (
+        EthPins<RefClk, Crs, TxEn, TxD0, TxD1, RxD0, RxD1>,
+        Mdio,
+        Mdc,
+        Pps,
+    ) {
+        #[allow(unused_variables)]
+        let Gpio {
+            gpioa,
+            gpiob,
+            gpioc,
+            gpiog,
+        } = gpio;
+
+        let ref_clk = gpioa.pa1.into_input();
+        let crs = gpioa.pa7.into_input();
+        let rx_d0 = gpioc.pc4.into_input();
+        let rx_d1 = gpioc.pc5.into_input();
+        let tx_d1 = gpiob.pb13.into_input();
+
+        #[cfg(not(pins = "nucleo"))]
+        let (tx_en, tx_d0) = { (gpiob.pb11.into_input(), gpiob.pb12.into_input()) };
+
+        #[cfg(pins = "nucleo")]
+        let (tx_en, tx_d0) = { (gpiog.pg11.into_input(), gpiog.pg13.into_input()) };
+
+        let mdio = gpioa.pa2.into_alternate();
+        let mdc = gpioc.pc1.into_alternate();
+
+        #[cfg(not(pps = "alternate"))]
+        let pps = gpiob.pb5.into_push_pull_output();
+
+        #[cfg(pps = "alternate")]
+        let pps = gpiog.pg5.into_push_pull_output();
 
         let pins = EthPins {
             ref_clk,

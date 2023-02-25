@@ -23,7 +23,7 @@ use stm32_eth::{
 
 pub mod common;
 
-use stm32_eth::dma::{RxRingEntry, TxError, TxRingEntry};
+use stm32_eth::dma::TxError;
 
 const PHY_ADDR: u8 = 0;
 
@@ -43,22 +43,14 @@ fn main() -> ! {
 
     let (eth_pins, mdio, mdc, _) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RxRingEntry; 2] = Default::default();
-    let mut tx_ring: [TxRingEntry; 2] = Default::default();
+    let (rx_ring, tx_ring) = crate::common::setup_rings();
 
     let Parts {
         mut dma,
         mac,
         #[cfg(feature = "ptp")]
             ptp: _,
-    } = stm32_eth::new(
-        ethernet,
-        &mut rx_ring[..],
-        &mut tx_ring[..],
-        clocks,
-        eth_pins,
-    )
-    .unwrap();
+    } = stm32_eth::new(ethernet, rx_ring, tx_ring, clocks, eth_pins).unwrap();
     dma.enable_interrupt();
 
     let mut last_link_up = false;
@@ -108,6 +100,8 @@ fn main() -> ! {
                 buf[32..38].copy_from_slice(&TARGET_MAC);
                 buf[38..42].copy_from_slice(&TARGET_IP);
             });
+
+            stm32_eth::eth_interrupt_handler();
 
             match r {
                 Ok(()) => {
