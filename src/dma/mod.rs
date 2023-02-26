@@ -298,6 +298,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         let rx_descriptor_addr = eth_dma.dmaccarx_dr.read().bits();
         let rx_buffer_addr = eth_dma.dmaccarx_br.read().bits();
 
+        // TODO: add a link to a/the github issue describing this problem,
+        // and how to solve it.
         panic!("Fatal bus error! Is the descriptor and buffer memory accessible by the Ethernet MAC/DMA? TXDESC: {:08X}, TXBUF: {:08X}, RXDESC: {:08X}, TXDESC: {:08X}", tx_descriptor_addr, tx_buffer_addr, rx_descriptor_addr, rx_buffer_addr);
     }
 
@@ -352,9 +354,6 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
             });
 
             if status.fbe().bit_is_set() {
-                // TODO: add a link to a/the github issue describing this problem,
-                // and how to solve it.
-
                 EthernetDMA::panic_fbe();
             }
 

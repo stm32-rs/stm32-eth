@@ -216,11 +216,14 @@ impl<'a> RxRing<'a> {
         self.ring.descriptor(self.next_entry).is_available()
     }
 
-    /// Receive the next packet (if any is ready).
+    /// Obtain the index of the packet to receive (if any is ready).
     ///
-    /// This function returns a tuple of `Ok((entry_index, length))` on
+    /// This function returns a tuple of `Ok(entry_index)` on
     /// success. Whoever receives the `Ok` must ensure that `set_owned`
     /// is eventually called on the entry with that index.
+    ///
+    /// Actually obtaining the relevant RxPacket is done using
+    /// [`RxRing::recv_and_timestamp`].
     fn recv_next_impl(
         &mut self,
         // NOTE(allow): packet_id is unused if ptp is disabled.
@@ -245,13 +248,9 @@ impl<'a> RxRing<'a> {
         }
     }
 
-    /// Receive the next packet (if any is ready), or return [`Err`]
-    /// immediately.
-    pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
+    fn recv_and_timestamp(&mut self, entry: usize) -> RxPacket {
         #[cfg(feature = "stm32h7xx-hal")]
         let entries_len = self.ring.len();
-
-        let entry = self.recv_next_impl(packet_id.map(|p| p.into()))?;
 
         #[cfg(feature = "f-series")]
         let (desc, buffer) = self.ring.get_mut(entry);
@@ -276,11 +275,19 @@ impl<'a> RxRing<'a> {
 
         let length = desc.frame_len();
 
-        Ok(RxPacket {
+        RxPacket {
             entry: desc,
             buffer,
             length,
-        })
+        }
+    }
+
+    /// Receive the next packet (if any is ready), or return [`Err`]
+    /// immediately.
+    pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
+        let entry = self.recv_next_impl(packet_id.map(|p| p.into()))?;
+
+        Ok(self.recv_and_timestamp(entry))
     }
 
     /// Receive the next packet.
@@ -302,14 +309,7 @@ impl<'a> RxRing<'a> {
         })
         .await;
 
-        let (desc, buffer) = self.ring.get_mut(entry);
-        let length = desc.frame_len();
-
-        RxPacket {
-            entry: desc,
-            buffer,
-            length,
-        }
+        self.recv_and_timestamp(entry)
     }
 }
 
