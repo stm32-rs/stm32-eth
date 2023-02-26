@@ -77,6 +77,16 @@ jobs:
           - stm32f777
           - stm32f778
           - stm32f779
+          - stm32h735
+          - stm32h742
+          - stm32h742v
+          - stm32h743
+          - stm32h743v
+          - stm32h747cm7
+          - stm32h750
+          - stm32h750v
+          - stm32h753
+          - stm32h753v
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -109,6 +119,7 @@ jobs:
           - stm32f107
           - stm32f407
           - stm32f745
+          - stm32h735
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -177,6 +188,7 @@ jobs:
           - stm32f107
           - stm32f429
           - stm32f745
+          - stm32h735
         pins:
           - nucleo
           - default
