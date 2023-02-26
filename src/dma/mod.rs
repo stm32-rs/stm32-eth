@@ -4,6 +4,9 @@ use cortex_m::peripheral::NVIC;
 
 use crate::{peripherals::ETHERNET_DMA, stm32::Interrupt};
 
+mod cache;
+pub(crate) use cache::Cache;
+
 #[cfg(feature = "smoltcp-phy")]
 mod smoltcp_phy;
 #[cfg(feature = "smoltcp-phy")]
@@ -41,6 +44,8 @@ const _TXDESC_SIZE: usize = core::mem::size_of::<TxDescriptor>();
 /// This is necessary as we only have a single Descriptor Skip Length
 /// value which applies to both TX and RX descriptors.
 const _ASSERT_DESCRIPTOR_SIZES: () = assert!(_RXDESC_SIZE == _TXDESC_SIZE);
+
+const _ASSERT_DESCRIPTOR_ALIGN: () = assert!(_RXDESC_SIZE % 4 == 0);
 
 const DESC_WORD_SKIP: u8 = ((_RXDESC_SIZE / 4) - self::generic_ring::DESC_SIZE) as u8;
 

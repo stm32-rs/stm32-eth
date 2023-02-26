@@ -1,6 +1,6 @@
 use core::sync::atomic::{self, Ordering};
 
-use crate::dma::{generic_ring::RawDescriptor, PacketId};
+use crate::dma::{generic_ring::RawDescriptor, Cache, PacketId};
 
 #[cfg(feature = "ptp")]
 use crate::ptp::Timestamp;
@@ -85,9 +85,7 @@ use super::RxDescriptorError;
 /// An RX DMA Descriptor.
 pub struct RxDescriptor {
     inner_raw: RawDescriptor,
-    packet_id: Option<PacketId>,
-    #[cfg(feature = "ptp")]
-    cached_timestamp: Option<Timestamp>,
+    cache: Cache,
 }
 
 impl Default for RxDescriptor {
@@ -101,9 +99,7 @@ impl RxDescriptor {
     pub const fn new() -> Self {
         Self {
             inner_raw: RawDescriptor::new(),
-            packet_id: None,
-            #[cfg(feature = "ptp")]
-            cached_timestamp: None,
+            cache: Cache::new(),
         }
     }
 
@@ -201,9 +197,7 @@ impl RxDescriptor {
             // "Subsequent reads and writes cannot be moved ahead of preceding reads."
             atomic::compiler_fence(Ordering::Acquire);
 
-            self.packet_id = packet_id;
-            #[cfg(feature = "ptp")]
-            self.cached_timestamp.take();
+            self.cache.set_id_and_clear_ts(packet_id);
 
             Ok(())
         } else {
@@ -230,14 +224,14 @@ impl RxDescriptor {
     }
 
     pub(super) fn has_packet_id(&self, packet_id: &PacketId) -> bool {
-        self.packet_id.as_ref() == Some(packet_id)
+        self.cache.id().as_ref() == Some(packet_id)
     }
 
     pub(super) fn attach_timestamp(&mut self, timestamp: Option<Timestamp>) {
-        self.cached_timestamp = timestamp;
+        self.cache.set_ts(timestamp);
     }
 
     pub(super) fn timestamp(&self) -> Option<Timestamp> {
-        self.cached_timestamp.clone()
+        self.cache.ts()
     }
 }

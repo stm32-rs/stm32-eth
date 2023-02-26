@@ -1,4 +1,5 @@
 use crate::dma::generic_ring::RawDescriptor;
+use crate::dma::Cache;
 
 use crate::dma::{rx::RxDescriptorError, PacketId};
 
@@ -34,7 +35,7 @@ const RXDESC_1_RER: u32 = 1 << 15;
 #[derive(Clone, Copy)]
 pub struct RxDescriptor {
     desc: RawDescriptor,
-    packet_id: Option<PacketId>,
+    cache: Cache,
     last: bool,
 }
 
@@ -49,8 +50,10 @@ impl RxDescriptor {
     pub const fn new() -> Self {
         Self {
             desc: RawDescriptor::new(),
-            packet_id: None,
             last: false,
+            cache: Cache::new(),
+            #[cfg(not(feature = "ptp"))]
+            _padding: [0u8; 4],
         }
     }
 
@@ -69,8 +72,6 @@ impl RxDescriptor {
     }
 
     /// Pass ownership to the DMA engine
-    ///
-    /// Overrides old timestamp data
     pub fn set_owned(&mut self, buffer: &mut [u8]) {
         self.set_buffer(buffer);
 
@@ -121,7 +122,10 @@ impl RxDescriptor {
             core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Acquire);
 
             // Set the Packet ID for this descriptor.
-            self.packet_id = packet_id;
+            self.cache.set_id_and_clear_ts(packet_id);
+
+            #[cfg(feature = "ptp")]
+            self.cache.set_ts(self.read_timestamp());
 
             Ok(())
         } else {
@@ -152,11 +156,10 @@ impl RxDescriptor {
 #[cfg(feature = "ptp")]
 impl RxDescriptor {
     pub(super) fn has_packet_id(&self, id: &PacketId) -> bool {
-        Some(id) == self.packet_id.as_ref()
+        Some(id) == self.cache.id().as_ref()
     }
 
-    /// Get PTP timestamp if available
-    pub(super) fn timestamp(&self) -> Option<Timestamp> {
+    fn read_timestamp(&self) -> Option<Timestamp> {
         #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
         let (high, low) = { (self.desc.read(7), self.desc.read(6)) };
 
@@ -183,5 +186,10 @@ impl RxDescriptor {
         } else {
             None
         }
+    }
+
+    /// Get PTP timestamp if available
+    pub(super) fn timestamp(&self) -> Option<Timestamp> {
+        self.cache.ts()
     }
 }

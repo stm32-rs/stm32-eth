@@ -1,6 +1,6 @@
 use core::sync::atomic::{self, Ordering};
 
-use crate::dma::{generic_ring::RawDescriptor, PacketId};
+use crate::dma::{generic_ring::RawDescriptor, Cache, PacketId};
 
 #[cfg(feature = "ptp")]
 use crate::ptp::Timestamp;
@@ -122,9 +122,7 @@ pub use consts::*;
 #[derive(Clone, Copy)]
 pub struct TxDescriptor {
     inner_raw: RawDescriptor,
-    packet_id: Option<PacketId>,
-    #[cfg(feature = "ptp")]
-    _padding: Option<Timestamp>,
+    cache: Cache,
 }
 
 impl Default for TxDescriptor {
@@ -138,9 +136,7 @@ impl TxDescriptor {
     pub const fn new() -> Self {
         Self {
             inner_raw: RawDescriptor::new(),
-            packet_id: None,
-            #[cfg(feature = "ptp")]
-            _padding: None,
+            cache: Cache::new(),
         }
     }
 
@@ -152,7 +148,7 @@ impl TxDescriptor {
     pub(super) fn setup(&mut self) {
         // Zero-out all fields in the descriptor
         (0..4).for_each(|n| unsafe { self.inner_raw.write(n, 0) });
-        self.packet_id.take();
+        self.cache.set_id_and_clear_ts(None);
     }
 
     pub(super) fn is_owned(&self) -> bool {
@@ -178,7 +174,7 @@ impl TxDescriptor {
             }
         }
 
-        self.packet_id = packet_id;
+        self.cache.set_id_and_clear_ts(packet_id);
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
         atomic::fence(Ordering::Release);
@@ -230,9 +226,14 @@ impl TxDescriptor {
 #[cfg(feature = "ptp")]
 impl TxDescriptor {
     pub(super) fn has_packet_id(&self, packet_id: &PacketId) -> bool {
-        self.packet_id.as_ref() == Some(packet_id)
+        self.cache.id().as_ref() == Some(packet_id)
     }
 
+    /// For the TxDescriptor we ignore [`Cache::ts`] because:
+    /// * We're only really using the cache so that the size of RxDescriptor and TxDescriptor
+    ///   is the same.
+    /// * We want to be able to retrieve the timestamp immutably.
+    /// * The Timestamp in the TX descriptor is valid until we perform another transmission.
     pub(super) fn timestamp(&self) -> Option<Timestamp> {
         let contains_timestamp = (self.inner_raw.read(3) & TXDESC_3_TTSS) == TXDESC_3_TTSS;
 

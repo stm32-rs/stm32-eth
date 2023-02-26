@@ -1,4 +1,4 @@
-use crate::dma::{generic_ring::RawDescriptor, PacketId};
+use crate::dma::{generic_ring::RawDescriptor, Cache, PacketId};
 
 #[cfg(feature = "ptp")]
 use crate::ptp::Timestamp;
@@ -38,8 +38,8 @@ const TXDESC_1_TBS2_MASK: u32 = 0x0fff << TXDESC_1_TBS2_SHIFT;
 #[derive(Clone, Copy)]
 pub struct TxDescriptor {
     desc: RawDescriptor,
-    packet_id: Option<PacketId>,
     last: bool,
+    cache: Cache,
 }
 
 impl Default for TxDescriptor {
@@ -53,8 +53,8 @@ impl TxDescriptor {
     pub const fn new() -> Self {
         Self {
             desc: RawDescriptor::new(),
-            packet_id: None,
             last: false,
+            cache: Cache::new(),
         }
     }
 
@@ -101,7 +101,7 @@ impl TxDescriptor {
             extra_flags
         };
 
-        self.packet_id = packet_id;
+        self.cache.set_id_and_clear_ts(packet_id);
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
         #[cfg(feature = "fence")]
@@ -154,9 +154,14 @@ impl TxDescriptor {
 #[cfg(feature = "ptp")]
 impl TxDescriptor {
     pub(super) fn has_packet_id(&self, packet_id: &PacketId) -> bool {
-        self.packet_id.as_ref() == Some(packet_id)
+        self.cache.id().as_ref() == Some(packet_id)
     }
 
+    /// For the TxDescriptor we ignore [`Cache::ts`] because:
+    /// * We're only really using the cache so that the size of RxDescriptor and TxDescriptor
+    ///   is the same.
+    /// * We want to be able to retrieve the timestamp immutably.
+    /// * The Timestamp in the TX descriptor is valid until we perform another transmission.
     pub(super) fn timestamp(&self) -> Option<Timestamp> {
         let tdes0 = self.desc.read(0);
 
