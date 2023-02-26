@@ -196,6 +196,7 @@ mod pac_override_impl {
 
         #[doc = r"Return the pointer to the register block"]
         #[inline(always)]
+        #[allow(unused)]
         pub const fn ptr() -> *const MacRegisterBlock {
             Self::PTR
         }
@@ -260,6 +261,9 @@ mod pac_override_impl {
         #[doc = r"Pointer to the register block"]
         pub const PTR: *const DmaRegisterBlock = 0x4002_9000 as *const _;
 
+        #[doc = r"Return the pointer to the register block"]
+        #[inline(always)]
+        #[allow(unused)]
         pub const fn ptr() -> *const DmaRegisterBlock {
             Self::PTR
         }
