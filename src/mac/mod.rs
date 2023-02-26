@@ -305,7 +305,7 @@ impl EthernetMAC {
     }
 
     // NOTE(allow): only used on F4 and F7
-    #[cfg(all(feature = "ptp", feature = "f-series"))]
+    #[cfg(all(feature = "ptp", feature = "f-series", not(feature = "stm32f1xx-hal")))]
     pub(crate) fn unmask_timestamp_trigger_interrupt() {
         // SAFETY: MACIMR only receives atomic writes.
         let mac = &unsafe { &*ETHERNET_MAC::ptr() };

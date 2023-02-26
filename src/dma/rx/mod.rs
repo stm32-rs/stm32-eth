@@ -248,7 +248,9 @@ impl<'a> RxRing<'a> {
     /// Receive the next packet (if any is ready), or return [`Err`]
     /// immediately.
     pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
+        #[cfg(feature = "stm32h7xx-hal")]
         let entries_len = self.ring.len();
+
         let entry = self.recv_next_impl(packet_id.map(|p| p.into()))?;
 
         #[cfg(feature = "f-series")]
