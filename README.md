@@ -29,7 +29,7 @@ use stm32_eth::{
     hal::gpio::GpioExt,
     hal::rcc::RccExt,
     stm32::Peripherals,
-    dma::{RxRingEntry, TxRingEntry},
+    dma::{MTU, TxDescriptorRing, TxDescriptor, RxDescriptorRing, RxDescriptor},
     EthPins,
 };
 use fugit::RateExtU32;
@@ -56,20 +56,29 @@ fn main() {
         rx_d1: gpioc.pc5,
     };
 
-    let mut rx_ring: [RxRingEntry; 16] = Default::default();
-    let mut tx_ring: [TxRingEntry; 8] = Default::default();
+    let mut rx_ring: [RxDescriptor; 16] = Default::default();
+    let mut rx_buffers: [[u8; MTU + 2]; 16] = [[0u8; MTU + 2]; 16];
+    let rx_ring = RxDescriptorRing::new(&mut rx_ring[..], &mut rx_buffers[..]);
+
+    let mut tx_ring: [TxDescriptor; 8] = Default::default();
+    let mut tx_buffers: [[u8; MTU + 2]; 8] = [[0u8; MTU + 2]; 8];
+    let tx_ring = TxDescriptorRing::new(&mut tx_ring[..], &mut tx_buffers[..]);
 
     let parts = stm32_eth::PartsIn {
         mac: p.ETHERNET_MAC,
+        #[cfg(any(feature = "stm32f1xx-hal", feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
         mmc: p.ETHERNET_MMC,
+        #[cfg(feature = "stm32h7xx-hal")]
+        mtl: p.ETHERNET_MTL,
         dma: p.ETHERNET_DMA,
+        #[cfg(any(feature = "stm32f1xx-hal", feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
         ptp: p.ETHERNET_PTP,
     };
 
     let stm32_eth::Parts { dma: mut eth_dma, mac: _, ptp: _ } = stm32_eth::new(
         parts,
-        &mut rx_ring[..],
-        &mut tx_ring[..],
+        rx_ring,
+        tx_ring,
         clocks,
         eth_pins,
     )
