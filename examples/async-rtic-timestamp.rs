@@ -42,11 +42,11 @@ extern crate async_rtic as rtic;
 mod app {
 
     use async_rtic as rtic;
-    use rtic_channel::{Channel, Receiver, Sender};
+    use rtic_sync::channel::{Channel, Receiver, Sender};
 
     use crate::common::EthernetPhy;
 
-    use rtic_arbiter::Arbiter;
+    use rtic_sync::arbiter::Arbiter;
 
     use ieee802_3_miim::{phy::PhySpeed, Phy};
 
