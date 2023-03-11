@@ -1,3 +1,4 @@
+#[cfg(feature = "ptp")]
 use crate::ptp::Timestamp;
 
 use super::PacketId;
@@ -52,6 +53,8 @@ impl Cache {
         }
     }
 
+    // NOTE(unused): this function is not used if not(feature = "ptp")
+    #[allow(unused)]
     pub fn id(&self) -> Option<PacketId> {
         if self.has_packet_id {
             Some(self.packet_id)

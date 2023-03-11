@@ -52,8 +52,6 @@ impl RxDescriptor {
             desc: RawDescriptor::new(),
             last: false,
             cache: Cache::new(),
-            #[cfg(not(feature = "ptp"))]
-            _padding: [0u8; 4],
         }
     }
 
