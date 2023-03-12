@@ -351,6 +351,10 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
                     .set_bit()
                     .tbu()
                     .set_bit()
+                    .eti()
+                    .set_bit()
+                    .eri()
+                    .set_bit()
             });
 
             if status.fbe().bit_is_set() {

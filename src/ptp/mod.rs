@@ -411,10 +411,11 @@ impl EthernetPTP {
     #[cfg(feature = "async-await")]
     pub async fn wait_until(&mut self, timestamp: Timestamp) {
         self.configure_target_time_interrupt(timestamp);
+
         core::future::poll_fn(|ctx| {
             if EthernetPTP::read_and_clear_interrupt_flag() {
                 Poll::Ready(())
-            } else if EthernetPTP::get_time().raw() >= timestamp.raw() {
+            } else if EthernetPTP::now().raw() >= timestamp.raw() {
                 Poll::Ready(())
             } else {
                 EthernetPTP::waker().register(ctx.waker());
