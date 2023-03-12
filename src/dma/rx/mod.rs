@@ -149,7 +149,7 @@ impl<'a> RxRing<'a> {
         // DMA accesses do not stop before the running state
         // of the DMA has changed to something other than
         // running.
-        while self.running_state().is_running() {}
+        while Self::running_state().is_running() {}
     }
 
     /// Demand that the DMA engine polls the current `RxDescriptor`
@@ -176,8 +176,8 @@ impl<'a> RxRing<'a> {
             .modify(|r, w| unsafe { w.bits(r.bits()) });
     }
 
-    /// Get current `RunningState`
-    pub fn running_state(&self) -> RunningState {
+    /// Get current state of the RxDMA
+    pub fn running_state() -> RunningState {
         // SAFETY: we only perform an atomic read of `dmasr`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
 
@@ -229,7 +229,7 @@ impl<'a> RxRing<'a> {
         // NOTE(allow): packet_id is unused if ptp is disabled.
         #[allow(unused_variables)] packet_id: Option<PacketId>,
     ) -> Result<usize, RxError> {
-        if !self.running_state().is_running() {
+        if !Self::running_state().is_running() {
             Self::demand_poll();
         }
 

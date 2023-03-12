@@ -121,7 +121,7 @@ impl<'ring> TxRing<'ring> {
         // DMA accesses do not stop before the running state
         // of the DMA has changed to something other than
         // running.
-        while self.is_running() {}
+        while Self::is_running() {}
     }
 
     fn entry_available(&self, index: usize) -> bool {
@@ -248,11 +248,12 @@ impl<'ring> TxRing<'ring> {
     }
 
     /// Is the Tx DMA engine running?
-    pub fn is_running(&self) -> bool {
-        self.running_state().is_running()
+    pub fn is_running() -> bool {
+        Self::running_state().is_running()
     }
 
-    pub(crate) fn running_state(&self) -> RunningState {
+    /// Get the current state of the TxDMA
+    pub fn running_state() -> RunningState {
         // SAFETY: we only perform an atomic read of `dmasr` or
         // `dmadsr`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };

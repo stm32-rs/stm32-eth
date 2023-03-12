@@ -402,12 +402,12 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// It stops if the ring is full. Call [`EthernetDMA::recv_next()`] to free an
     /// entry and to demand poll from the hardware.
     pub fn rx_is_running(&self) -> bool {
-        self.rx_ring.running_state().is_running()
+        RxRing::running_state().is_running()
     }
 
     /// Is Tx DMA currently running?
     pub fn tx_is_running(&self) -> bool {
-        self.tx_ring.is_running()
+        TxRing::is_running()
     }
 
     /// Try to send a packet with data.
