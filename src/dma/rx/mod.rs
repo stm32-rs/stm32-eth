@@ -285,7 +285,7 @@ impl<'a> RxRing<'a> {
     /// Receive the next packet (if any is ready), or return [`Err`]
     /// immediately.
     pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
-        let entry = self.recv_next_impl(packet_id.map(|p| p.into()))?;
+        let entry = self.recv_next_impl(packet_id)?;
 
         Ok(self.recv_and_timestamp(entry))
     }

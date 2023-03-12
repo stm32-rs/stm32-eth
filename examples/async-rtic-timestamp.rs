@@ -38,6 +38,10 @@ mod common;
 
 extern crate async_rtic as rtic;
 
+defmt::timestamp!("{=u64:us}", {
+    (stm32_eth::ptp::EthernetPTP::now().total_nanos() / 1_000) as u64
+});
+
 #[rtic::app(device = stm32_eth::stm32, dispatchers = [SPI1])]
 mod app {
 
@@ -159,7 +163,7 @@ mod app {
                 continue;
             };
 
-            defmt::debug!("RX timestamp: {}", rx_timestamp);
+            defmt::info!("RX timestamp: {}", rx_timestamp);
 
             if dst_mac == [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56] {
                 let mut timestamp_data = [0u8; 8];
