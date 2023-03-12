@@ -433,9 +433,17 @@ impl EthernetPTP {
         }
         #[cfg(feature = "stm32h7xx-hal")]
         {
-            // SAFETY: we only modify the ethernet ptp status register.
+            // SAFETY: we only read the ethernet ptp status register.
+
             let mac = unsafe { Self::mac() };
-            mac.mactssr.read().tstargt0().bit_is_set()
+
+            // Reading the register clears all of the bits in
+            // that register.
+            let tssr = mac.mactssr.read();
+            let tstargt0 = tssr.tstargt0().bit_is_set();
+            let tstrgterr0 = tssr.tstrgterr0().bit_is_set();
+
+            tstargt0 || tstrgterr0
         }
     }
 
@@ -459,18 +467,18 @@ impl EthernetPTP {
 
         #[cfg(feature = "stm32h7xx-hal")]
         let is_tsint = {
-            // SAFETY: we only write to `mactssr` (Timestamp Status register)
-            let mactssr = unsafe { &Self::mac().mactssr };
-
-            // Reading the bit clears it, and deasserts the interrupt.
-            mactssr.read().tstargt0().bit_is_set()
+            // SAFETY: we only read from `macisr` (Interrupt status register)
+            let macisr = unsafe { &Self::mac().macisr };
+            macisr.read().tsis().bit_is_set()
         };
 
         #[cfg(feature = "async-await")]
-        if let Some(waker) = EthernetPTP::waker().take() {
-            waker.wake();
-        } else {
-            EthernetPTP::read_and_clear_interrupt_flag();
+        if is_tsint {
+            if let Some(waker) = EthernetPTP::waker().take() {
+                waker.wake();
+            } else {
+                EthernetPTP::read_and_clear_interrupt_flag();
+            }
         }
 
         #[cfg(not(feature = "async-await"))]
