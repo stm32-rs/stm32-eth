@@ -304,7 +304,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     }
 
     /// Handle the DMA parts of the `ETH` interrupt.
-    pub fn interrupt_handler() -> InterruptReasonSummary {
+    pub(crate) fn interrupt_handler() -> InterruptReasonSummary {
         // SAFETY: we only perform atomic reads/writes through `eth_dma`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
 
