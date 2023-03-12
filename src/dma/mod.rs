@@ -358,8 +358,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
             }
 
             (
-                status.ri().bit_is_set(),
-                status.ti().bit_is_set(),
+                status.ri().bit_is_set() || status.rbu().bit_is_set(),
+                status.ti().bit_is_set() || status.tbu().bit_is_set(),
                 status.ais().bit_is_set(),
             )
         };
