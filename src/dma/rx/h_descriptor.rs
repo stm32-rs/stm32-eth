@@ -171,15 +171,9 @@ impl RxDescriptor {
 
             // RXDESC does not contain buffer length, it is set
             // in register INSERT_HERE instead. The size of all
-            // buffers is verified by [`TxRing`](super::TxRing)
+            // buffers is verified by [`RxRing`](super::RxRing)
 
-            self.inner_raw.modify(3, |w| {
-                // BUF2 is not valid
-                let w = w & !(RXDESC_3_BUF2V);
-                // BUF1 is valid
-                let w = w | RXDESC_3_BUF1V;
-                w
-            });
+            self.inner_raw.write(3, RXDESC_3_BUF1V);
         }
     }
 
