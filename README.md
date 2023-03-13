@@ -98,7 +98,9 @@ fn ETH() {
 
 ## `smoltcp` support
 
-Use feature-flag `smoltcp-phy`
+Use feature-flag `smoltcp-phy`.
+
+To make proper use of `smoltcp`, you will also have to activate additional `smoltcp` features. You can do this by adding a dependency on the same version of `smoltcp` as `stm32-eth` to your own `Cargo.toml` with the features you require activated.
 
 ## Examples
 
