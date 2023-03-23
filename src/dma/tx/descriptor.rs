@@ -171,6 +171,9 @@ impl RingDescriptor for TxDescriptor {
 
         self.buffer1 = buffer as u32;
         self.next_descriptor = next_desc_addr;
+        unsafe {
+            self.desc.clear();
+        }
     }
 }
 

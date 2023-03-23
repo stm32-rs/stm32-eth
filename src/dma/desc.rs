@@ -35,6 +35,10 @@ impl Descriptor {
         }
     }
 
+    pub unsafe fn clear(&mut self) {
+        (0..DESC_SIZE).for_each(|i| self.write(i, 0));
+    }
+
     fn r(&self, n: usize) -> &RO<u32> {
         let ro = &self.desc.deref()[n] as *const _ as *const RO<u32>;
         unsafe { &*ro }
