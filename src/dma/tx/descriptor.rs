@@ -135,7 +135,9 @@ impl TxDescriptor {
     fn set_buffer1_len(&mut self, len: usize) {
         unsafe {
             self.desc.modify(1, |w| {
-                (w & !TXDESC_1_TBS_MASK) | ((len as u32) << TXDESC_1_TBS_SHIFT)
+                let masked_len = w & !TXDESC_1_TBS_MASK;
+                let with_len = masked_len | ((len as u32) << TXDESC_1_TBS_SHIFT);
+                with_len
             });
         }
     }
