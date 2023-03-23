@@ -80,7 +80,7 @@ impl<'ring> TxRing<'ring> {
 
     /// If this returns `true`, the next `send` will succeed.
     pub fn next_entry_available(&self) -> bool {
-        !self.entries[self.next_entry].is_available()
+        self.entries[self.next_entry].is_available()
     }
 
     /// Check if we can send the next TX entry.
