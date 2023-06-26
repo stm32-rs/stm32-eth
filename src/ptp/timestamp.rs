@@ -1,6 +1,6 @@
 use crate::dma::desc::Descriptor;
 
-use super::Subseconds;
+use super::{Subseconds, NANOS_PER_SECOND};
 
 /// A timestamp produced by the PTP periperhal
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +87,28 @@ impl Timestamp {
     /// Get the nanosecond component of this timestamp
     pub const fn nanos(&self) -> u32 {
         self.subseconds().nanos()
+    }
+
+    /// Get the total amount of nanoseconds in this [`Timestamp`].
+    ///
+    /// Example:
+    /// ```rust
+    /// # use stm32_eth::ptp::{Subseconds, Timestamp};
+    /// let timestamp = Timestamp::new(false, 500, Subseconds::new_from_nanos(500_000).unwrap());
+    /// assert_eq!(timestamp.total_nanos(), 500 * 1_000_000_000 + 500_000);
+    ///
+    ///
+    /// let timestamp_neg = Timestamp::new(true, 500, Subseconds::new_from_nanos(500_000).unwrap());
+    /// assert_eq!(timestamp_neg.total_nanos(), -1 * (500 * 1_000_000_000 + 500_000));
+    /// ```
+    pub const fn total_nanos(&self) -> i64 {
+        let nanos = self.seconds() as i64 * NANOS_PER_SECOND as i64 + self.nanos() as i64;
+
+        if self.is_positive() {
+            nanos
+        } else {
+            -nanos
+        }
     }
 
     /// Create a new timestamp from the provided register values.

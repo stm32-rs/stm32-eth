@@ -1,8 +1,12 @@
 #![allow(unused_attributes)]
+#![no_std]
 
 //! Common features used in examples.
 //!
 //! Note that this module isn't an example by itself.
+
+use defmt_rtt as _;
+use panic_probe as _;
 
 use stm32_eth::{
     hal::{gpio::GpioExt, rcc::Clocks},
@@ -13,6 +17,12 @@ pub use pins::{setup_pins, Gpio};
 
 use fugit::RateExtU32;
 use stm32_eth::hal::rcc::RccExt;
+
+// This is here so that we can build the `common.rs` example individually for
+// each supported MCU family. That way we can be reasonably sure that all examples
+// compile, without having to compile all of them each time.
+#[allow(unused)]
+fn main() {}
 
 /// Setup the clocks and return clocks and a GPIO struct that
 /// can be used to set up all of the pins.

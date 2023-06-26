@@ -35,6 +35,8 @@ mod common;
 #[rtic::app(device = stm32_eth::stm32, dispatchers = [SPI1])]
 mod app {
 
+    use core::task::Poll;
+
     use crate::common::EthernetPhy;
 
     use fugit::ExtU64;
@@ -146,7 +148,7 @@ mod app {
         // Obtain the current time to use as the "TX time" of our frame. It is clearly
         // incorrect, but works well enough in low-activity systems (such as this example).
         let now = (cx.shared.ptp, cx.shared.scheduled_time).lock(|ptp, sched_time| {
-            let now = ptp.get_time();
+            let now = EthernetPTP::get_time();
             #[cfg(not(feature = "stm32f107"))]
             {
                 let in_half_sec = now
@@ -184,8 +186,10 @@ mod app {
         });
     }
 
-    #[task(binds = ETH, shared = [dma, tx_id, ptp, scheduled_time], priority = 2)]
+    #[task(binds = ETH, shared = [dma, tx_id, ptp, scheduled_time], local = [pkt_id_ctr: u32 = 0], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
+        let packet_id_ctr = cx.local.pkt_id_ctr;
+
         (
             cx.shared.dma,
             cx.shared.tx_id,
@@ -193,13 +197,13 @@ mod app {
             cx.shared.scheduled_time,
         )
             .lock(|dma, tx_id, ptp, _sched_time| {
-                dma.interrupt_handler();
+                let int_reason = stm32_eth::eth_interrupt_handler();
 
                 #[cfg(not(feature = "stm32f107"))]
                 {
-                    if ptp.interrupt_handler() {
+                    if int_reason.time_passed {
                         if let Some(sched_time) = _sched_time.take() {
-                            let now = ptp.get_time();
+                            let now = EthernetPTP::get_time();
                             defmt::info!(
                                 "Got a timestamp interrupt {} seconds after scheduling",
                                 now - sched_time
@@ -208,64 +212,67 @@ mod app {
                     }
                 }
 
-                let mut packet_id = 0;
+                loop {
+                    let packet_id = PacketId(*packet_id_ctr);
+                    let rx_timestamp = if let Ok(packet) = dma.recv_next(Some(packet_id.clone())) {
+                        let mut dst_mac = [0u8; 6];
+                        dst_mac.copy_from_slice(&packet[..6]);
 
-                while let Ok(packet) = dma.recv_next(Some(packet_id.into())) {
-                    let mut dst_mac = [0u8; 6];
-                    dst_mac.copy_from_slice(&packet[..6]);
-
-                    // Note that, instead of grabbing the timestamp from the `RxPacket` directly, it
-                    // is also possible to retrieve a cached version of the timestamp using
-                    // `EthernetDMA::get_timestamp_for_id` (in the same way as for TX timestamps).
-                    let ts = if let Some(timestamp) = packet.timestamp() {
-                        timestamp
-                    } else {
-                        continue;
-                    };
-
-                    defmt::debug!("RX timestamp: {}", ts);
-
-                    let timestamp = if dst_mac == [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56] {
-                        let mut timestamp_data = [0u8; 8];
-                        timestamp_data.copy_from_slice(&packet[14..22]);
-                        let raw = i64::from_be_bytes(timestamp_data);
-
-                        let timestamp = Timestamp::new_raw(raw);
-                        timestamp
-                    } else {
-                        continue;
-                    };
-
-                    defmt::debug!("Contained TX timestamp: {}", ts);
-
-                    let diff = timestamp - ts;
-
-                    defmt::info!("Difference between TX and RX time: {}", diff);
-
-                    let addend = ptp.addend();
-                    let nanos = diff.nanos() as u64;
-
-                    if nanos <= 20_000 {
-                        let p1 = ((nanos * addend as u64) / 1_000_000_000) as u32;
-
-                        defmt::debug!("Addend correction value: {}", p1);
-
-                        if diff.is_negative() {
-                            ptp.set_addend(addend - p1 / 2);
+                        let ts = if let Some(timestamp) = packet.timestamp() {
+                            timestamp
                         } else {
-                            ptp.set_addend(addend + p1 / 2);
+                            continue;
                         };
-                    } else {
-                        defmt::warn!("Updated time.");
-                        ptp.update_time(diff);
-                    }
 
-                    packet_id += 1;
-                    packet_id &= !0x8000_0000;
+                        defmt::debug!("RX timestamp: {}", ts);
+
+                        if dst_mac == [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56] {
+                            let mut timestamp_data = [0u8; 8];
+                            timestamp_data.copy_from_slice(&packet[14..22]);
+                            let raw = i64::from_be_bytes(timestamp_data);
+
+                            let timestamp = Timestamp::new_raw(raw);
+
+                            defmt::debug!("Contained TX timestamp: {}", ts);
+
+                            let diff = timestamp - ts;
+
+                            defmt::info!("Difference between TX and RX time: {}", diff);
+
+                            let addend = ptp.addend();
+                            let nanos = diff.nanos() as u64;
+
+                            if nanos <= 20_000 {
+                                let p1 = ((nanos * addend as u64) / 1_000_000_000) as u32;
+
+                                defmt::debug!("Addend correction value: {}", p1);
+
+                                if diff.is_negative() {
+                                    ptp.set_addend(addend - p1 / 2);
+                                } else {
+                                    ptp.set_addend(addend + p1 / 2);
+                                };
+                            } else {
+                                defmt::warn!("Updated time.");
+                                ptp.update_time(diff);
+                            }
+                        }
+
+                        ts
+                    } else {
+                        break;
+                    };
+
+                    let polled_ts = dma.poll_timestamp(&packet_id);
+
+                    assert_eq!(polled_ts, Poll::Ready(Ok(Some(rx_timestamp))));
+
+                    *packet_id_ctr += 1;
+                    *packet_id_ctr &= !0x8000_0000;
                 }
 
                 if let Some((tx_id, sent_time)) = tx_id.take() {
-                    if let Ok(ts) = dma.get_timestamp_for_id(PacketId(tx_id)) {
+                    if let Poll::Ready(Ok(Some(ts))) = dma.poll_timestamp(&PacketId(tx_id)) {
                         defmt::info!("TX timestamp: {}", ts);
                         defmt::debug!(
                         "Diff between TX timestamp and the time that was put into the packet: {}",

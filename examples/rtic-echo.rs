@@ -58,8 +58,8 @@ mod app {
     }
 
     #[init(local = [
-        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
-        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
+        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(), RxRingEntry::new()],
+        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(), TxRingEntry::new()],
         rx_storage: [u8; 512] = [0u8; 512],
         tx_storage: [u8; 512] = [0u8; 512],
         socket_storage: [SocketStorage<'static>; 1] = [SocketStorage::EMPTY; 1],
@@ -179,7 +179,7 @@ mod app {
             cx.local.dma,
         );
 
-        let interrupt_reason = dma.interrupt_handler();
+        let interrupt_reason = stm32_eth::eth_interrupt_handler();
         defmt::debug!("Got an ethernet interrupt! Reason: {}", interrupt_reason);
 
         iface.poll(now_fn(), &mut dma, sockets);

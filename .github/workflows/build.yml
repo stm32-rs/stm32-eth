@@ -9,6 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
   style:
@@ -90,16 +91,21 @@ jobs:
         run: |
           cargo build --release --target=${{ matrix.target }} --features ${{ matrix.features }}
 
-  build-ptp:
-    name: build-no-ptp
+  build-feature-mixer:
+    name: build-feature-mixer
     runs-on: ubuntu-20.04
     strategy:
       matrix:
         target:
           - x86_64-unknown-linux-gnu
+        features:
+          - "ptp,async-await"
+          - "ptp"
+          - "async-await"
+          - ""
         toolchain:
           - stable
-        features:
+        mcu:
           - stm32f107
           - stm32f407
           - stm32f745
@@ -115,9 +121,10 @@ jobs:
 
       - name: cargo build
         run: |
-          cargo build --release --target=${{ matrix.target }} --features ${{ matrix.features }} --no-default-features
+          cargo build --release --target=${{ matrix.target }} --features "${{ matrix.mcu }}" --features "${{ matrix.features }}" --no-default-features
 
-  # Examples
+  # Test that all of the examples compile
+  # for stm32f429
   examples:
     name: examples
     runs-on: ubuntu-20.04
@@ -134,21 +141,14 @@ jobs:
             features: smoltcp-phy
           - example: rtic-timestamp
             features: ""
-        mcu:
-          - stm32f107
-          - stm32f429
-          - stm32f745
+          - example: timesync-server
+            features: ptp
+          - example: timesync-client
+            features: ptp
         toolchain:
           - stable
         target:
-          - thumbv7m-none-eabi
-        pins:
-          - nucleo
-          - default
-        pps:
-          - default
-          - alternate
-
+          - thumbv7em-none-eabi
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -159,9 +159,43 @@ jobs:
           rustup override set ${{ matrix.toolchain }}
           rustup target add ${{ matrix.target }}
 
-      - name: Build example ${{ matrix.example.example }} for ${{ matrix.mcu }}, eth pins ${{ matrix.pins }}, pps pin ${{ matrix.pps }}
+      - name: Build example ${{ matrix.example.example }} for stm32f429
         run: |
-          STM32_ETH_EXAMPLE_PPS=${{ matrix.pps }} STM32_ETH_EXAMPLE_PINS=${{ matrix.pins }} cargo build --release --target=${{ matrix.target }} --example ${{ matrix.example.example}} --features ${{ matrix.mcu }},${{ matrix.example.features }}
+          cargo build --release --target=${{ matrix.target }} --example ${{ matrix.example.example }} --features stm32f429,${{ matrix.example.features }}
+  
+  # Test that all the code shared with other MCU families also compiles
+  examples-common:
+    name: examples-common
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+        target:
+          - thumbv7em-none-eabi
+        mcu:
+          - stm32f107
+          - stm32f429
+          - stm32f745
+        pins:
+          - nucleo
+          - default
+        pps:
+          - default
+          - alternate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Rust ${{ matrix.toolchain }} with target (${{ matrix.target }})
+        run: |
+          rustup set profile minimal
+          rustup override set ${{ matrix.toolchain }}
+          rustup target add ${{ matrix.target }}
+
+      - name: Build examples common file for ${{ matrix.mcu }}, eth pins ${{ matrix.pins }}, pps pin ${{ matrix.pps }}
+        run: |
+          STM32_ETH_EXAMPLE_PPS_PIN=${{ matrix.pps}} STM32_ETH_EXAMPLE_PINS=${{ matrix.pins }} cargo check --release --target=${{ matrix.target }} --example common --features ${{ matrix.mcu }},defmt,smoltcp-phy,ptp
 
   # Refs: https://github.com/rust-lang/crater/blob/9ab6f9697c901c4a44025cf0a39b73ad5b37d198/.github/workflows/bors.yml#L125-L149
   #
@@ -175,6 +209,8 @@ jobs:
       - build
       - test
       - examples
+      - examples-common
+      - build-feature-mixer
     runs-on: ubuntu-20.04
     steps:
       - name: Mark the job as a success

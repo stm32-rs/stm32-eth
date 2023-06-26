@@ -98,9 +98,11 @@ impl<'dma, 'tx> TxToken for EthTxToken<'dma, 'tx> {
     {
         // NOTE(unwrap): an `EthTxToken` is only created if
         // there is a descriptor available for sending.
-        self.tx_ring
-            .send(len, Some(self.packet_id.into()), f)
+        let packet = self
+            .tx_ring
+            .send_next(len, Some(self.packet_id.into()))
             .ok()
-            .unwrap()
+            .unwrap();
+        f(&mut packet)
     }
 }

@@ -6,7 +6,7 @@
 #[cfg_attr(
     feature = "ptp",
     doc = "
-The main use is obtaining timestamps for frames using [`EthernetDMA::get_timestamp_for_id`](crate::EthernetDMA::get_timestamp_for_id)
+The main use is obtaining timestamps for frames using [`EthernetDMA::poll_timestamp`](crate::EthernetDMA::poll_timestamp)
 "
 )]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

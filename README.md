@@ -15,9 +15,9 @@ Pull requests are welcome :)
 Add one of the following to the `[dependencies]` section in your `Cargo.toml` (with the correct MCU specified):
 
 ```toml
-stm32-eth = { version = "0.3.0", features = ["stm32f429"] } # For stm32f4xx-like MCUs
-stm32-eth = { version = "0.3.0", features = ["stm32f767"] } # For stm32f7xx-like MCUs
-stm32-eth = { version = "0.3.0", features = ["stm32f107"] } # For stm32f107
+stm32-eth = { version = "0.4.1", features = ["stm32f429"] } # For stm32f4xx-like MCUs
+stm32-eth = { version = "0.4.1", features = ["stm32f767"] } # For stm32f7xx-like MCUs
+stm32-eth = { version = "0.4.1", features = ["stm32f107"] } # For stm32f107
 ```
 
 `stm32_eth` re-exports the underlying HAL as `stm32_eth::hal`.
@@ -76,21 +76,31 @@ fn main() {
     .unwrap();
     eth_dma.enable_interrupt();
 
-    if let Ok(pkt) = eth_dma.recv_next(None) {
-        // handle received pkt
-    }
+    loop {
+        if let Ok(pkt) = eth_dma.recv_next(None) {
+            // handle received pkt
+        }
 
-    let size = 42;
-    eth_dma.send(size, None, |buf| {
-        // write up to `size` bytes into buf before it is being sent
-    }).expect("send");
+        let size = 42;
+        eth_dma.send(size, None, |buf| {
+            // write up to `size` bytes into buf before it is being sent
+        }).expect("send");
+    }
+}
+
+use stm32_eth::stm32::interrupt;
+#[interrupt]
+fn ETH() {
+    stm32_eth::eth_interrupt_handler();
 }
 ```
 
 
 ## `smoltcp` support
 
-Use feature-flag `smoltcp-phy`
+Use feature-flag `smoltcp-phy`.
+
+To make proper use of `smoltcp`, you will also have to activate additional `smoltcp` features. You can do this by adding a dependency on the same version of `smoltcp` as `stm32-eth` to your own `Cargo.toml` with the features you require activated.
 
 ## Examples
 
