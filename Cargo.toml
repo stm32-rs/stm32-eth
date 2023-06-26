@@ -33,7 +33,7 @@ defmt = { version = "0.3", optional = true }
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 
 [dependencies.smoltcp]
-version = "0.9"
+version = "0.10"
 default-features = false
 optional = true
 
