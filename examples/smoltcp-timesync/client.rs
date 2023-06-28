@@ -27,13 +27,49 @@
 //! To activate the HSE configuration for the examples, set the `STM32_ETH_EXAMPLE_HSE` environment variable
 //! to `oscillator` or `bypass` when compiling examples.
 
+use core::ops::Neg;
+
 use defmt_rtt as _;
 use panic_probe as _;
+use stm32_eth::ptp::Timestamp;
 
+#[path = "../common.rs"]
 mod common;
+
+/// Protocol:
+/// 1. Client sends empty message 0x0
+/// 2. Server sends empty message 0x01, (client records RX time t1')
+/// 3. Server sends message 0x02 with TX time of #2 (client records TX time t1)
+/// 4. Client sends empty message 0x03 (client records TX time t2)
+/// 5. Server sends message 0x04 with RX time of #4 (client records RX time t2')
+/// 6. Server sends empty message 0x05 (client records RX time t3')
+/// 7. Server sends message 0x06 with timestamp of #6 (client records TX time t3)
+
+pub fn calculate_offset(
+    t1: Timestamp,
+    t1_prim: Timestamp,
+    t2: Timestamp,
+    t2_prim: Timestamp,
+) -> Timestamp {
+    let double_offset = t1_prim - t1 - t2_prim + t2;
+
+    let raw = double_offset.raw();
+    let offset = (raw / 2).neg();
+    let offset = Timestamp::new_raw(offset);
+
+    offset
+}
 
 #[rtic::app(device = stm32_eth::stm32, dispatchers = [SPI1])]
 mod app {
+
+    use core::task::Poll;
+
+    use smoltcp::{
+        iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage},
+        socket::udp,
+        wire::{EthernetAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint, Ipv4Address},
+    };
 
     use crate::common::EthernetPhy;
 
@@ -43,20 +79,11 @@ mod app {
     use stm32_eth::{
         dma::{EthernetDMA, RxRingEntry, TxRingEntry},
         mac::Speed,
-        ptp::EthernetPTP,
+        ptp::{EthernetPTP, Timestamp},
         Parts,
     };
 
-    use smoltcp::{
-        iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage},
-        socket::udp,
-        wire::{
-            EthernetAddress, HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint,
-            Ipv4Address,
-        },
-    };
-
-    const SERVER_ADDR: [u8; 6] = [0x80, 0x00, 0xDE, 0xAD, 0xBE, 0xFF];
+    const CLIENT_ADDR: [u8; 6] = [0x80, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
 
     fn now() -> smoltcp::time::Instant {
         let now_micros = monotonics::now().ticks() * 1000;
@@ -64,7 +91,9 @@ mod app {
     }
 
     #[local]
-    struct Local {}
+    struct Local {
+        start_addend: u32,
+    }
 
     #[shared]
     struct Shared {
@@ -86,7 +115,7 @@ mod app {
         tx_meta_storage: [udp::PacketMetadata; 8] = [udp::PacketMetadata::EMPTY; 8],
         tx_payload_storage: [u8; 1024] = [0u8; 1024],
         sockets: [SocketStorage<'static>; 8] = [SocketStorage::EMPTY; 8],
-    ])]
+        ])]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
         let core = cx.core;
@@ -115,15 +144,15 @@ mod app {
             mut ptp,
         } = stm32_eth::new_with_mii(ethernet, rx_ring, tx_ring, clocks, pins, mdio, mdc).unwrap();
 
-        ptp.set_pps_freq(10);
         ptp.enable_pps(pps);
+        ptp.set_pps_freq(10);
+        let start_addend = ptp.addend();
 
-        let mut cfg = Config::new();
-        cfg.hardware_addr = Some(HardwareAddress::Ethernet(EthernetAddress(SERVER_ADDR)));
+        let cfg = Config::new(EthernetAddress(CLIENT_ADDR).into());
 
-        let mut interface = Interface::new(cfg, &mut &mut dma);
+        let mut interface = Interface::new(cfg, &mut &mut dma, smoltcp::time::Instant::ZERO);
         interface.update_ip_addrs(|a| {
-            a.push(IpCidr::new(IpAddress::v4(10, 0, 0, 1), 24)).ok();
+            a.push(IpCidr::new(IpAddress::v4(10, 0, 0, 2), 24)).ok();
         });
 
         let rx_buffer =
@@ -137,8 +166,6 @@ mod app {
 
         defmt::info!("Enabling interrupts");
         dma.enable_interrupt();
-
-        runner::spawn().ok();
 
         match EthernetPhy::from_miim(mac, 0) {
             Ok(mut phy) => {
@@ -172,6 +199,8 @@ mod app {
             }
         };
 
+        runner::spawn().ok();
+
         (
             Shared {
                 dma,
@@ -180,25 +209,29 @@ mod app {
                 sockets,
                 udp_socket,
             },
-            Local {},
+            Local { start_addend },
             init::Monotonics(mono),
         )
     }
 
-    #[task(shared = [interface, dma, sockets, udp_socket])]
+    #[task(shared = [interface, dma, sockets, udp_socket, ptp], local = [addend_integrator: f32 = 0.0, start_addend])]
     fn runner(cx: runner::Context) {
+        use core::convert::TryInto;
         use fugit::ExtU64;
 
-        runner::spawn().ok();
-
+        runner::spawn_after(100.millis()).ok();
         let start = monotonics::now();
 
-        let (mut interface, mut dma, mut sockets, mut udp_socket) = (
+        let (mut interface, mut dma, mut sockets, mut udp_socket, mut ptp) = (
             cx.shared.interface,
             cx.shared.dma,
             cx.shared.sockets,
             cx.shared.udp_socket,
+            cx.shared.ptp,
         );
+
+        let (addend_integrator, start_addend) =
+            (cx.local.addend_integrator, *cx.local.start_addend);
 
         let udp_socket = udp_socket.lock(|v| *v);
         let mut buf = [0u8; 128];
@@ -225,9 +258,8 @@ mod app {
                     let res = (&mut sockets).lock(|sockets| {
                         let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
                         if let Ok((size, meta)) = udp_socket.recv_slice(&mut buf) {
-                            if let Some(timestamp) = dma
-                                .lock(|dma| dma.get_timestamp_for_id(meta.packet_id().unwrap()))
-                                .ok()
+                            if let Poll::Ready(Ok(Some(timestamp))) =
+                                dma.lock(|dma| dma.poll_timestamp(&meta.meta.into()))
                             {
                                 Ok((&buf[..size], timestamp))
                             } else {
@@ -252,18 +284,16 @@ mod app {
                 let packet_id = (&mut sockets, &mut interface).lock(|sockets, interface| {
                     let udp_socket = sockets.get_mut::<udp::Socket>(udp_socket);
 
-                    let (buf, packet_id) = udp_socket
-                        .send_marked(
-                            interface,
-                            $data.len(),
-                            IpEndpoint {
-                                addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 2])),
-                                port: 1337,
-                            },
-                        )
-                        .unwrap();
+                    let packet_id = dma.lock(|dma| dma.next_packet_id()).into();
 
-                    buf[..$data.len()].copy_from_slice($data);
+                    let mut meta: udp::UdpMetadata = IpEndpoint {
+                        addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 1])),
+                        port: 1337,
+                    }
+                    .into();
+                    meta.meta = packet_id;
+
+                    udp_socket.send_slice($data, meta).unwrap();
 
                     dma.lock(|mut dma| {
                         interface.poll(now(), &mut dma, sockets);
@@ -277,9 +307,9 @@ mod app {
                         return;
                     }
 
-                    let timestamp = dma.lock(|dma| dma.get_timestamp_for_id(packet_id).ok());
+                    let timestamp = dma.lock(|dma| dma.poll_timestamp(&packet_id.into()));
 
-                    if let Some(timestamp) = timestamp {
+                    if let Poll::Ready(Ok(Some(timestamp))) = timestamp {
                         break timestamp;
                     }
                 }
@@ -292,56 +322,85 @@ mod app {
         // 3. Server sends message 0x02 with TX time of #2 (client records TX time t1)
         // 4. Client sends empty message 0x03 (client records TX time t2)
         // 5. Server sends message 0x04 with RX time of #4 (client records RX time t2')
-        // 6. Server sends empty message 0x05 (client records RX time t3')
-        // 7. Server sends message 0x06 with timestamp of #6 (client records TX time t3)
-
-        let (m0, _) = recv!();
 
         defmt::info!("Step 1");
-
-        if m0 != &[0x00] {
-            defmt::error!("Expected message 0x00, got {}", m0);
-            return;
-        }
+        send!(&[0x00]);
 
         defmt::info!("Step 2");
-        let t1 = send!(&[0x1]);
+        let (buf, t1_prim) = recv!();
 
-        defmt::info!("Step 3");
-        let mut data = [0u8; 9];
-        data[0] = 0x2;
-        data[1..9].copy_from_slice(&t1.raw().to_le_bytes());
-        let _ = send!(&data);
-
-        defmt::info!("Step 4");
-        let (m3, t2_prim) = recv!();
-        if m3 != &[0x03] {
-            defmt::error!("Expected message 0x03, got {}", m3);
+        if buf[0] != 0x01 {
+            defmt::error!("Expected message 0x01, got {}", buf);
             return;
         }
 
-        defmt::info!("Step 5");
-        data[0] = 0x04;
-        data[1..9].copy_from_slice(&t2_prim.raw().to_le_bytes());
-        send!(&data);
+        defmt::info!("Step 3");
+        let (buf, _) = recv!();
 
-        defmt::info!("Done.");
+        if buf[0] != 0x02 {
+            defmt::error!("Expected message 0x02, got {}", buf);
+            return;
+        }
+
+        let t1 = Timestamp::new_raw(i64::from_le_bytes(
+            buf[1..9].try_into().expect("Infallible"),
+        ));
+
+        defmt::info!("Step 4");
+        let t2 = send!(&[0x03]);
+
+        defmt::info!("Step 5");
+        let (buf, _) = recv!();
+
+        if buf[0] != 0x04 {
+            defmt::error!("Expected message 0x04, got {}", buf);
+            return;
+        }
+
+        let t2_prim = Timestamp::new_raw(i64::from_le_bytes(
+            buf[1..9].try_into().expect("Infallible"),
+        ));
+
+        let offset = crate::calculate_offset(t1, t1_prim, t2, t2_prim);
+
+        ptp.lock(|ptp| {
+            let now = EthernetPTP::get_time();
+            if offset.seconds() > 0 || offset.nanos() > 200_000 {
+                *addend_integrator = 0.0;
+                defmt::info!("Updating time. Offset {} ", offset);
+                let updated_time = now + offset;
+                ptp.set_time(updated_time);
+            } else {
+                let mut offset_nanos = offset.nanos() as i64;
+                if offset.is_negative() {
+                    offset_nanos *= -1;
+                }
+
+                let error = (offset_nanos * start_addend as i64) / 1_000_000_000;
+                *addend_integrator += error as f32 / 500.;
+
+                defmt::info!(
+                    "Error: {}. Integrator: {}, Offset: {} ns",
+                    error,
+                    addend_integrator,
+                    offset_nanos
+                );
+
+                let new_addend =
+                    (start_addend as i64 + error / 4 + (*addend_integrator as i64)) as u32;
+                ptp.set_addend(new_addend);
+            }
+        });
     }
 
-    #[task(binds = ETH, shared = [dma, ptp, interface, sockets], priority = 2)]
+    #[task(binds = ETH, shared = [dma, interface, sockets], priority = 2)]
     fn eth_interrupt(cx: eth_interrupt::Context) {
-        let (dma, ptp, interface, sockets) = (
-            cx.shared.dma,
-            cx.shared.ptp,
-            cx.shared.interface,
-            cx.shared.sockets,
-        );
+        let (dma, interface, sockets) = (cx.shared.dma, cx.shared.interface, cx.shared.sockets);
 
-        (dma, ptp, interface, sockets).lock(|mut dma, ptp, interface, sockets| {
-            dma.interrupt_handler();
-            ptp.interrupt_handler();
+        stm32_eth::eth_interrupt_handler();
 
+        (dma, interface, sockets).lock(|mut dma, interface, sockets| {
             interface.poll(now(), &mut dma, sockets);
-        });
+        })
     }
 }

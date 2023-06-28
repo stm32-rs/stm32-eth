@@ -69,8 +69,14 @@ impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
+        #[cfg(feature = "ptp")]
+        let meta = Some(self.meta.into());
+
+        #[cfg(not(feature = "ptp"))]
+        let meta = None;
+
         // NOTE(unwrap): an `EthRxToken` is only created when `eth.rx_available()`
-        let mut packet = self.rx_ring.recv_next(None).ok().unwrap();
+        let mut packet = self.rx_ring.recv_next(meta).ok().unwrap();
         let result = f(&mut packet);
         packet.free();
         result

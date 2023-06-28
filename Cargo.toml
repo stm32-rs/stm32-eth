@@ -117,12 +117,14 @@ name = "rtic-timestamp"
 required-features = [ "defmt", "ptp" ]
 
 [[example]]
-name = "client"
-required-features = [ "defmt", "ptp" ]
+name = "smoltcp-client"
+path = "./examples/smoltcp-timesync/client.rs"
+required-features = [ "defmt", "ptp", "smoltcp-phy" ]
 
 [[example]]
-name = "server"
-required-features = [ "defmt", "ptp" ]
+name = "smoltcp-server"
+path = "./examples/smoltcp-timesync/server.rs"
+required-features = [ "defmt", "ptp", "smoltcp-phy" ]
 
 [[example]]
 name = "timesync-client"
