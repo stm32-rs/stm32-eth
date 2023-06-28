@@ -1,6 +1,10 @@
 use super::rx::RxRing;
 use super::tx::TxRing;
-use super::{EthernetDMA, PacketId};
+use super::EthernetDMA;
+
+#[cfg(feature = "ptp")]
+use super::PacketId;
+
 use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
 
