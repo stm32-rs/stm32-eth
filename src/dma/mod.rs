@@ -123,6 +123,8 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
             eth_dma,
             rx_ring: RxRing::new(rx_buffer),
             tx_ring: TxRing::new(tx_buffer),
+
+            #[cfg(feature = "ptp")]
             packet_id_counter: 0,
         };
 
