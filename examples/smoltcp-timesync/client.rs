@@ -3,29 +3,11 @@
 
 //! For build and run instructions, see README.md
 //!
-//! A very rudimentary PTP synchronization example built using RTIC.
+//! A very rudimentary PTP synchronization example built using RTIC & smoltcp.
 //!
-//! The example requires that at least two nodes are running at the same time,
-//! and the time synchronization that occurs does not explicitly compensate for
-//! network delays.
+//! For this to work, it requires that another node is running the server example.
 //!
-//! All nodes send traffic to a specific MAC address (AB:CD:EF:12:34:56) with an unused
-//! EtherType (0xFFFF), containing nothing but the raw value of a [`Timestamp`]. Upon reception
-//! of such a frame, the node will parse the timestamp, compare it to when the frame was received
-//! according to the local time, and do one of following:
-//!
-//! 1. If the difference is larger than 20 microseconds, the current local time is set to the
-//!    received value.
-//! 2. If the difference is smaller than or equal to 20 microseconds, the PTP addend value is updated
-//!    to compensate for the observed difference.
-//!
-//! When using the internal oscillator of an STM32, step 2 will (almost) never occur, as the frequency
-//! drift and error with this clock is too great to accurately compensate for. However,
-//! if a more accurate High Speed External oscillator is connected to your MCU, even this very basic
-//! synchronization scheme can synchronize the rate of time on two nodes to within a few PPMs.
-//!
-//! To activate the HSE configuration for the examples, set the `STM32_ETH_EXAMPLE_HSE` environment variable
-//! to `oscillator` or `bypass` when compiling examples.
+//! For more information, see the description of examples/timesync/client.rs
 
 use core::ops::Neg;
 
