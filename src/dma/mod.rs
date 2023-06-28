@@ -45,6 +45,9 @@ pub struct EthernetDMA<'rx, 'tx> {
     pub(crate) eth_dma: ETHERNET_DMA,
     pub(crate) rx_ring: RxRing<'rx>,
     pub(crate) tx_ring: TxRing<'tx>,
+
+    #[cfg(feature = "ptp")]
+    packet_id_counter: u32,
 }
 
 impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
@@ -120,6 +123,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
             eth_dma,
             rx_ring: RxRing::new(rx_buffer),
             tx_ring: TxRing::new(tx_buffer),
+            packet_id_counter: 0,
         };
 
         dma.rx_ring.start(&dma.eth_dma);
@@ -365,6 +369,13 @@ impl EthernetDMA<'_, '_> {
         packet_id: &PacketId,
     ) -> Result<Option<Timestamp>, PacketIdNotFound> {
         self.tx_ring.timestamp(packet_id).await
+    }
+
+    /// Get the next packet ID.
+    pub fn next_packet_id(&mut self) -> PacketId {
+        let id = PacketId(self.packet_id_counter);
+        self.packet_id_counter += 1;
+        id
     }
 }
 
