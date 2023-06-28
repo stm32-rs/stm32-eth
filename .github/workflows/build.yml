@@ -112,6 +112,7 @@ jobs:
           - "ptp,async-await"
           - "ptp"
           - "async-await"
+          - "smoltcp-phy"
           - ""
         toolchain:
           - stable
