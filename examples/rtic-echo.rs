@@ -101,10 +101,9 @@ mod app {
 
         let socket = TcpSocket::new(rx_buffer, tx_buffer);
 
-        let mut config = iface::Config::new();
-        config.hardware_addr = Some(EthernetAddress::from_bytes(&crate::MAC).into());
+        let config = iface::Config::new(EthernetAddress::from_bytes(&crate::MAC).into());
 
-        let mut interface = Interface::new(config, &mut &mut dma);
+        let mut interface = Interface::new(config, &mut &mut dma, smoltcp::time::Instant::ZERO);
         interface.update_ip_addrs(|addr| {
             addr.push(IpCidr::Ipv4(Ipv4Cidr::new(crate::IP_ADDRESS, 24)))
                 .ok();

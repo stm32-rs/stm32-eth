@@ -26,11 +26,7 @@ mod app {
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
 
-    use stm32_eth::{
-        dma::{EthernetDMA, PacketId},
-        mac::Speed,
-        Parts,
-    };
+    use stm32_eth::{dma::EthernetDMA, mac::Speed, Parts};
 
     const BROADCAST: [u8; 6] = [0xFF; 6];
     const CLIENT_ADDR: [u8; 6] = [0x80, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
@@ -113,7 +109,7 @@ mod app {
         (Shared {}, Local { dma }, init::Monotonics(mono))
     }
 
-    #[task(local = [packet_id: u32 = 0, dma])]
+    #[task(local = [dma])]
     fn runner(cx: runner::Context) {
         use fugit::ExtU64;
 
@@ -121,7 +117,7 @@ mod app {
 
         let start = monotonics::now();
 
-        let (packet_id, dma) = (cx.local.packet_id, cx.local.dma);
+        let dma = cx.local.dma;
 
         let mut buf = [0u8; 128];
 
@@ -162,8 +158,7 @@ mod app {
 
         macro_rules! send {
             ($data:expr) => {{
-                let current_id = PacketId(*packet_id);
-                *packet_id += 1;
+                let current_id = dma.next_packet_id();
                 let current_clone = current_id.clone();
                 dma.send(14 + $data.len(), Some(current_clone), |buf| {
                     buf[0..6].copy_from_slice(&BROADCAST);

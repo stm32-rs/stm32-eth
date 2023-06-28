@@ -56,9 +56,8 @@ fn main() -> ! {
 
     let ethernet_addr = EthernetAddress(SRC_MAC);
 
-    let mut config = Config::new();
-    config.hardware_addr = Some(ethernet_addr.into());
-    let mut iface = Interface::new(config, &mut &mut dma);
+    let config = Config::new(ethernet_addr.into());
+    let mut iface = Interface::new(config, &mut &mut dma, Instant::ZERO);
 
     iface.update_ip_addrs(|addr| {
         addr.push(IpCidr::Ipv4(Ipv4Cidr::new(IP_ADDRESS, 24))).ok();

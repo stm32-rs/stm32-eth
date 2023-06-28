@@ -41,7 +41,7 @@ optional = true
 default = [ "defmt", "ptp" ]
 device-selected = []
 fence = []
-ptp = [ ]
+ptp = [ "smoltcp/packetmeta-id" ]
 f-series = [ ]
 async-await = ["dep:futures"]
 
@@ -91,7 +91,7 @@ fugit = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
-smoltcp = { version = "0.9", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
+smoltcp = { version = "0.10", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
 
 [dev-dependencies.rtic]
 package = "cortex-m-rtic"
