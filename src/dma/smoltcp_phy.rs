@@ -1,6 +1,10 @@
 use super::rx::RxRing;
 use super::tx::TxRing;
-use super::{EthernetDMA, PacketId};
+use super::EthernetDMA;
+
+#[cfg(feature = "ptp")]
+use super::PacketId;
+
 use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
 
@@ -19,6 +23,7 @@ impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         if self.tx_available() && self.rx_available() {
+            #[cfg(feature = "ptp")]
             let rx_packet_id = self.next_packet_id();
 
             let EthernetDMA {
