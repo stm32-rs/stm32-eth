@@ -1,7 +1,7 @@
 use super::rx::RxRing;
 use super::tx::TxRing;
-use super::EthernetDMA;
-use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, PacketId, RxToken, TxToken};
+use super::{EthernetDMA, PacketId};
+use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/smoltcp-rs/smoltcp)
@@ -17,25 +17,24 @@ impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
         caps
     }
 
-    fn receive(
-        &mut self,
-        _timestamp: Instant,
-        rx_packet_id: PacketId,
-        tx_packet_id: PacketId,
-    ) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+    fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         if self.tx_available() && self.rx_available() {
+            let rx_packet_id = self.next_packet_id();
+
             let EthernetDMA {
                 rx_ring, tx_ring, ..
             } = self;
 
             let rx = EthRxToken {
                 rx_ring,
-                packet_id: rx_packet_id,
+                #[cfg(feature = "ptp")]
+                meta: rx_packet_id,
             };
 
             let tx = EthTxToken {
                 tx_ring,
-                packet_id: tx_packet_id,
+                #[cfg(feature = "ptp")]
+                meta: None,
             };
             Some((rx, tx))
         } else {
@@ -43,16 +42,13 @@ impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
         }
     }
 
-    fn transmit(
-        &mut self,
-        _timestamp: Instant,
-        tx_packet_id: PacketId,
-    ) -> Option<Self::TxToken<'_>> {
+    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
         if self.tx_available() {
             let EthernetDMA { tx_ring, .. } = self;
             Some(EthTxToken {
                 tx_ring,
-                packet_id: tx_packet_id,
+                #[cfg(feature = "ptp")]
+                meta: None,
             })
         } else {
             None
@@ -64,7 +60,8 @@ impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
 /// an ethernet packet.
 pub struct EthRxToken<'a, 'rx> {
     rx_ring: &'a mut RxRing<'rx>,
-    packet_id: PacketId,
+    #[cfg(feature = "ptp")]
+    meta: PacketId,
 }
 
 impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
@@ -73,14 +70,15 @@ impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
         F: FnOnce(&mut [u8]) -> R,
     {
         // NOTE(unwrap): an `EthRxToken` is only created when `eth.rx_available()`
-        let mut packet = self
-            .rx_ring
-            .recv_next(Some(self.packet_id.into()))
-            .ok()
-            .unwrap();
+        let mut packet = self.rx_ring.recv_next(None).ok().unwrap();
         let result = f(&mut packet);
         packet.free();
         result
+    }
+
+    #[cfg(feature = "ptp")]
+    fn meta(&self) -> smoltcp::phy::PacketMeta {
+        self.meta.clone().into()
     }
 }
 
@@ -88,7 +86,8 @@ impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
 /// packet later with [`TxToken::consume()`].
 pub struct EthTxToken<'a, 'tx> {
     tx_ring: &'a mut TxRing<'tx>,
-    packet_id: PacketId,
+    #[cfg(feature = "ptp")]
+    meta: Option<PacketId>,
 }
 
 impl<'dma, 'tx> TxToken for EthTxToken<'dma, 'tx> {
@@ -96,13 +95,21 @@ impl<'dma, 'tx> TxToken for EthTxToken<'dma, 'tx> {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
+        #[cfg(feature = "ptp")]
+        let meta = self.meta.map(Into::into);
+        #[cfg(not(feature = "ptp"))]
+        let meta = None;
+
         // NOTE(unwrap): an `EthTxToken` is only created if
         // there is a descriptor available for sending.
-        let packet = self
-            .tx_ring
-            .send_next(len, Some(self.packet_id.into()))
-            .ok()
-            .unwrap();
-        f(&mut packet)
+        let mut tx_packet = self.tx_ring.send_next(len, meta).ok().unwrap();
+        let res = f(&mut tx_packet);
+        tx_packet.send();
+        res
+    }
+
+    #[cfg(feature = "ptp")]
+    fn set_meta(&mut self, meta: smoltcp::phy::PacketMeta) {
+        self.meta = Some(meta.into());
     }
 }

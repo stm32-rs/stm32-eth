@@ -86,7 +86,7 @@ mod app {
     use systick_monotonic::Systick;
 
     use stm32_eth::{
-        dma::{EthernetDMA, PacketId, RxRingEntry, TxRingEntry},
+        dma::{EthernetDMA, RxRingEntry, TxRingEntry},
         mac::Speed,
         ptp::{EthernetPTP, Timestamp},
         Parts,
@@ -189,7 +189,7 @@ mod app {
         )
     }
 
-    #[task(local = [addend_integrator: f32 = 0.0, start_addend, packet_id: u32 = 0, dma, ptp])]
+    #[task(local = [addend_integrator: f32 = 0.0, start_addend, dma, ptp])]
     fn runner(cx: runner::Context) {
         use fugit::ExtU64;
 
@@ -199,11 +199,8 @@ mod app {
 
         let start = monotonics::now();
 
-        let (addend_integrator, start_addend, packet_id) = (
-            cx.local.addend_integrator,
-            *cx.local.start_addend,
-            cx.local.packet_id,
-        );
+        let (addend_integrator, start_addend) =
+            (cx.local.addend_integrator, *cx.local.start_addend);
 
         let mut buf = [0u8; 128];
 
@@ -244,8 +241,7 @@ mod app {
 
         macro_rules! send {
             ($data:expr) => {{
-                let current_id = PacketId(*packet_id);
-                *packet_id += 1;
+                let current_id = dma.next_packet_id();
                 let current_clone = current_id.clone();
 
                 dma.send(14 + $data.len(), Some(current_clone), |buf| {

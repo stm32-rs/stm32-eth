@@ -32,18 +32,15 @@ defmt = { version = "0.3", optional = true }
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
 
 [dependencies.smoltcp]
-# version = "0.9"
-git = "https://github.com/datdenkikniet/smoltcp.git"
-branch = "unique_packet_id"
+version = "0.10"
 default-features = false
 optional = true
-features = [ "packet-id" ]
 
 [features]
 default = [ "defmt", "ptp" ]
 device-selected = []
 fence = []
-ptp = [ ]
+ptp = [ "smoltcp/packetmeta-id" ]
 async-await = ["dep:futures"]
 
 stm32f107 = ["stm32f1xx-hal/stm32f107", "device-selected"]
@@ -76,7 +73,7 @@ fugit = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
-smoltcp = { git = "https://github.com/datdenkikniet/smoltcp.git", branch = "unique_packet_id", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt", "packet-id" ], default-features = false }
+smoltcp = { version = "0.10", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
 
 [dev-dependencies.rtic]
 package = "cortex-m-rtic"

@@ -24,9 +24,18 @@ impl From<u32> for PacketId {
     }
 }
 
-#[cfg(feature = "smoltcp-phy")]
-impl From<smoltcp::phy::PacketId> for PacketId {
-    fn from(value: smoltcp::phy::PacketId) -> Self {
-        Self(value.id())
+#[cfg(all(feature = "ptp", feature = "smoltcp-phy"))]
+impl From<smoltcp::phy::PacketMeta> for PacketId {
+    fn from(value: smoltcp::phy::PacketMeta) -> Self {
+        Self(value.id)
+    }
+}
+
+#[cfg(all(feature = "ptp", feature = "smoltcp-phy"))]
+impl From<PacketId> for smoltcp::phy::PacketMeta {
+    fn from(value: PacketId) -> Self {
+        let mut meta = smoltcp::phy::PacketMeta::default();
+        meta.id = value.0;
+        meta
     }
 }
