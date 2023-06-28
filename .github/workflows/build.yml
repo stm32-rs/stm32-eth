@@ -146,6 +146,10 @@ jobs:
             features: ptp
           - example: timesync-client
             features: ptp
+          - example: smoltcp-client
+            features: ptp,smoltcp-phy
+          - example: smoltcp-server
+            features: ptp,smoltcp-phy
         toolchain:
           - stable
         target:
