@@ -161,6 +161,10 @@ pub type TxRingEntry = RingEntry<TxDescriptor>;
 
 impl RingDescriptor for TxDescriptor {
     fn setup(&mut self, buffer: *const u8, _len: usize, next: Option<&Self>) {
+        unsafe {
+            self.desc.clear();
+        }
+
         // Defer this initialization to this function, so we can have `RingEntry` on bss.
         let next_desc_addr = if let Some(next) = next {
             &next.desc as *const Descriptor as *const u8 as u32
@@ -171,9 +175,6 @@ impl RingDescriptor for TxDescriptor {
 
         self.buffer1 = buffer as u32;
         self.next_descriptor = next_desc_addr;
-        unsafe {
-            self.desc.clear();
-        }
     }
 }
 
