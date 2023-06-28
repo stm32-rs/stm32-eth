@@ -19,6 +19,7 @@ impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         if self.tx_available() && self.rx_available() {
+            #[cfg(feature = "ptp")]
             let rx_packet_id = self.next_packet_id();
 
             let EthernetDMA {
