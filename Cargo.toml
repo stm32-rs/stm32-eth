@@ -81,14 +81,12 @@ version = "1.0"
 
 [dev-dependencies.async-rtic]
 package = "rtic"
-git = "https://github.com/rtic-rs/rtic.git"
-rev = "7c7d6558f6d9c50fbb4d2487c98c9a5be15f2f7b"
+version = "2"
 features = [ "thumbv7-backend" ]
 
 [dev-dependencies.rtic-sync]
 package = "rtic-sync"
-git = "https://github.com/rtic-rs/rtic.git"
-rev = "7c7d6558f6d9c50fbb4d2487c98c9a5be15f2f7b"
+version = "1.0"
 
 # This isn't an actual example. It just exists so we can easily
 # test the common items :)
