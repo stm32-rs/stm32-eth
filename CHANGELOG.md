@@ -1,18 +1,27 @@
 ## Unreleased
-* Update to `smoltcp` v0.9 ([#71])
-* Add `timesync-server` and `timesync-client` examples ([#72])
+No unreleased changes.
+
+## [0.5.0](https://github.com/stm32-rs/stm32-eth/tree/v0.5.0)
+### Changes
+* Update to `smoltcp` ~~v0.9~~ v0.10 (~~[#71]~~ [#81])
 * Remove argument from `eth_interrupt_handler` ([#75], fixes [#44])
 * [#75]
     * Make EthernetDMA drop safe
     * Add `EthernetDMA::split`: support for using RX and TX independently
     * Make the interrupt handler methods and `EthernetPTP::get_time` static FNs
     * Add feature `async-await`, used for accessing RX and/or TX asynchronously, as well as the ethernet PTP timestamp interrupt
-    * Add `async-rtic-timestamp` exmaple (nightly only)
+
+### Examples
+* Add `timesync-server` and `timesync-client` examples ([#72])
+* Add a `smoltcp` based PTP example ([#82])
+* Add `async-rtic-timestamp` example (nightly only) ([#75])
 
 [#44]: https://github.com/stm32-rs/stm32-eth/issues/44
 [#71]: https://github.com/stm32-rs/stm32-eth/pull/71
 [#72]: https://github.com/stm32-rs/stm32-eth/pull/72
 [#75]: https://github.com/stm32-rs/stm32-eth/pull/75
+[#81]: https://github.com/stm32-rs/stm32-eth/pull/81
+[#82]: https://github.com/stm32-rs/stm32-eth/pull/82
 
 ## [0.4.1](https://github.com/stm32-rs/stm32-eth/tree/v0.4.1)
 * Fix a bug when caching timestamps in the TX path ([#73])
