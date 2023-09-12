@@ -171,3 +171,11 @@ cargo run --release --example arp \
     --features stm32f767 \
     --target thumbv7em-none-eabihf
 ```
+
+## License
+
+All source code (including code snippets) is licensed under the Apache License, Version 2.0 ([LICENSE](LICENSE)) or [https://www.apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0)
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be licensed as above, without any additional terms or conditions.
