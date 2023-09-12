@@ -376,7 +376,7 @@ impl EthernetDMA<'_, '_> {
     /// Get the next packet ID.
     pub fn next_packet_id(&mut self) -> PacketId {
         let id = PacketId(self.packet_id_counter);
-        self.packet_id_counter += 1;
+        self.packet_id_counter = self.packet_id_counter.wrapping_add(1);
         id
     }
 }
