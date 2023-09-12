@@ -1,5 +1,5 @@
 ## Unreleased
-No unreleased changes.
+* Ensure `packet_id` overflow does not panic ([#87])
 
 ## [0.5.0](https://github.com/stm32-rs/stm32-eth/tree/v0.5.0)
 ### Changes
