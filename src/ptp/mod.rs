@@ -302,7 +302,7 @@ impl EthernetPTP {
     /// The PPS output frequency becomes `2 ^ pps_freq`. `pps_freq` is
     /// clamped to `[0..31]`.
     pub fn set_pps_freq(&mut self, pps_freq: u8) {
-        let pps_freq = pps_freq.max(31);
+        let pps_freq = pps_freq.min(31);
 
         // SAFETY: we atomically write to the PTPPPSCR register, which is
         // not read or written to anywhere else. The SVD files are incorrectly
