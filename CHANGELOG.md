@@ -1,4 +1,7 @@
 ## Unreleased
+* Fix the PPS pin frequency so it's not always running at the max frequency ([#89])
+
+[#89]: https://github.com/stm32-rs/stm32-eth/pull/89
 
 ## [0.5.1](https://github.com/stm32-rs/stm32-eth/tree/v0.5.1)
 * Ensure `packet_id` overflow does not panic ([#87])
