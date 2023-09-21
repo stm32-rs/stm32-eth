@@ -4,46 +4,74 @@
 //! which pins can have a specific function, and provides
 //! functionality for setting up clocks and the MAC peripheral
 
-#[cfg(feature = "stm32f4xx-hal")]
-use stm32f4xx_hal::{
-    bb,
-    gpio::{
-        gpioa::{PA1, PA7},
-        gpiob::{PB11, PB12, PB13},
-        gpioc::{PC4, PC5},
-        gpiog::{PG11, PG13, PG14},
-        Input,
-        Speed::VeryHigh,
-    },
-    pac::{RCC, SYSCFG},
-};
-
-#[cfg(feature = "stm32f7xx-hal")]
-use cortex_m::interrupt;
-
-#[cfg(feature = "stm32f7xx-hal")]
-use stm32f7xx_hal::{
-    gpio::{
-        gpioa::{PA1, PA7},
-        gpiob::{PB11, PB12, PB13},
-        gpioc::{PC4, PC5},
-        gpiog::{PG11, PG13, PG14},
-        Input,
-        Speed::VeryHigh,
-    },
-    pac::{RCC, SYSCFG},
-};
-
 use crate::{
     dma::EthernetDMA,
-    stm32::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_MMC},
+    stm32::{ETHERNET_DMA, ETHERNET_MAC},
 };
 
+#[cfg(feature = "stm32f4xx-hal")]
+use crate::hal::bb;
+
+#[cfg(any(
+    feature = "stm32f4xx-hal",
+    feature = "stm32f7xx-hal",
+    feature = "stm32h7xx-hal"
+))]
+use crate::hal::{
+    gpio::{
+        gpioa::{PA1, PA7},
+        gpiob::{PB11, PB12, PB13},
+        gpioc::{PC4, PC5},
+        gpiog::{PG11, PG13},
+        Input,
+        Speed::VeryHigh,
+    },
+    pac::{RCC, SYSCFG},
+};
+
+#[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
+use crate::hal::gpio::gpiog::PG14;
+
+#[cfg(any(feature = "stm32f7xx-hal", feature = "stm32h7xx-hal"))]
+use cortex_m::interrupt;
+
+#[cfg(feature = "f-series")]
+use crate::stm32::ETHERNET_MMC;
+
+#[cfg(feature = "stm32h7xx-hal")]
+use crate::stm32::ETHERNET_MTL;
+
 #[cfg(feature = "ptp")]
-use crate::{ptp::EthernetPTP, stm32::ETHERNET_PTP};
+use crate::ptp::EthernetPTP;
 
 // Enable syscfg and ethernet clocks. Reset the Ethernet MAC.
 pub(crate) fn setup() {
+    #[cfg(feature = "stm32h7xx-hal")]
+    interrupt::free(|_| {
+        // SAFETY: we only perform interrupt-free modifications of RCC.
+        let rcc = unsafe { &*RCC::ptr() };
+        let syscfg = unsafe { &*SYSCFG::ptr() };
+
+        rcc.apb4enr.modify(|_, w| w.syscfgen().set_bit());
+        rcc.ahb1enr.modify(|_, w| {
+            w.eth1macen()
+                .set_bit()
+                .eth1rxen()
+                .set_bit()
+                .eth1txen()
+                .set_bit()
+        });
+
+        // Select RMII mode
+        //
+        // SAFETY: this is the correct value for RMII mode.
+        syscfg.pmcr.modify(|_, w| unsafe { w.epis().bits(0b100) });
+
+        // Reset pulse to MAC.
+        rcc.ahb1rstr.modify(|_, w| w.eth1macrst().set_bit());
+        rcc.ahb1rstr.modify(|_, w| w.eth1macrst().clear_bit());
+    });
+
     #[cfg(feature = "stm32f4xx-hal")]
     unsafe {
         const SYSCFG_BIT: u8 = 14;
@@ -178,44 +206,21 @@ pin_trait!(
     [RmiiRxD1, "RMII RX Data Pin 1", "RXD1"]
 );
 
-/// Trait needed to setup the pins for the Ethernet peripheral.
-pub trait AlternateVeryHighSpeed {
-    /// Puts the pin in the Alternate Function 11 with Very High Speed.
-    fn into_af11_very_high_speed(self);
-}
-
 /// A struct that contains all peripheral parts required to configure
 /// the ethernet peripheral.
 #[allow(missing_docs)]
 pub struct PartsIn {
     pub mac: ETHERNET_MAC,
-    pub mmc: ETHERNET_MMC,
     pub dma: ETHERNET_DMA,
-    #[cfg(feature = "ptp")]
-    pub ptp: ETHERNET_PTP,
-}
 
-#[cfg(feature = "ptp")]
-impl From<(ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA, ETHERNET_PTP)> for PartsIn {
-    fn from(value: (ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA, ETHERNET_PTP)) -> Self {
-        Self {
-            mac: value.0,
-            mmc: value.1,
-            dma: value.2,
-            ptp: value.3,
-        }
-    }
-}
+    #[cfg(feature = "f-series")]
+    pub mmc: ETHERNET_MMC,
 
-#[cfg(not(feature = "ptp"))]
-impl From<(ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA)> for PartsIn {
-    fn from(value: (ETHERNET_MAC, ETHERNET_MMC, ETHERNET_DMA)) -> Self {
-        Self {
-            mac: value.0,
-            mmc: value.1,
-            dma: value.2,
-        }
-    }
+    #[cfg(feature = "stm32h7xx-hal")]
+    pub mtl: ETHERNET_MTL,
+
+    #[cfg(all(feature = "ptp", feature = "f-series"))]
+    pub ptp: crate::stm32::ETHERNET_PTP,
 }
 
 /// Access to all configured parts of the ethernet peripheral.
@@ -229,20 +234,10 @@ pub struct Parts<'rx, 'tx, T> {
     pub ptp: EthernetPTP,
 }
 
-#[cfg(feature = "ptp")]
-impl<'rx, 'tx, T> Parts<'rx, 'tx, T> {
-    /// Split this [`Parts`] into its components.
-    pub fn split(self) -> (T, EthernetDMA<'rx, 'tx>, EthernetPTP) {
-        (self.mac, self.dma, self.ptp)
-    }
-}
-
-#[cfg(not(feature = "ptp"))]
-impl<'rx, 'tx, T> Parts<'rx, 'tx, T> {
-    /// Split this [`Parts`] into its components.
-    pub fn split(self) -> (T, EthernetDMA<'rx, 'tx>) {
-        (self.mac, self.dma)
-    }
+/// Trait needed to setup the pins for the Ethernet peripheral.
+pub trait AlternateVeryHighSpeed {
+    /// Puts the pin in the Alternate Function 11 with Very High Speed.
+    fn into_af11_very_high_speed(self);
 }
 
 /// A struct that represents a combination of pins to be used
@@ -304,6 +299,33 @@ macro_rules! impl_pins {
         )+
     };
 }
+
+#[cfg(feature = "stm32h7xx-hal")]
+impl_pins!(
+    RmiiRefClk: [
+        PA1<Input>,
+    ],
+    RmiiCrsDv: [
+        PA7<Input>,
+    ],
+    RmiiTxEN: [
+        PB11<Input>,
+        PG11<Input>,
+    ],
+    RmiiTxD0: [
+        PB12<Input>,
+        PG13<Input>,
+    ],
+    RmiiTxD1: [
+        PB13<Input>,
+    ],
+    RmiiRxD0: [
+        PC4<Input>,
+    ],
+    RmiiRxD1: [
+        PC5<Input>,
+    ],
+);
 
 #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal"))]
 impl_pins!(

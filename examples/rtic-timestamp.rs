@@ -45,7 +45,7 @@ mod app {
     use systick_monotonic::Systick;
 
     use stm32_eth::{
-        dma::{EthernetDMA, PacketId, RxRingEntry, TxRingEntry},
+        dma::{EthernetDMA, PacketId},
         mac::Speed,
         ptp::{EthernetPTP, Timestamp},
         Parts,
@@ -65,17 +65,13 @@ mod app {
     #[monotonic(binds = SysTick, default = true)]
     type Monotonic = Systick<1000>;
 
-    #[init(local = [
-        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
-        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
-    ])]
+    #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
         let core = cx.core;
         let p = cx.device;
 
-        let rx_ring = cx.local.rx_ring;
-        let tx_ring = cx.local.tx_ring;
+        let (rx_ring, tx_ring) = crate::common::setup_rings();
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
@@ -272,14 +268,21 @@ mod app {
                 }
 
                 if let Some((tx_id, sent_time)) = tx_id.take() {
-                    if let Poll::Ready(Ok(Some(ts))) = dma.poll_timestamp(&PacketId(tx_id)) {
-                        defmt::info!("TX timestamp: {}", ts);
-                        defmt::debug!(
-                        "Diff between TX timestamp and the time that was put into the packet: {}",
-                        ts - sent_time
-                    );
-                    } else {
-                        defmt::warn!("Failed to retrieve TX timestamp");
+                    loop {
+                        let ts = dma.poll_timestamp(&PacketId(tx_id));
+
+                        match ts {
+                            Poll::Pending => continue,
+                            Poll::Ready(Ok(Some(ts))) => {
+                                defmt::info!("TX timestamp: {}", ts);
+                                defmt::debug!("Diff between TX timestamp and the time that was put into the packet: {}", ts - sent_time);
+                                break;
+                            }
+                            Poll::Ready(_) => {
+                                defmt::warn!("Failed to retrieve TX timestamp");
+                                break;
+                            }
+                        }
                     }
                 }
             });

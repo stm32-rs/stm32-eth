@@ -10,7 +10,7 @@ The main use is obtaining timestamps for frames using [`EthernetDMA::poll_timest
 "
 )]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PacketId(pub u32);
 
 impl PacketId {

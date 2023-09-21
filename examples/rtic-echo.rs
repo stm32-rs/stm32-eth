@@ -26,11 +26,7 @@ mod app {
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
 
-    use stm32_eth::{
-        dma::{EthernetDMA, RxRingEntry, TxRingEntry},
-        mac::Speed,
-        Parts,
-    };
+    use stm32_eth::{dma::EthernetDMA, mac::Speed, Parts};
 
     use smoltcp::{
         iface::{self, Interface, SocketHandle, SocketSet, SocketStorage},
@@ -58,8 +54,6 @@ mod app {
     }
 
     #[init(local = [
-        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(), RxRingEntry::new()],
-        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(), TxRingEntry::new()],
         rx_storage: [u8; 512] = [0u8; 512],
         tx_storage: [u8; 512] = [0u8; 512],
         socket_storage: [SocketStorage<'static>; 1] = [SocketStorage::EMPTY; 1],
@@ -69,8 +63,7 @@ mod app {
         let core = cx.core;
         let p = cx.device;
 
-        let rx_ring = cx.local.rx_ring;
-        let tx_ring = cx.local.tx_ring;
+        let (rx_ring, tx_ring) = crate::common::setup_rings();
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());

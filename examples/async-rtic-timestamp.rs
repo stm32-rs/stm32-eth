@@ -38,6 +38,10 @@ mod common;
 
 extern crate async_rtic as rtic;
 
+defmt::timestamp!("{=u64:us}", {
+    (stm32_eth::ptp::EthernetPTP::now().total_nanos() / 1_000) as u64
+});
+
 #[rtic::app(device = stm32_eth::stm32, dispatchers = [SPI1])]
 mod app {
 
@@ -51,7 +55,7 @@ mod app {
     use ieee802_3_miim::{phy::PhySpeed, Phy};
 
     use stm32_eth::{
-        dma::{EthernetDMA, PacketId, RxRing, RxRingEntry, TxRing, TxRingEntry},
+        dma::{EthernetDMA, PacketId, RxRing, TxRing},
         mac::Speed,
         ptp::{EthernetPTP, Subseconds, Timestamp},
         Parts,
@@ -66,8 +70,6 @@ mod app {
     struct Shared {}
 
     #[init(local = [
-        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
-        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
         dma: MaybeUninit<EthernetDMA<'static, 'static>> = MaybeUninit::uninit(),
         arbiter: MaybeUninit<Arbiter<EthernetPTP> > = MaybeUninit::uninit(),
         // We use a channel to signal when 1 second has passed.
@@ -79,8 +81,7 @@ mod app {
         defmt::info!("Pre-init");
         let p = cx.device;
 
-        let rx_ring = cx.local.rx_ring;
-        let tx_ring = cx.local.tx_ring;
+        let (rx_ring, tx_ring) = crate::common::setup_rings();
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
 
@@ -162,7 +163,7 @@ mod app {
                 continue;
             };
 
-            defmt::debug!("RX timestamp: {}", rx_timestamp);
+            defmt::info!("RX timestamp: {}", rx_timestamp);
 
             if dst_mac == [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56] {
                 let mut timestamp_data = [0u8; 8];

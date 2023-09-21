@@ -18,7 +18,7 @@ use stm32_eth::{
     Parts,
 };
 
-use stm32_eth::dma::{RxRingEntry, TxError, TxRingEntry};
+use stm32_eth::dma::TxError;
 
 pub mod common;
 
@@ -42,21 +42,14 @@ fn main() -> ! {
     defmt::info!("Enabling ethernet...");
     let (eth_pins, mdio, mdc, _) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RxRingEntry; 2] = Default::default();
-    let mut tx_ring: [TxRingEntry; 2] = Default::default();
+    let (rx_ring, tx_ring) = crate::common::setup_rings();
+
     let Parts {
         mut dma,
         mac,
         #[cfg(feature = "ptp")]
             ptp: _,
-    } = stm32_eth::new(
-        ethernet,
-        &mut rx_ring[..],
-        &mut tx_ring[..],
-        clocks,
-        eth_pins,
-    )
-    .unwrap();
+    } = stm32_eth::new(ethernet, rx_ring, tx_ring, clocks, eth_pins).unwrap();
     dma.enable_interrupt();
 
     // Main loop

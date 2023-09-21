@@ -26,11 +26,7 @@ mod app {
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
 
-    use stm32_eth::{
-        dma::{EthernetDMA, RxRingEntry, TxRingEntry},
-        mac::Speed,
-        Parts,
-    };
+    use stm32_eth::{dma::EthernetDMA, mac::Speed, Parts};
 
     const BROADCAST: [u8; 6] = [0xFF; 6];
     const CLIENT_ADDR: [u8; 6] = [0x80, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
@@ -49,17 +45,13 @@ mod app {
     #[monotonic(binds = SysTick, default = true)]
     type Monotonic = Systick<1000>;
 
-    #[init(local = [
-        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
-        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
-    ])]
+    #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::info!("Pre-init");
         let core = cx.core;
         let p = cx.device;
 
-        let rx_ring = cx.local.rx_ring;
-        let tx_ring = cx.local.tx_ring;
+        let (rx_ring, tx_ring) = crate::common::setup_rings();
 
         let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());

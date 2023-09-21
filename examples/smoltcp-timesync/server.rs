@@ -25,11 +25,7 @@ mod app {
     use ieee802_3_miim::{phy::PhySpeed, Phy};
     use systick_monotonic::Systick;
 
-    use stm32_eth::{
-        dma::{EthernetDMA, RxRingEntry, TxRingEntry},
-        mac::Speed,
-        Parts,
-    };
+    use stm32_eth::{dma::EthernetDMA, mac::Speed, Parts};
 
     use smoltcp::{
         iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage},
@@ -59,8 +55,6 @@ mod app {
     type Monotonic = Systick<1000>;
 
     #[init(local = [
-        rx_ring: [RxRingEntry; 2] = [RxRingEntry::new(),RxRingEntry::new()],
-        tx_ring: [TxRingEntry; 2] = [TxRingEntry::new(),TxRingEntry::new()],
         rx_meta_storage: [udp::PacketMetadata; 8] = [udp::PacketMetadata::EMPTY; 8],
         rx_payload_storage: [u8; 1024] = [0u8; 1024],
         tx_meta_storage: [udp::PacketMetadata; 8] = [udp::PacketMetadata::EMPTY; 8],
@@ -72,8 +66,7 @@ mod app {
         let core = cx.core;
         let p = cx.device;
 
-        let rx_ring = cx.local.rx_ring;
-        let tx_ring = cx.local.tx_ring;
+        let (rx_ring, tx_ring) = crate::common::setup_rings();
 
         let rx_meta_storage = cx.local.rx_meta_storage;
         let rx_payload_storage = cx.local.rx_payload_storage;
