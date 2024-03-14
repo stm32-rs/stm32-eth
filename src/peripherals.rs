@@ -2,10 +2,16 @@
 //! and `ETHERNET_PTP` that introduce a delay for some registers on F4 parts.
 
 #[cfg(any(feature = "stm32f107", feature = "stm32f7xx-hal"))]
-pub use crate::hal::pac::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_PTP};
+pub use crate::hal::pac::{ETHERNET_DMA, ETHERNET_MAC};
+
+#[cfg(all(any(feature = "stm32f107", feature = "stm32f7xx-hal"), feature = "ptp"))]
+pub use crate::hal::pac::ETHERNET_PTP;
 
 #[cfg(feature = "stm32f4xx-hal")]
-pub use pac_override_impl::{ETHERNET_DMA, ETHERNET_MAC, ETHERNET_PTP};
+pub use pac_override_impl::{ETHERNET_DMA, ETHERNET_MAC};
+
+#[cfg(all(feature = "stm32f4xx-hal", feature = "ptp"))]
+pub use pac_override_impl::ETHERNET_PTP;
 
 #[cfg(feature = "stm32f4xx-hal")]
 mod pac_override_impl {

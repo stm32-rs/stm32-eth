@@ -111,6 +111,7 @@ pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, Par
     }
 }
 
+#[allow(unused_imports)]
 pub use pins::*;
 
 #[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f7xx-hal",))]
