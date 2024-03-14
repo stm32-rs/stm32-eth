@@ -34,7 +34,6 @@ futures = { version = "0.3", default-features = false, features = ["async-await"
 [dependencies.smoltcp]
 version = "0.11"
 default-features = false
-features = [ "proto-ipv4", "defmt" ]
 optional = true
 
 [features]
@@ -74,7 +73,7 @@ fugit = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = [ "print-defmt" ] }
 systick-monotonic = "1.0"
-smoltcp = { version = "0.10", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
+smoltcp = { version = "0.11", features = [ "medium-ethernet", "proto-ipv4", "socket-udp", "socket-tcp", "defmt" ], default-features = false }
 
 [dev-dependencies.rtic]
 package = "cortex-m-rtic"
