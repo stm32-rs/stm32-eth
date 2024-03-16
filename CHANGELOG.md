@@ -1,5 +1,12 @@
 ## Unreleased
 
+## [0.6.0](https://github.com/stm32-rs/stm32-eth/tree/v0.6.0)
+* Update version of `smoltcp` to `v0.11.0` ([#92])
+* Remove re-export of `smoltcp`, and update examples ([#94])
+
+[#92]: https://github.com/stm32-rs/stm32-eth/pull/92
+[#94]: https://github.com/stm32-rs/stm32-eth/pull/94
+
 ## [0.5.2](https://github.com/stm32-rs/stm32-eth/tree/v0.5.2)
 * Fix the PPS pin frequency so it's not always running at the max frequency ([#89])
 
