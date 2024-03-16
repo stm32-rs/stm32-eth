@@ -42,9 +42,6 @@ pub(crate) mod peripherals;
 #[cfg(feature = "ptp")]
 pub mod ptp;
 
-#[cfg(feature = "smoltcp-phy")]
-pub use smoltcp;
-
 #[cfg(feature = "device-selected")]
 use {
     dma::{EthernetDMA, RxRingEntry, TxRingEntry},
