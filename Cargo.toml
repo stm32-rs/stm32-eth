@@ -86,7 +86,7 @@ features = [ "thumbv7-backend" ]
 
 [dev-dependencies.rtic-sync]
 package = "rtic-sync"
-version = "1.0"
+version = "1.3"
 
 # This isn't an actual example. It just exists so we can easily
 # test the common items :)
