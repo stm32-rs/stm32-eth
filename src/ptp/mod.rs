@@ -16,7 +16,7 @@ pub use subseconds::{Subseconds, NANOS_PER_SECOND, SUBSECONDS_PER_SECOND, SUBSEC
 mod pps_pin;
 pub use pps_pin::PPSPin;
 
-/// Access to the IEEE 1508v2 PTP peripheral present on the ethernet peripheral.
+/// Access to the IEEE 1588v2 PTP peripheral present on the ethernet peripheral.
 ///
 /// On STM32FXXX's, the PTP peripheral has/uses the following important parts:
 /// * HCLK (the chip's high speed clock, configured externally).
