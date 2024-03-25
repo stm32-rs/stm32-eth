@@ -6,7 +6,6 @@
 
 #[cfg(feature = "stm32f4xx-hal")]
 use stm32f4xx_hal::{
-    bb,
     gpio::{
         gpioa::{PA1, PA7},
         gpiob::{PB11, PB12, PB13},
@@ -46,35 +45,29 @@ use crate::{ptp::EthernetPTP, stm32::ETHERNET_PTP};
 pub(crate) fn setup() {
     #[cfg(feature = "stm32f4xx-hal")]
     unsafe {
-        const SYSCFG_BIT: u8 = 14;
-        const ETH_MAC_BIT: u8 = 25;
-        const ETH_TX_BIT: u8 = 26;
-        const ETH_RX_BIT: u8 = 27;
-        const MII_RMII_BIT: u8 = 23;
-
         //NOTE(unsafe) This will only be used for atomic writes with no side-effects
         let rcc = &*RCC::ptr();
         let syscfg = &*SYSCFG::ptr();
 
-        // Enable syscfg clock
-        bb::set(&rcc.apb2enr, SYSCFG_BIT);
+        // Enable syscfg clock.
+        rcc.apb2enr.modify(|_, w| w.syscfgen().set_bit());
 
         if rcc.ahb1enr.read().ethmacen().bit_is_set() {
             // pmc must be changed with the ethernet controller disabled or under reset
-            bb::clear(&rcc.ahb1enr, ETH_MAC_BIT);
+            rcc.ahb1enr.modify(|_, w| w.ethmacen().clear_bit());
         }
-        // select MII or RMII mode
-        // 0 = MII, 1 = RMII
-        bb::set(&syscfg.pmc, MII_RMII_BIT);
 
-        // enable ethernet clocks
-        bb::set(&rcc.ahb1enr, ETH_MAC_BIT);
-        bb::set(&rcc.ahb1enr, ETH_TX_BIT);
-        bb::set(&rcc.ahb1enr, ETH_RX_BIT);
+        // 0 = MII, 1 = RMII.
+        syscfg.pmc.modify(|_, w| w.mii_rmii_sel().set_bit());
 
-        // reset pulse
-        bb::set(&rcc.ahb1rstr, ETH_MAC_BIT);
-        bb::clear(&rcc.ahb1rstr, ETH_MAC_BIT);
+        // Enable ethernet clocks.
+        rcc.ahb1enr.modify(|_, w| w.ethmacen().set_bit());
+        rcc.ahb1enr.modify(|_, w| w.ethmactxen().set_bit());
+        rcc.ahb1enr.modify(|_, w| w.ethmacrxen().set_bit());
+
+        // Reset pulse.
+        rcc.ahb1rstr.modify(|_, w| w.ethmacrst().set_bit());
+        rcc.ahb1rstr.modify(|_, w| w.ethmacrst().clear_bit());
     }
     #[cfg(feature = "stm32f7xx-hal")]
     //stm32f7xx-hal does not currently have bitbanding
