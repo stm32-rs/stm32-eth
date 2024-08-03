@@ -21,7 +21,7 @@ features = ["smoltcp-phy", "stm32f429", "async-await"]
 [dependencies]
 volatile-register = "0.2"
 aligned = "0.4"
-stm32f7xx-hal = { version = "0.7", optional = true }
+stm32f7xx-hal = { version = "0.8", optional = true }
 stm32f4xx-hal = { version = "0.20", optional = true }
 stm32f4 = { version = "0.15", optional = true }
 stm32f1xx-hal = { version = "0.10", optional = true }
