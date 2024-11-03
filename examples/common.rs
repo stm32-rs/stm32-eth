@@ -1,4 +1,5 @@
 #![allow(unused_attributes)]
+#![allow(unexpected_cfgs)]
 #![no_std]
 
 //! Common features used in examples.
