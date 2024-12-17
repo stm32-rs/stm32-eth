@@ -10,8 +10,14 @@ use smoltcp::time::Instant;
 
 /// Use this Ethernet driver with [smoltcp](https://github.com/smoltcp-rs/smoltcp)
 impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
-    type RxToken<'token> = EthRxToken<'token, 'rx> where Self: 'token;
-    type TxToken<'token> = EthTxToken<'token, 'tx> where Self: 'token;
+    type RxToken<'token>
+        = EthRxToken<'token, 'rx>
+    where
+        Self: 'token;
+    type TxToken<'token>
+        = EthTxToken<'token, 'tx>
+    where
+        Self: 'token;
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
@@ -72,7 +78,7 @@ pub struct EthRxToken<'a, 'rx> {
 impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
     fn consume<R, F>(self, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> R,
+        F: FnOnce(&[u8]) -> R,
     {
         #[cfg(feature = "ptp")]
         let meta = Some(self.meta.into());
@@ -81,8 +87,8 @@ impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
         let meta = None;
 
         // NOTE(unwrap): an `EthRxToken` is only created when `eth.rx_available()`
-        let mut packet = self.rx_ring.recv_next(meta).ok().unwrap();
-        let result = f(&mut packet);
+        let packet = self.rx_ring.recv_next(meta).ok().unwrap();
+        let result = f(&packet);
         packet.free();
         result
     }
