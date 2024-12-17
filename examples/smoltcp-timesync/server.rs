@@ -231,7 +231,7 @@ mod app {
                     let packet_id = dma.lock(|dma| dma.next_packet_id()).into();
 
                     let mut meta: udp::UdpMetadata = IpEndpoint {
-                        addr: IpAddress::Ipv4(Ipv4Address([10, 0, 0, 2])),
+                        addr: IpAddress::Ipv4(Ipv4Address::new(10, 0, 0, 2)),
                         port: 1337,
                     }
                     .into();

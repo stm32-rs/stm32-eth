@@ -1,5 +1,10 @@
 ## Unreleased
 
+## [0.8.0](https://github.com/stm32-rs/stm32-eth/tree/v0.8.0)
+* Update version of `smoltcp` to `v0.12.0` ([#99])
+
+[#99]: https://github.com/stm32-rs/stm32-eth/pull/99
+
 ## [0.7.0](https://github.com/stm32-rs/stm32-eth/tree/v0.7.0)
 * Update hals ([#97])
     * `stm32f4xx-hal` from `0.20` to `0.21`
