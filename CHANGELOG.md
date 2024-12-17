@@ -1,5 +1,6 @@
 ## Unreleased
 
+## [0.8.0](https://github.com/stm32-rs/stm32-eth/tree/v0.8.0)
 * Update version of `smoltcp` to `v0.12.0` ([#99])
 
 [#99]: https://github.com/stm32-rs/stm32-eth/pull/99
