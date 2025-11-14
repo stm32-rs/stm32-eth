@@ -1,5 +1,6 @@
 ## Unreleased
 
+## [0.8.1](https://github.com/stm32-rs/stm32-eth/tree/v0.8.1)
 * Fixed bug in `smoltcp::phy::Device` implementation that caused panics on RX errors ([#102])
 
 [#102]: https://github.com/stm32-rs/stm32-eth/pull/102
