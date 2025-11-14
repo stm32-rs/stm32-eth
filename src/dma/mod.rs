@@ -207,7 +207,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// If no packet is available, this function returns [`Err(RxError::WouldBlock)`](RxError::WouldBlock).
     ///
     /// It may also return another kind of [`RxError`].
-    pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
+    pub fn recv_next(&'_ mut self, packet_id: Option<PacketId>) -> Result<RxPacket<'_>, RxError> {
         self.rx_ring.recv_next(packet_id.map(Into::into))
     }
 
@@ -284,7 +284,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// Receive a packet.
     ///
     /// See [`RxRing::recv`].
-    pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
+    pub async fn recv(&'_ mut self, packet_id: Option<PacketId>) -> RxPacket<'_> {
         self.rx_ring.recv(packet_id).await
     }
 
