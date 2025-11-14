@@ -14,7 +14,7 @@ env:
 jobs:
   style:
     name: style
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -33,7 +33,7 @@ jobs:
           - stable
         features:
           - stm32f745,ptp
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -51,7 +51,7 @@ jobs:
   # Compilation
   build:
     name: build
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         target:
@@ -93,7 +93,7 @@ jobs:
 
   build-feature-mixer:
     name: build-feature-mixer
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         target:
@@ -128,7 +128,7 @@ jobs:
   # for stm32f429
   examples:
     name: examples
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         example:
@@ -171,7 +171,7 @@ jobs:
   # Test that all the code shared with other MCU families also compiles
   examples-common:
     name: examples-common
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         toolchain:
@@ -216,7 +216,7 @@ jobs:
       - examples
       - examples-common
       - build-feature-mixer
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Mark the job as a success
         run: exit 0
