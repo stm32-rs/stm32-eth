@@ -1,3 +1,5 @@
+use crate::dma::RxError;
+
 use super::rx::RxRing;
 use super::tx::TxRing;
 use super::EthernetDMA;
@@ -86,11 +88,23 @@ impl<'dma, 'rx> RxToken for EthRxToken<'dma, 'rx> {
         #[cfg(not(feature = "ptp"))]
         let meta = None;
 
-        // NOTE(unwrap): an `EthRxToken` is only created when `eth.rx_available()`
-        let packet = self.rx_ring.recv_next(meta).ok().unwrap();
-        let result = f(&packet);
-        packet.free();
-        result
+        match self.rx_ring.recv_next(meta) {
+            Ok(v) => {
+                let result = f(&v);
+                v.free();
+                result
+            }
+            Err(RxError::WouldBlock) => {
+                #[cfg(feature = "defmt")]
+                defmt::error!("EthRxToken: RX would block");
+                f(&[])
+            }
+            Err(_e) => {
+                #[cfg(feature = "defmt")]
+                defmt::debug!("Failed to receive packet: {}", _e);
+                f(&[])
+            }
+        }
     }
 
     #[cfg(feature = "ptp")]
