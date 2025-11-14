@@ -160,7 +160,7 @@ impl<'a> RxRing<'a> {
 
     /// Receive the next packet (if any is ready), or return [`Err`]
     /// immediately.
-    pub fn recv_next(&mut self, packet_id: Option<PacketId>) -> Result<RxPacket, RxError> {
+    pub fn recv_next(&'_ mut self, packet_id: Option<PacketId>) -> Result<RxPacket<'_>, RxError> {
         let (entry, length) = self.recv_next_impl(packet_id.map(|p| p.into()))?;
         Ok(RxPacket {
             entry: &mut self.entries[entry],
@@ -173,7 +173,7 @@ impl<'a> RxRing<'a> {
     /// The returned [`RxPacket`] can be used as a slice, and
     /// will contain the ethernet data.
     #[cfg(feature = "async-await")]
-    pub async fn recv(&mut self, packet_id: Option<PacketId>) -> RxPacket {
+    pub async fn recv(&'_ mut self, packet_id: Option<PacketId>) -> RxPacket<'_> {
         let (entry, length) = core::future::poll_fn(|ctx| {
             let res = self.recv_next_impl(packet_id.clone());
 
