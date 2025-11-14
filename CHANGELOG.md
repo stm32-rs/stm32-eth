@@ -1,5 +1,9 @@
 ## Unreleased
 
+* Fixed bug in `smoltcp::phy::Device` implementation that caused panics on RX errors ([#102])
+
+[#102]: https://github.com/stm32-rs/stm32-eth/pull/102
+
 ## [0.8.0](https://github.com/stm32-rs/stm32-eth/tree/v0.8.0)
 * Update version of `smoltcp` to `v0.12.0` ([#99])
 
