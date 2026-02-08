@@ -30,6 +30,7 @@ cortex-m = "0.7"
 log = { version = "0.4", optional = true }
 defmt = { version = "0.3", optional = true }
 futures = { version = "0.3", default-features = false, features = ["async-await"], optional = true }
+stm32f7 = "0.15.1"
 
 [dependencies.smoltcp]
 version = "0.12"

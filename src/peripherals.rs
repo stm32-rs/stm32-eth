@@ -4,7 +4,13 @@
 #[cfg(any(feature = "stm32f107", feature = "stm32f7xx-hal"))]
 pub use crate::hal::pac::{ETHERNET_DMA, ETHERNET_MAC};
 
-#[cfg(all(any(feature = "stm32f107", feature = "stm32f7xx-hal"), feature = "ptp"))]
+#[cfg(all(
+    any(
+        feature = "stm32f107",
+        all(feature = "stm32f7xx-hal", not(feature = "stm32f769"))
+    ),
+    feature = "ptp"
+))]
 pub use crate::hal::pac::ETHERNET_PTP;
 
 #[cfg(feature = "stm32f4xx-hal")]
@@ -13,7 +19,7 @@ pub use pac_override_impl::{ETHERNET_DMA, ETHERNET_MAC};
 #[cfg(all(feature = "stm32f4xx-hal", feature = "ptp"))]
 pub use pac_override_impl::ETHERNET_PTP;
 
-#[cfg(feature = "stm32f4xx-hal")]
+#[cfg(any(feature = "stm32f4xx-hal", feature = "stm32f769"))]
 mod pac_override_impl {
     #![allow(non_camel_case_types)]
 
@@ -25,6 +31,9 @@ mod pac_override_impl {
             )*
         }
     }
+
+    #[cfg(feature = "stm32f769")]
+    use stm32f7xx_hal::pac as stm32;
 
     setup_use!(
         ("stm32f407", stm32f407),
@@ -43,7 +52,12 @@ mod pac_override_impl {
         ethernet_dma::*, ethernet_mac::*, ethernet_ptp::*, ETHERNET_DMA as PAC_ETHERNET_DMA,
         ETHERNET_MAC as PAC_ETHERNET_MAC, ETHERNET_PTP as PAC_ETHERNET_PTP,
     };
+
+    #[cfg(not(feature = "stm32f769"))]
     use stm32f4::{Readable, Reg, RegisterSpec, Resettable, Writable, W};
+
+    #[cfg(feature = "stm32f769")]
+    use stm32f7::{Readable, Reg, RegisterSpec, Resettable, Writable, W};
 
     pub struct DelayedReg<T: RegisterSpec> {
         inner: Reg<T>,
@@ -368,6 +382,6 @@ mod pac_override_impl {
         // Minimum required delay: 4 clocks @ 25 MHz = 160 ns
         //
         // Minimum required delay clocks: ceil(180_000_000/25_000_000) * 4 = 29 clocks = 161.111... ns
-        cortex_m::asm::delay(29);
+        cortex_m::asm::delay(40);
     }
 }
