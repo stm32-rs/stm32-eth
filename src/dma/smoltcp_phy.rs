@@ -10,8 +10,32 @@ use super::PacketId;
 use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, RxToken, TxToken};
 use smoltcp::time::Instant;
 
+impl<'rx, 'tx, 'a> Device for &'a mut EthernetDMA<'rx, 'tx> {
+    type RxToken<'token>
+        = <EthernetDMA<'rx, 'tx> as Device>::RxToken<'token>
+    where
+        Self: 'token;
+
+    type TxToken<'token>
+        = <EthernetDMA<'rx, 'tx> as Device>::TxToken<'token>
+    where
+        Self: 'token;
+
+    fn receive(&mut self, timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+        <EthernetDMA<'rx, 'tx> as Device>::receive(self, timestamp)
+    }
+
+    fn transmit(&mut self, timestamp: Instant) -> Option<Self::TxToken<'_>> {
+        <EthernetDMA<'rx, 'tx> as Device>::transmit(self, timestamp)
+    }
+
+    fn capabilities(&self) -> DeviceCapabilities {
+        <EthernetDMA<'rx, 'tx> as Device>::capabilities(self)
+    }
+}
+
 /// Use this Ethernet driver with [smoltcp](https://github.com/smoltcp-rs/smoltcp)
-impl<'a, 'rx, 'tx> Device for &'a mut EthernetDMA<'rx, 'tx> {
+impl<'rx, 'tx> Device for EthernetDMA<'rx, 'tx> {
     type RxToken<'token>
         = EthRxToken<'token, 'rx>
     where
