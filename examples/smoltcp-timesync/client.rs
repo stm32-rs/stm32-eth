@@ -132,7 +132,7 @@ mod app {
 
         let cfg = Config::new(EthernetAddress(CLIENT_ADDR).into());
 
-        let mut interface = Interface::new(cfg, &mut &mut dma, smoltcp::time::Instant::ZERO);
+        let mut interface = Interface::new(cfg, &mut dma, smoltcp::time::Instant::ZERO);
         interface.update_ip_addrs(|a| {
             a.push(IpCidr::new(IpAddress::v4(10, 0, 0, 2), 24)).ok();
         });

@@ -110,7 +110,7 @@ mod app {
 
         let config = iface::Config::new(EthernetAddress::from_bytes(&crate::MAC).into());
 
-        let mut interface = Interface::new(config, &mut &mut dma, smoltcp::time::Instant::ZERO);
+        let mut interface = Interface::new(config, &mut dma, smoltcp::time::Instant::ZERO);
         interface.update_ip_addrs(|addr| {
             addr.push(IpCidr::Ipv4(Ipv4Cidr::new(crate::IP_ADDRESS, 24)))
                 .ok();
@@ -123,7 +123,7 @@ mod app {
         let socket = sockets.get_mut::<TcpSocket>(tcp_handle);
         socket.listen(crate::SOCKET_ADDRESS).ok();
 
-        interface.poll(now_fn(), &mut &mut dma, &mut sockets);
+        interface.poll(now_fn(), &mut dma, &mut sockets);
 
         if let Ok(mut phy) = EthernetPhy::from_miim(mac, 0) {
             defmt::info!(
