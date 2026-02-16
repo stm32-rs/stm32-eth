@@ -1,5 +1,6 @@
 ## Unreleased
 
+## [0.8.2](https://github.com/stm32-rs/stm32-eth/tree/v0.8.2)
 * Implement `smoltcp::phy::Device` for non-borrowed `EthernetDMA` ([#106])
 
 [#106]: https://github.com/stm32-rs/stm32-eth/pull/106
