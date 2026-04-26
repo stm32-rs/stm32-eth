@@ -119,7 +119,7 @@ impl<'a> RxRing<'a> {
             self.demand_poll();
         }
 
-        self.entries[self.next_entry].is_available()
+        !self.entries[self.next_entry].desc().is_owned()
     }
 
     /// Receive the next packet (if any is ready).
@@ -140,9 +140,9 @@ impl<'a> RxRing<'a> {
         let entry_num = self.next_entry;
         let entry = &mut self.entries[entry_num];
 
-        if entry.is_available() {
+        if !entry.desc().is_owned() {
             self.next_entry = (self.next_entry + 1) % entries_len;
-            let length = entry.recv(packet_id)?;
+            let length = entry.desc_mut().recv(packet_id)?;
             Ok((entry_num, length))
         } else {
             Err(RxError::WouldBlock)
@@ -189,11 +189,11 @@ impl<'a> RxRing<'a> {
 impl<'a> RxRing<'a> {
     /// Get the timestamp for a specific ID
     pub fn timestamp(&self, id: &PacketId) -> Result<Option<Timestamp>, PacketIdNotFound> {
-        let entry = self.entries.iter().find(|e| e.has_packet_id(id));
+        let entry = self.entries.iter().find(|e| e.desc().has_packet_id(id));
 
         let entry = entry.ok_or(PacketIdNotFound)?;
 
-        Ok(entry.read_timestamp())
+        Ok(entry.desc().read_timestamp())
     }
 }
 
@@ -253,6 +253,6 @@ impl<'a> RxPacket<'a> {
     /// Get the timestamp associated with this packet
     #[cfg(feature = "ptp")]
     pub fn timestamp(&self) -> Option<Timestamp> {
-        self.entry.read_timestamp()
+        self.entry.desc().read_timestamp()
     }
 }

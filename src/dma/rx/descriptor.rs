@@ -72,7 +72,7 @@ impl RxDescriptor {
     }
 
     /// Is owned by the DMA engine?
-    fn is_owned(&self) -> bool {
+    pub(crate) fn is_owned(&self) -> bool {
         (self.desc.read(0) & RXDESC_0_OWN) == RXDESC_0_OWN
     }
 
@@ -189,6 +189,33 @@ impl RxDescriptor {
     fn get_frame_len(&self) -> usize {
         ((self.desc.read(0) >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize
     }
+
+    /// Only call this if [`!RxDescriptor::is_owned`](RxDescriptor::is_owned)
+    pub(super) fn recv(&mut self, packet_id: Option<PacketId>) -> Result<usize, RxDescriptorError> {
+        if self.has_error() {
+            self.set_owned();
+            Err(RxDescriptorError::DmaError)
+        } else if self.is_first() && self.is_last() {
+            let frame_len = self.get_frame_len();
+
+            // "Subsequent reads and writes cannot be moved ahead of preceding reads."
+            core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Acquire);
+
+            #[cfg(feature = "ptp")]
+            {
+                // Cache the PTP timestamp
+                self.cached_timestamp = self.timestamp();
+            }
+
+            // Set the Packet ID for this descriptor.
+            self.packet_id = packet_id;
+
+            Ok(frame_len)
+        } else {
+            self.set_owned();
+            Err(RxDescriptorError::Truncated)
+        }
+    }
 }
 
 /// An RX DMA Ring Descriptor entry
@@ -216,46 +243,15 @@ impl RingDescriptor for RxDescriptor {
 impl RxRingEntry {
     /// The initial value for an Rx Ring Entry
     pub const RX_INIT: Self = Self::new();
-
-    pub(super) fn is_available(&self) -> bool {
-        !self.desc().is_owned()
-    }
-
-    /// Only call this if [`RxRingEntry::is_available`]
-    pub(super) fn recv(&mut self, packet_id: Option<PacketId>) -> Result<usize, RxDescriptorError> {
-        if self.desc().has_error() {
-            self.desc_mut().set_owned();
-            Err(RxDescriptorError::DmaError)
-        } else if self.desc().is_first() && self.desc().is_last() {
-            let frame_len = self.desc().get_frame_len();
-
-            // "Subsequent reads and writes cannot be moved ahead of preceding reads."
-            core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Acquire);
-
-            #[cfg(feature = "ptp")]
-            {
-                // Cache the PTP timestamp
-                self.desc_mut().cached_timestamp = self.desc().timestamp();
-            }
-
-            // Set the Packet ID for this descriptor.
-            self.desc_mut().packet_id = packet_id;
-
-            Ok(frame_len)
-        } else {
-            self.desc_mut().set_owned();
-            Err(RxDescriptorError::Truncated)
-        }
-    }
 }
 
 #[cfg(feature = "ptp")]
-impl RxRingEntry {
+impl RxDescriptor {
     pub fn has_packet_id(&self, id: &PacketId) -> bool {
-        Some(id) == self.desc().packet_id.as_ref()
+        Some(id) == self.packet_id.as_ref()
     }
 
     pub fn read_timestamp(&self) -> Option<Timestamp> {
-        self.desc().cached_timestamp.clone()
+        self.cached_timestamp.clone()
     }
 }
