@@ -71,9 +71,13 @@ impl RxDescriptor {
         }
     }
 
+    fn read_rdes0(&self) -> u32 {
+        self.desc.read::<0>()
+    }
+
     /// Is owned by the DMA engine?
     pub(crate) fn is_owned(&self) -> bool {
-        (self.desc.read(0) & RXDESC_0_OWN) == RXDESC_0_OWN
+        (self.read_rdes0() & RXDESC_0_OWN) == RXDESC_0_OWN
     }
 
     /// Pass ownership to the DMA engine
@@ -89,7 +93,7 @@ impl RxDescriptor {
         core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Release);
 
         unsafe {
-            self.desc.write(0, RXDESC_0_OWN);
+            self.desc.write::<0>(RXDESC_0_OWN);
         }
 
         // Used to flush the store buffer as fast as possible to make the buffer available for the
@@ -99,24 +103,24 @@ impl RxDescriptor {
     }
 
     fn has_error(&self) -> bool {
-        (self.desc.read(0) & RXDESC_0_ES) == RXDESC_0_ES
+        (self.read_rdes0() & RXDESC_0_ES) == RXDESC_0_ES
     }
 
     /// Descriptor contains first buffer of frame
     fn is_first(&self) -> bool {
-        (self.desc.read(0) & RXDESC_0_FS) == RXDESC_0_FS
+        (self.read_rdes0() & RXDESC_0_FS) == RXDESC_0_FS
     }
 
     /// Descriptor contains last buffers of frame
     fn is_last(&self) -> bool {
-        (self.desc.read(0) & RXDESC_0_LS) == RXDESC_0_LS
+        (self.read_rdes0() & RXDESC_0_LS) == RXDESC_0_LS
     }
 
     /// Get PTP timestamps if available
     #[cfg(feature = "ptp")]
     pub fn timestamp(&self) -> Option<Timestamp> {
         #[cfg(not(feature = "stm32f1xx-hal"))]
-        let is_valid = { self.desc.read(0) & RXDESC_0_TIMESTAMP_VALID == RXDESC_0_TIMESTAMP_VALID };
+        let is_valid = { self.read_rdes0() & RXDESC_0_TIMESTAMP_VALID == RXDESC_0_TIMESTAMP_VALID };
 
         #[cfg(feature = "stm32f1xx-hal")]
         // There is no "timestamp valid" indicator bit
@@ -144,7 +148,7 @@ impl RxDescriptor {
             .expect("Writing buffer1 of an RX descriptor, but `buffer_address` is None");
 
         unsafe {
-            self.desc.write(2, buffer_addr);
+            self.desc.write::<2>(buffer_addr);
         }
     }
 
@@ -152,7 +156,7 @@ impl RxDescriptor {
         self.buffer1 = Some(buffer as u32);
         self.write_buffer1();
         unsafe {
-            self.desc.modify(1, |w| {
+            self.desc.modify::<_, 1>(|w| {
                 (w & !RXDESC_1_RBS_MASK) | ((len as u32) << RXDESC_1_RBS_SHIFT)
             });
         }
@@ -170,7 +174,7 @@ impl RxDescriptor {
             .expect("Writing buffer2 of an RX descriptor, but `next_descriptor` is None");
 
         unsafe {
-            self.desc.write(3, addr);
+            self.desc.write::<3>(addr);
         }
     }
 
@@ -182,12 +186,12 @@ impl RxDescriptor {
 
     fn set_end_of_ring(&mut self) {
         unsafe {
-            self.desc.modify(1, |w| w | RXDESC_1_RER);
+            self.desc.modify::<_, 1>(|w| w | RXDESC_1_RER);
         }
     }
 
     fn get_frame_len(&self) -> usize {
-        ((self.desc.read(0) >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize
+        ((self.read_rdes0() >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize
     }
 
     /// Only call this if [`!RxDescriptor::is_owned`](RxDescriptor::is_owned)
@@ -225,7 +229,7 @@ impl RingDescriptor for RxDescriptor {
     fn setup(&mut self, buffer: *const u8, len: usize, next: Option<&Self>) {
         // Defer this initialization to this function, so we can have `RingEntry` on bss.
         unsafe {
-            self.desc.write(1, RXDESC_1_RCH);
+            self.desc.write::<1>(RXDESC_1_RCH);
         }
         self.set_buffer1(buffer, len);
         match next {

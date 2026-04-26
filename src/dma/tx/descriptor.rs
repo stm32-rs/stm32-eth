@@ -62,20 +62,24 @@ impl TxDescriptor {
         }
     }
 
+    fn read_tdes0(&self) -> u32 {
+        self.desc.read::<0>()
+    }
+
     #[allow(unused)]
     fn has_error(&self) -> bool {
-        (self.desc.read(0) & TXDESC_0_ES) == TXDESC_0_ES
+        (self.read_tdes0() & TXDESC_0_ES) == TXDESC_0_ES
     }
 
     /// Is owned by the DMA engine?
     fn is_owned(&self) -> bool {
-        (self.desc.read(0) & TXDESC_0_OWN) == TXDESC_0_OWN
+        (self.read_tdes0() & TXDESC_0_OWN) == TXDESC_0_OWN
     }
 
     // NOTE(allow): packet_id is unused if ptp is disabled.
     #[allow(dead_code)]
     fn is_last(&self) -> bool {
-        self.desc.read(0) & TXDESC_0_LS == TXDESC_0_LS
+        self.read_tdes0() & TXDESC_0_LS == TXDESC_0_LS
     }
 
     /// Pass ownership to the DMA engine
@@ -89,12 +93,12 @@ impl TxDescriptor {
         // timestamp data, so we rewrite this data.
         let buffer1 = self.buffer1;
         unsafe {
-            self.desc.write(2, buffer1);
+            self.desc.write::<2>(buffer1);
         }
 
         let buffer2 = self.next_descriptor;
         unsafe {
-            self.desc.write(3, buffer2);
+            self.desc.write::<3>(buffer2);
         }
 
         // "Preceding reads and writes cannot be moved past subsequent writes."
@@ -113,8 +117,7 @@ impl TxDescriptor {
         }
 
         unsafe {
-            self.desc.write(
-                0,
+            self.desc.write::<0>(
                 TXDESC_0_OWN
                     | TXDESC_0_TCH
                     | TXDESC_0_FS
@@ -134,7 +137,7 @@ impl TxDescriptor {
 
     fn set_buffer1_len(&mut self, len: usize) {
         unsafe {
-            self.desc.modify(1, |w| {
+            self.desc.modify::<_, 1>(|w| {
                 let masked_len = w & !TXDESC_1_TBS_MASK;
                 let with_len = masked_len | ((len as u32) << TXDESC_1_TBS_SHIFT);
                 with_len
@@ -144,7 +147,7 @@ impl TxDescriptor {
 
     #[cfg(feature = "ptp")]
     fn timestamp(&self) -> Option<Timestamp> {
-        let tdes0 = self.desc.read(0);
+        let tdes0 = self.read_tdes0();
 
         let contains_timestamp = (tdes0 & TXDESC_0_TIMESTAMP_STATUS) == TXDESC_0_TIMESTAMP_STATUS;
 
@@ -161,9 +164,7 @@ pub type TxRingEntry = RingEntry<TxDescriptor>;
 
 impl RingDescriptor for TxDescriptor {
     fn setup(&mut self, buffer: *const u8, _len: usize, next: Option<&Self>) {
-        unsafe {
-            self.desc.clear();
-        }
+        self.desc.clear();
 
         // Defer this initialization to this function, so we can have `RingEntry` on bss.
         let next_desc_addr = if let Some(next) = next {

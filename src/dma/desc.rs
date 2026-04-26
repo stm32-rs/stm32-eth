@@ -1,6 +1,3 @@
-use core::ops::{Deref, DerefMut};
-
-use aligned::{Aligned, A8};
 use volatile_register::{RO, RW};
 
 #[cfg(not(feature = "stm32f1xx-hal"))]
@@ -9,18 +6,9 @@ const DESC_SIZE: usize = 8;
 #[cfg(feature = "stm32f1xx-hal")]
 const DESC_SIZE: usize = 4;
 
-#[repr(C)]
-pub struct Descriptor {
-    pub(crate) desc: Aligned<A8, [u32; DESC_SIZE]>,
-}
-
-impl Clone for Descriptor {
-    fn clone(&self) -> Self {
-        Descriptor {
-            desc: Aligned(*self.desc),
-        }
-    }
-}
+#[repr(C, align(8))]
+#[derive(Clone)]
+pub struct Descriptor([u32; DESC_SIZE]);
 
 impl Default for Descriptor {
     fn default() -> Self {
@@ -30,37 +18,76 @@ impl Default for Descriptor {
 
 impl Descriptor {
     pub const fn new() -> Self {
-        Self {
-            desc: Aligned([0; DESC_SIZE]),
+        Self([0; _])
+    }
+
+    pub fn clear(&mut self) {
+        // SAFETY: writing zeros to descriptors returns
+        // ownership to the MCU.
+
+        #[cfg(not(feature = "stm32f1xx-hal"))]
+        unsafe {
+            self.write::<0>(0);
+            self.write::<0>(1);
+            self.write::<0>(2);
+            self.write::<0>(3);
+            self.write::<0>(4);
+            self.write::<0>(5);
+            self.write::<0>(6);
+            self.write::<0>(7);
+        }
+
+        #[cfg(feature = "stm32f1xx-hal")]
+        unsafe {
+            self.write::<0>(0);
+            self.write::<0>(1);
+            self.write::<0>(2);
+            self.write::<0>(3);
         }
     }
 
-    pub unsafe fn clear(&mut self) {
-        (0..DESC_SIZE).for_each(|i| self.write(i, 0));
-    }
-
-    fn r(&self, n: usize) -> &RO<u32> {
-        let ro = &self.desc.deref()[n] as *const _ as *const RO<u32>;
+    /// # Safety
+    /// `n` must be less than `DESC_SIZE`
+    unsafe fn r(&self, n: usize) -> &RO<u32> {
+        let ro = unsafe { self.0.as_ptr().add(n) } as *const RO<u32>;
         unsafe { &*ro }
     }
 
+    /// # Safety
+    /// `n` must be less than `DESC_SIZE`
     unsafe fn rw(&mut self, n: usize) -> &mut RW<u32> {
-        let rw = &mut self.desc.deref_mut()[n] as *mut _ as *mut RW<u32>;
+        let rw = unsafe { self.0.as_mut_ptr().add(n) } as *mut RW<u32>;
         &mut *rw
     }
 
-    pub fn read(&self, n: usize) -> u32 {
-        self.r(n).read()
+    pub fn read<const N: usize>(&self) -> u32 {
+        const {
+            assert!(N < DESC_SIZE);
+        }
+        // SAFETY: `N < DESC_SIZE`
+        unsafe { self.r(N) }.read()
     }
 
-    pub unsafe fn write(&mut self, n: usize, value: u32) {
-        self.rw(n).write(value)
+    /// SAFETY: the side-effects of this write must be
+    /// accounted for.
+    pub unsafe fn write<const N: usize>(&mut self, value: u32) {
+        const {
+            assert!(N < DESC_SIZE);
+        }
+        // SAFETY: `N < DESC_SIZE`
+        unsafe { self.rw(N).write(value) }
     }
 
-    pub unsafe fn modify<F>(&mut self, n: usize, f: F)
+    /// SAFETY: the side-effects of this write must be
+    /// accounted for.
+    pub unsafe fn modify<F, const N: usize>(&mut self, f: F)
     where
         F: FnOnce(u32) -> u32,
     {
-        self.rw(n).modify(f)
+        const {
+            assert!(N < DESC_SIZE);
+        }
+        // SAFETY: `N < DESC_SIZE`
+        unsafe { self.rw(N).modify(f) }
     }
 }
