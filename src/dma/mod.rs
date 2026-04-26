@@ -120,19 +120,16 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         });
 
         let rx_ring = RxRing::new(&eth_dma, rx_buffer);
+        let tx_ring = TxRing::new(&eth_dma, tx_buffer);
 
-        let mut dma = EthernetDMA {
+        EthernetDMA {
             eth_dma,
             rx_ring,
-            tx_ring: TxRing::new(tx_buffer),
+            tx_ring,
 
             #[cfg(feature = "ptp")]
             packet_id_counter: 0,
-        };
-
-        dma.tx_ring.start(&dma.eth_dma);
-
-        dma
+        }
     }
 
     /// Split the [`EthernetDMA`] into concurrently operating send and

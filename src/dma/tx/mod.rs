@@ -24,33 +24,21 @@ pub struct TxRing<'a> {
 }
 
 impl<'ring> TxRing<'ring> {
-    /// Allocate
-    ///
-    /// `start()` will be needed before `send()`
-    pub(crate) fn new(entries: &'ring mut [TxRingEntry]) -> Self {
-        TxRing {
-            entries,
-            next_entry: 0,
-        }
-    }
-
-    /// Start the Tx DMA engine
-    pub(crate) fn start(&mut self, eth_dma: &ETHERNET_DMA) {
+    /// Allocate & start
+    pub(crate) fn new(eth_dma: &ETHERNET_DMA, entries: &'ring mut [TxRingEntry]) -> Self {
         // Setup ring
-        {
-            let mut previous: Option<&mut TxRingEntry> = None;
-            for entry in self.entries.iter_mut() {
-                if let Some(prev_entry) = &mut previous {
-                    prev_entry.setup(Some(entry));
-                }
-                previous = Some(entry);
+        let mut previous: Option<&mut TxRingEntry> = None;
+        for entry in entries.iter_mut() {
+            if let Some(prev_entry) = &mut previous {
+                prev_entry.setup(Some(entry));
             }
-            if let Some(entry) = &mut previous {
-                entry.setup(None);
-            }
+            previous = Some(entry);
+        }
+        if let Some(entry) = &mut previous {
+            entry.setup(None);
         }
 
-        let ring_ptr = self.entries[0].desc() as *const TxDescriptor;
+        let ring_ptr = entries[0].desc() as *const TxDescriptor;
         // Register TxDescriptor
         eth_dma
             .dmatdlar
@@ -66,6 +54,11 @@ impl<'ring> TxRing<'ring> {
 
         // Start transmission
         eth_dma.dmaomr.modify(|_, w| w.st().set_bit());
+
+        TxRing {
+            entries,
+            next_entry: 0,
+        }
     }
 
     /// Stop the TX DMA
