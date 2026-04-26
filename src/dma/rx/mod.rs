@@ -43,30 +43,20 @@ pub struct RxRing<'a> {
 
 impl<'a> RxRing<'a> {
     /// Allocate
-    pub(crate) fn new(entries: &'a mut [RxRingEntry]) -> Self {
-        RxRing {
-            entries,
-            next_entry: 0,
-        }
-    }
+    pub(crate) fn new(eth_dma: &ETHERNET_DMA, entries: &'a mut [RxRingEntry]) -> Self {
+        let mut previous: Option<&mut RxRingEntry> = None;
 
-    /// Setup the DMA engine (**required**)
-    pub(crate) fn start(&mut self, eth_dma: &ETHERNET_DMA) {
-        // Setup ring
-        {
-            let mut previous: Option<&mut RxRingEntry> = None;
-            for entry in self.entries.iter_mut() {
-                if let Some(prev_entry) = &mut previous {
-                    prev_entry.setup(Some(entry));
-                }
-                previous = Some(entry);
+        for entry in entries.iter_mut() {
+            if let Some(prev_entry) = &mut previous {
+                prev_entry.setup(Some(entry));
             }
-            if let Some(entry) = &mut previous {
-                entry.setup(None);
-            }
+            previous = Some(entry);
         }
-        self.next_entry = 0;
-        let ring_ptr = self.entries[0].desc() as *const RxDescriptor;
+        if let Some(entry) = &mut previous {
+            entry.setup(None);
+        }
+
+        let ring_ptr = entries[0].desc() as *const RxDescriptor;
 
         // Register RxDescriptor
         eth_dma
@@ -78,7 +68,10 @@ impl<'a> RxRing<'a> {
         // Start receive
         eth_dma.dmaomr.modify(|_, w| w.sr().set_bit());
 
-        self.demand_poll();
+        RxRing {
+            entries,
+            next_entry: 0,
+        }
     }
 
     /// Stop the RX DMA

@@ -119,16 +119,17 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
             }
         });
 
+        let rx_ring = RxRing::new(&eth_dma, rx_buffer);
+
         let mut dma = EthernetDMA {
             eth_dma,
-            rx_ring: RxRing::new(rx_buffer),
+            rx_ring,
             tx_ring: TxRing::new(tx_buffer),
 
             #[cfg(feature = "ptp")]
             packet_id_counter: 0,
         };
 
-        dma.rx_ring.start(&dma.eth_dma);
         dma.tx_ring.start(&dma.eth_dma);
 
         dma
