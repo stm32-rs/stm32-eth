@@ -179,3 +179,6 @@ All source code (including code snippets) is licensed under the Apache License, 
 ### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be licensed as above, without any additional terms or conditions.
+
+Changing DEFMT_LOG makes it work or not
+PROBE_RS_CHIP=STM32F767ZGTx STM32_ETH_EXAMPLE_PINS=nucleo STM32_ETH_EXAMPLE_HSE=bypass DEFMT_LOG=debug cargo run --example ip --features stm32f767,ptp,defmt,smoltcp-phy,async-await --target thumbv7em-none-eabihf --release
