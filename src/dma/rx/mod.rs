@@ -97,6 +97,7 @@ impl<'a> RxRing<'a> {
         // SAFETY: we only perform an atomic write to `dmarpdr`.
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
         eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
+        eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
     }
 
     /// Get current `RunningState`
