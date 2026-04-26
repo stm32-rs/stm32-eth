@@ -94,11 +94,9 @@ impl<'a> RxRing<'a> {
     /// Demand that the DMA engine polls the current `RxDescriptor`
     /// (when in [`RunningState::Stopped`].)
     fn demand_poll(&self) {
-        core::hint::black_box({
-            // SAFETY: we only perform an atomic write to `dmarpdr`.
-            let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
-            eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
-        });
+        // SAFETY: we only perform an atomic write to `dmarpdr`.
+        let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
+        eth_dma.dmarpdr.write(|w| unsafe { w.rpd().bits(1) });
     }
 
     /// Get current `RunningState`
