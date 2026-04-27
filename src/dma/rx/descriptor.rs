@@ -76,7 +76,7 @@ impl RxDescriptor {
     }
 
     /// Is owned by the DMA engine?
-    pub(crate) fn is_owned(&self) -> bool {
+    fn is_owned(&self) -> bool {
         (self.read_rdes0() & RXDESC_0_OWN) == RXDESC_0_OWN
     }
 
@@ -193,33 +193,6 @@ impl RxDescriptor {
     fn get_frame_len(&self) -> usize {
         ((self.read_rdes0() >> RXDESC_0_FL_SHIFT) & RXDESC_0_FL_MASK) as usize
     }
-
-    /// Only call this if [`!RxDescriptor::is_owned`](RxDescriptor::is_owned)
-    pub(super) fn recv(&mut self, packet_id: Option<PacketId>) -> Result<usize, RxDescriptorError> {
-        if self.has_error() {
-            self.set_owned();
-            Err(RxDescriptorError::DmaError)
-        } else if self.is_first() && self.is_last() {
-            let frame_len = self.get_frame_len();
-
-            // "Subsequent reads and writes cannot be moved ahead of preceding reads."
-            core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Acquire);
-
-            #[cfg(feature = "ptp")]
-            {
-                // Cache the PTP timestamp
-                self.cached_timestamp = self.timestamp();
-            }
-
-            // Set the Packet ID for this descriptor.
-            self.packet_id = packet_id;
-
-            Ok(frame_len)
-        } else {
-            self.set_owned();
-            Err(RxDescriptorError::Truncated)
-        }
-    }
 }
 
 /// An RX DMA Ring Descriptor entry
@@ -247,6 +220,74 @@ impl RingDescriptor for RxDescriptor {
 impl RxRingEntry {
     /// The initial value for an Rx Ring Entry
     pub const RX_INIT: Self = Self::new();
+
+    pub(crate) fn is_available(&self) -> bool {
+        !self.desc().is_owned()
+    }
+
+    pub(crate) fn as_available(&mut self) -> Option<AvailableRxRingEntry<'_>> {
+        if self.is_available() {
+            Some(AvailableRxRingEntry { entry: self })
+        } else {
+            None
+        }
+    }
+}
+
+pub(crate) struct AvailableRxRingEntry<'a> {
+    entry: &'a mut RxRingEntry,
+}
+
+impl<'a> AvailableRxRingEntry<'a> {
+    pub fn buffer(&self) -> &[u8] {
+        // SAFETY: the buffer is not owned by the DMA (by construction),
+        // and the returned slice has the same lifetime as `self`, which
+        // is borrowed immutably.
+        let buffer = unsafe { &*self.entry.buffer.get() };
+        &buffer[..]
+    }
+
+    pub fn buffer_mut(&mut self) -> &mut [u8] {
+        // SAFETY: the buffer is not owned by the DMA (by construction),
+        // and the returned slice has the same lifetime as `self`, which
+        // is borrowed mutably.
+        let buffer = unsafe { &mut *self.entry.buffer.get() };
+        &mut buffer[..]
+    }
+
+    pub fn desc(&self) -> &RxDescriptor {
+        self.entry.desc()
+    }
+
+    pub fn recv(self, packet_id: Option<PacketId>) -> Result<RxPacket<'a>, RxDescriptorError> {
+        let desc = self.entry.desc_mut();
+        if desc.has_error() {
+            desc.set_owned();
+            Err(RxDescriptorError::DmaError)
+        } else if desc.is_first() && desc.is_last() {
+            let frame_len = desc.get_frame_len();
+
+            // "Subsequent reads and writes cannot be moved ahead of preceding reads."
+            core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Acquire);
+
+            #[cfg(feature = "ptp")]
+            {
+                // Cache the PTP timestamp
+                desc.cached_timestamp = desc.timestamp();
+            }
+
+            // Set the Packet ID for this descriptor.
+            desc.packet_id = packet_id;
+
+            Ok(RxPacket {
+                entry: self,
+                length: frame_len,
+            })
+        } else {
+            desc.set_owned();
+            Err(RxDescriptorError::Truncated)
+        }
+    }
 }
 
 #[cfg(feature = "ptp")]
@@ -257,5 +298,48 @@ impl RxDescriptor {
 
     pub fn read_timestamp(&self) -> Option<Timestamp> {
         self.cached_timestamp.clone()
+    }
+}
+
+/// A received packet.
+///
+/// This packet implements [Deref<\[u8\]>](core::ops::Deref) and should be used
+/// as a slice.
+pub struct RxPacket<'a> {
+    entry: AvailableRxRingEntry<'a>,
+    length: usize,
+}
+
+impl<'a> core::ops::Deref for RxPacket<'a> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.entry.buffer()[0..self.length]
+    }
+}
+
+impl<'a> core::ops::DerefMut for RxPacket<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.entry.buffer_mut()[0..self.length]
+    }
+}
+
+impl<'a> Drop for RxPacket<'a> {
+    fn drop(&mut self) {
+        // Transfer ownership back to the DMA.
+        self.entry.entry.desc_mut().set_owned();
+    }
+}
+
+impl<'a> RxPacket<'a> {
+    /// Pass the received packet back to the DMA engine.
+    pub fn free(self) {
+        drop(self)
+    }
+
+    /// Get the timestamp associated with this packet
+    #[cfg(feature = "ptp")]
+    pub fn timestamp(&self) -> Option<Timestamp> {
+        self.entry.desc().read_timestamp()
     }
 }

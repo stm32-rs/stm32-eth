@@ -1,3 +1,5 @@
+use core::cell::UnsafeCell;
+
 use super::{rx::RxDescriptor, tx::TxDescriptor, MTU};
 
 pub trait RingDescriptor {
@@ -33,14 +35,14 @@ impl core::ops::DerefMut for Buffer {
 #[repr(C, align(8))]
 pub struct RingEntry<T: RingDescriptor> {
     desc: T,
-    buffer: Buffer,
+    pub(crate) buffer: UnsafeCell<Buffer>,
 }
 
 impl<T: RingDescriptor + Default> Default for RingEntry<T> {
     fn default() -> Self {
         RingEntry {
             desc: T::default(),
-            buffer: Buffer::new(),
+            buffer: UnsafeCell::new(Buffer::new()),
         }
     }
 }
@@ -53,7 +55,7 @@ impl RingEntry<TxDescriptor> {
     pub const fn new() -> Self {
         RingEntry {
             desc: TxDescriptor::new(),
-            buffer: Buffer::new(),
+            buffer: UnsafeCell::new(Buffer::new()),
         }
     }
 }
@@ -66,17 +68,17 @@ impl RingEntry<RxDescriptor> {
     pub const fn new() -> Self {
         RingEntry {
             desc: RxDescriptor::new(),
-            buffer: Buffer::new(),
+            buffer: UnsafeCell::new(Buffer::new()),
         }
     }
 }
 
 impl<T: RingDescriptor> RingEntry<T> {
     pub(crate) fn setup(&mut self, next: Option<&Self>) {
-        let buffer = self.buffer.as_ptr();
-        let len = self.buffer.len();
+        let buffer = self.buffer.get();
+
         self.desc_mut()
-            .setup(buffer, len, next.map(|next| next.desc()));
+            .setup(buffer as _, MTU, next.map(|next| next.desc()));
     }
 
     #[inline]
@@ -87,15 +89,5 @@ impl<T: RingDescriptor> RingEntry<T> {
     #[inline]
     pub(crate) fn desc_mut(&mut self) -> &mut T {
         &mut self.desc
-    }
-
-    #[inline]
-    pub(crate) fn as_slice(&self) -> &[u8] {
-        &(*self.buffer)[..]
-    }
-
-    #[inline]
-    pub(crate) fn as_mut_slice(&mut self) -> &mut [u8] {
-        &mut (*self.buffer)[..]
     }
 }

@@ -1,5 +1,5 @@
 use super::PacketId;
-use crate::peripherals::ETHERNET_DMA;
+use crate::{dma::tx::descriptor::AvailableTxRingEntry, peripherals::ETHERNET_DMA};
 
 #[cfg(feature = "ptp")]
 use super::{PacketIdNotFound, Timestamp};
@@ -73,7 +73,7 @@ impl<'ring> TxRing<'ring> {
 
     /// If this returns `true`, the next `send` will succeed.
     pub fn next_entry_available(&self) -> bool {
-        !self.entries[self.next_entry].desc().is_owned()
+        self.entries[self.next_entry].is_available()
     }
 
     /// Check if we can send the next TX entry.
@@ -81,14 +81,14 @@ impl<'ring> TxRing<'ring> {
     /// If [`Ok(res)`] is returned, the caller of must ensure
     /// that [`self.entries[res].send()`](TxRingEntry::send) is called
     /// before a new invocation of `send_next_impl`.
-    fn send_next_impl(&mut self) -> Result<usize, TxError> {
+    fn send_next_impl(&mut self) -> Result<AvailableTxRingEntry<'_>, TxError> {
         let entries_len = self.entries.len();
         let entry_num = self.next_entry;
         let entry = &mut self.entries[entry_num];
 
-        if !entry.desc().is_owned() {
+        if let Some(available) = entry.as_available() {
             self.next_entry = (self.next_entry + 1) % entries_len;
-            Ok(entry_num)
+            Ok(available)
         } else {
             Err(TxError::WouldBlock)
         }
@@ -108,9 +108,7 @@ impl<'ring> TxRing<'ring> {
         packet_id: Option<PacketId>,
     ) -> Result<TxPacket<'borrow>, TxError> {
         let entry = self.send_next_impl()?;
-        let entry = &mut self.entries[entry];
-        let tx_buffer = entry.buffer_mut();
-
+        let tx_buffer = entry.buffer();
         assert!(length <= tx_buffer.len(), "Not enough space in TX buffer");
 
         Ok(TxPacket {
@@ -134,18 +132,18 @@ impl<'ring> TxRing<'ring> {
         length: usize,
         packet_id: Option<PacketId>,
     ) -> TxPacket<'borrow> {
-        let entry = core::future::poll_fn(|ctx| match self.send_next_impl() {
-            Ok(packet) => Poll::Ready(packet),
-            Err(_) => {
+        core::future::poll_fn(|ctx| {
+            if self.next_entry_available() {
+                Poll::Ready(())
+            } else {
                 crate::dma::EthernetDMA::tx_waker().register(ctx.waker());
                 Poll::Pending
             }
         })
         .await;
 
-        let entry = &mut self.entries[entry];
-
-        let tx_buffer = entry.buffer_mut();
+        let entry = self.send_next_impl().unwrap();
+        let tx_buffer = entry.buffer();
         assert!(length <= tx_buffer.len(), "Not enough space in TX buffer");
 
         TxPacket {
@@ -212,7 +210,7 @@ impl TxRing<'_> {
     }
 
     fn entry_available(&self, index: usize) -> bool {
-        !self.entries[index].desc().is_owned()
+        self.entries[index].is_available()
     }
 
     fn entry_timestamp(&self, index: usize) -> Option<Timestamp> {
@@ -301,7 +299,7 @@ impl RunningState {
 /// [`Deref`]: core::ops::Deref
 /// [`DerefMut`]: core::ops::DerefMut
 pub struct TxPacket<'borrow> {
-    entry: &'borrow mut TxRingEntry,
+    entry: AvailableTxRingEntry<'borrow>,
     length: usize,
     packet_id: Option<PacketId>,
 }
@@ -329,9 +327,9 @@ impl TxPacket<'_> {
 
 impl Drop for TxPacket<'_> {
     fn drop(&mut self) {
-        self.entry
-            .desc_mut()
-            .send(self.length, self.packet_id.clone());
+        // SAFETY: we don't call `buffer()` or `buffer_mut()` on
+        // `self.entry` after this point.
+        unsafe { self.entry.send(self.length, self.packet_id.clone()) };
         TxRing::demand_poll();
     }
 }

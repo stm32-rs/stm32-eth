@@ -62,11 +62,6 @@ impl TxDescriptor {
         }
     }
 
-    /// Only call this if [`TxRingEntry::is_available`]
-    pub(super) fn send(&mut self, length: usize, packet_id: Option<PacketId>) {
-        self.set_owned(length, packet_id);
-    }
-
     fn read_tdes0(&self) -> u32 {
         self.desc.read::<0>()
     }
@@ -77,7 +72,7 @@ impl TxDescriptor {
     }
 
     /// `true` if the descriptor is owned by the DMA engine.
-    pub(crate) fn is_owned(&self) -> bool {
+    fn is_owned(&self) -> bool {
         (self.read_tdes0() & TXDESC_0_OWN) == TXDESC_0_OWN
     }
 
@@ -190,13 +185,44 @@ impl RingDescriptor for TxDescriptor {
 }
 
 impl TxRingEntry {
-    /// Only call this if [`TxRingEntry::is_available`]
-    pub fn buffer(&self) -> &[u8] {
-        self.as_slice()
+    pub(super) fn is_available(&self) -> bool {
+        !self.desc().is_owned()
     }
 
-    /// Only call this if [`TxRingEntry::is_available`]
+    pub(super) fn as_available(&mut self) -> Option<AvailableTxRingEntry<'_>> {
+        if self.is_available() {
+            Some(AvailableTxRingEntry { entry: self })
+        } else {
+            None
+        }
+    }
+}
+
+pub(crate) struct AvailableTxRingEntry<'a> {
+    entry: &'a mut TxRingEntry,
+}
+
+impl AvailableTxRingEntry<'_> {
+    pub fn buffer(&self) -> &[u8] {
+        // SAFETY: the buffer is not owned by the DMA (by construction),
+        // and the returned slice has the same lifetime as `self`, which
+        // is borrowed immutably.
+        let buffer = unsafe { &*self.entry.buffer.get() };
+        &buffer[..]
+    }
+
     pub fn buffer_mut(&mut self) -> &mut [u8] {
-        self.as_mut_slice()
+        // SAFETY: the buffer is not owned by the DMA (by construction),
+        // and the returned slice has the same lifetime as `self`, which
+        // is borrowed mutably.
+        let buffer = unsafe { &mut *self.entry.buffer.get() };
+        &mut buffer[..]
+    }
+
+    /// # Safety
+    /// You must not call `buffer()` or `buffer_mut()` after
+    /// calling this function.
+    pub unsafe fn send(&mut self, length: usize, packet_id: Option<PacketId>) {
+        self.entry.desc_mut().set_owned(length, packet_id);
     }
 }

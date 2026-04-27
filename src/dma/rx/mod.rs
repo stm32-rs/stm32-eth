@@ -7,6 +7,7 @@ use super::PacketId;
 use crate::peripherals::ETHERNET_DMA;
 
 mod descriptor;
+pub use descriptor::RxPacket;
 
 #[cfg(feature = "ptp")]
 use crate::{dma::PacketIdNotFound, ptp::Timestamp};
@@ -119,19 +120,15 @@ impl<'a> RxRing<'a> {
             self.demand_poll();
         }
 
-        !self.entries[self.next_entry].desc().is_owned()
+        self.entries[self.next_entry].is_available()
     }
 
     /// Receive the next packet (if any is ready).
-    ///
-    /// This function returns a tuple of `Ok((entry_index, length))` on
-    /// success. Whoever receives the `Ok` must ensure that `set_owned`
-    /// is eventually called on the entry with that index.
     fn recv_next_impl(
         &mut self,
         // NOTE(allow): packet_id is unused if ptp is disabled.
         #[allow(unused_variables)] packet_id: Option<PacketId>,
-    ) -> Result<(usize, usize), RxError> {
+    ) -> Result<RxPacket<'_>, RxError> {
         if !self.running_state().is_running() {
             self.demand_poll();
         }
@@ -140,10 +137,10 @@ impl<'a> RxRing<'a> {
         let entry_num = self.next_entry;
         let entry = &mut self.entries[entry_num];
 
-        if !entry.desc().is_owned() {
+        if let Some(entry) = entry.as_available() {
             self.next_entry = (self.next_entry + 1) % entries_len;
-            let length = entry.desc_mut().recv(packet_id)?;
-            Ok((entry_num, length))
+            let packet = entry.recv(packet_id)?;
+            Ok(packet)
         } else {
             Err(RxError::WouldBlock)
         }
@@ -152,11 +149,7 @@ impl<'a> RxRing<'a> {
     /// Receive the next packet (if any is ready), or return [`Err`]
     /// immediately.
     pub fn recv_next(&'_ mut self, packet_id: Option<PacketId>) -> Result<RxPacket<'_>, RxError> {
-        let (entry, length) = self.recv_next_impl(packet_id.map(|p| p.into()))?;
-        Ok(RxPacket {
-            entry: &mut self.entries[entry],
-            length,
-        })
+        self.recv_next_impl(packet_id.map(|p| p.into()))
     }
 
     /// Receive the next packet.
@@ -165,23 +158,17 @@ impl<'a> RxRing<'a> {
     /// will contain the ethernet data.
     #[cfg(feature = "async-await")]
     pub async fn recv(&'_ mut self, packet_id: Option<PacketId>) -> RxPacket<'_> {
-        let (entry, length) = core::future::poll_fn(|ctx| {
-            let res = self.recv_next_impl(packet_id.clone());
-
-            match res {
-                Ok(value) => Poll::Ready(value),
-                Err(_) => {
-                    crate::dma::EthernetDMA::rx_waker().register(ctx.waker());
-                    Poll::Pending
-                }
+        core::future::poll_fn(|ctx| {
+            if self.next_entry_available() {
+                Poll::Ready(())
+            } else {
+                crate::dma::EthernetDMA::rx_waker().register(ctx.waker());
+                Poll::Pending
             }
         })
         .await;
 
-        RxPacket {
-            entry: &mut self.entries[entry],
-            length,
-        }
+        self.recv_next_impl(packet_id).unwrap()
     }
 }
 
@@ -212,47 +199,5 @@ impl RunningState {
     /// whether self equals to `RunningState::Running`
     pub fn is_running(&self) -> bool {
         *self == RunningState::Running
-    }
-}
-
-/// A received packet.
-///
-/// This packet implements [Deref<\[u8\]>](core::ops::Deref) and should be used
-/// as a slice.
-pub struct RxPacket<'a> {
-    entry: &'a mut RxRingEntry,
-    length: usize,
-}
-
-impl<'a> core::ops::Deref for RxPacket<'a> {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.entry.as_slice()[0..self.length]
-    }
-}
-
-impl<'a> core::ops::DerefMut for RxPacket<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.entry.as_mut_slice()[0..self.length]
-    }
-}
-
-impl<'a> Drop for RxPacket<'a> {
-    fn drop(&mut self) {
-        self.entry.desc_mut().set_owned();
-    }
-}
-
-impl<'a> RxPacket<'a> {
-    /// Pass the received packet back to the DMA engine.
-    pub fn free(self) {
-        drop(self)
-    }
-
-    /// Get the timestamp associated with this packet
-    #[cfg(feature = "ptp")]
-    pub fn timestamp(&self) -> Option<Timestamp> {
-        self.entry.desc().read_timestamp()
     }
 }
