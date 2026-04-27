@@ -73,7 +73,7 @@ impl<'ring> TxRing<'ring> {
 
     /// If this returns `true`, the next `send` will succeed.
     pub fn next_entry_available(&self) -> bool {
-        self.entries[self.next_entry].is_available()
+        !self.entries[self.next_entry].desc().is_owned()
     }
 
     /// Check if we can send the next TX entry.
@@ -86,7 +86,7 @@ impl<'ring> TxRing<'ring> {
         let entry_num = self.next_entry;
         let entry = &mut self.entries[entry_num];
 
-        if entry.is_available() {
+        if !entry.desc().is_owned() {
             self.next_entry = (self.next_entry + 1) % entries_len;
             Ok(entry_num)
         } else {
@@ -201,23 +201,21 @@ impl<'ring> TxRing<'ring> {
 #[cfg(feature = "ptp")]
 impl TxRing<'_> {
     fn entry_for_id(&self, id: &PacketId) -> Option<usize> {
-        self.entries.iter().enumerate().find_map(
-            |(idx, e)| {
-                if e.has_packet_id(id) {
-                    Some(idx)
-                } else {
-                    None
-                }
-            },
-        )
+        self.entries.iter().enumerate().find_map(|(idx, e)| {
+            if e.desc().has_packet_id(id) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
     }
 
     fn entry_available(&self, index: usize) -> bool {
-        self.entries[index].is_available()
+        !self.entries[index].desc().is_owned()
     }
 
     fn entry_timestamp(&self, index: usize) -> Option<Timestamp> {
-        self.entries[index].timestamp()
+        self.entries[index].desc().timestamp()
     }
 
     /// Blockingly wait untill the timestamp for the
@@ -331,7 +329,9 @@ impl TxPacket<'_, '_> {
 
 impl Drop for TxPacket<'_, '_> {
     fn drop(&mut self) {
-        self.ring.entries[self.idx].send(self.length, self.packet_id.clone());
+        self.ring.entries[self.idx]
+            .desc_mut()
+            .send(self.length, self.packet_id.clone());
         self.ring.demand_poll();
     }
 }

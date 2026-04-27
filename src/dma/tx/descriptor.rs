@@ -62,6 +62,11 @@ impl TxDescriptor {
         }
     }
 
+    /// Only call this if [`TxRingEntry::is_available`]
+    pub(super) fn send(&mut self, length: usize, packet_id: Option<PacketId>) {
+        self.set_owned(length, packet_id);
+    }
+
     fn read_tdes0(&self) -> u32 {
         self.desc.read::<0>()
     }
@@ -71,8 +76,8 @@ impl TxDescriptor {
         (self.read_tdes0() & TXDESC_0_ES) == TXDESC_0_ES
     }
 
-    /// Is owned by the DMA engine?
-    fn is_owned(&self) -> bool {
+    /// `true` if the descriptor is owned by the DMA engine.
+    pub(crate) fn is_owned(&self) -> bool {
         (self.read_tdes0() & TXDESC_0_OWN) == TXDESC_0_OWN
     }
 
@@ -146,7 +151,7 @@ impl TxDescriptor {
     }
 
     #[cfg(feature = "ptp")]
-    fn timestamp(&self) -> Option<Timestamp> {
+    pub(crate) fn timestamp(&self) -> Option<Timestamp> {
         let tdes0 = self.read_tdes0();
 
         let contains_timestamp = (tdes0 & TXDESC_0_TIMESTAMP_STATUS) == TXDESC_0_TIMESTAMP_STATUS;
@@ -156,6 +161,11 @@ impl TxDescriptor {
         } else {
             None
         }
+    }
+
+    #[cfg(feature = "ptp")]
+    pub fn has_packet_id(&self, packet_id: &PacketId) -> bool {
+        self.packet_id.as_ref() == Some(packet_id)
     }
 }
 
@@ -180,15 +190,6 @@ impl RingDescriptor for TxDescriptor {
 }
 
 impl TxRingEntry {
-    pub(super) fn is_available(&self) -> bool {
-        !self.desc().is_owned()
-    }
-
-    /// Only call this if [`TxRingEntry::is_available`]
-    pub(super) fn send(&mut self, length: usize, packet_id: Option<PacketId>) {
-        self.desc_mut().set_owned(length, packet_id);
-    }
-
     /// Only call this if [`TxRingEntry::is_available`]
     pub fn buffer(&self) -> &[u8] {
         self.as_slice()
@@ -197,16 +198,5 @@ impl TxRingEntry {
     /// Only call this if [`TxRingEntry::is_available`]
     pub fn buffer_mut(&mut self) -> &mut [u8] {
         self.as_mut_slice()
-    }
-}
-
-#[cfg(feature = "ptp")]
-impl TxRingEntry {
-    pub fn has_packet_id(&self, packet_id: &PacketId) -> bool {
-        self.desc().packet_id.as_ref() == Some(packet_id)
-    }
-
-    pub fn timestamp(&self) -> Option<Timestamp> {
-        self.desc().timestamp().clone()
     }
 }
