@@ -293,7 +293,7 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
         &'borrow mut self,
         length: usize,
         packet_id: Option<PacketId>,
-    ) -> TxPacket<'borrow, 'tx> {
+    ) -> TxPacket<'borrow> {
         self.tx_ring.prepare_packet(length, packet_id).await
     }
 
