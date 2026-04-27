@@ -81,7 +81,8 @@ mod app {
         let rx_ring = cx.local.rx_ring;
         let tx_ring = cx.local.tx_ring;
 
-        let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
+        let (clocks, gpio, ethernet) =
+            crate::common::setup_peripherals_and_cache(p, cx.core.MPU, rx_ring, tx_ring);
 
         defmt::info!("Setting up pins");
         let (pins, mdio, mdc, pps) = crate::common::setup_pins(gpio);

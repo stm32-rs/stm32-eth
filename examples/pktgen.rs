@@ -35,15 +35,17 @@ fn main() -> ! {
     let p = Peripherals::take().unwrap();
     let mut cp = CorePeripherals::take().unwrap();
 
-    let (clocks, gpio, ethernet) = common::setup_peripherals(p);
+    let mut rx_ring: [RxRingEntry; 2] = Default::default();
+    let mut tx_ring: [TxRingEntry; 2] = Default::default();
+
+    let (clocks, gpio, ethernet) =
+        common::setup_peripherals_and_cache(p, cp.MPU, &rx_ring, &tx_ring);
 
     setup_systick(&mut cp.SYST);
 
     defmt::info!("Enabling ethernet...");
     let (eth_pins, mdio, mdc, _) = common::setup_pins(gpio);
 
-    let mut rx_ring: [RxRingEntry; 2] = Default::default();
-    let mut tx_ring: [TxRingEntry; 2] = Default::default();
     let Parts {
         mut dma,
         mac,

@@ -81,7 +81,8 @@ mod app {
         let tx_payload_storage = cx.local.tx_payload_storage;
         let sockets = cx.local.sockets;
 
-        let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
+        let (clocks, gpio, ethernet) =
+            crate::common::setup_peripherals_and_cache(p, core.MPU, rx_ring, tx_ring);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
 
         defmt::info!("Setting up pins");

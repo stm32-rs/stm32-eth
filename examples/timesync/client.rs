@@ -123,7 +123,8 @@ mod app {
         let rx_ring = cx.local.rx_ring;
         let tx_ring = cx.local.tx_ring;
 
-        let (clocks, gpio, ethernet) = crate::common::setup_peripherals(p);
+        let (clocks, gpio, ethernet) =
+            crate::common::setup_peripherals_and_cache(p, core.MPU, rx_ring, tx_ring);
         let mono = Systick::new(core.SYST, clocks.hclk().raw());
 
         defmt::info!("Setting up pins");
