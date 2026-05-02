@@ -148,10 +148,8 @@ impl<'a> RxRing<'a> {
         let entry = &mut self.entries[entry_num];
 
         if entry.is_available() {
-            let length = entry.recv(packet_id)?;
-
             self.next_entry = (self.next_entry + 1) % entries_len;
-
+            let length = entry.recv(packet_id)?;
             Ok((entry_num, length))
         } else {
             Err(RxError::WouldBlock)
