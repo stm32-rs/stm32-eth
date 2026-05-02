@@ -1,31 +1,58 @@
-use super::{rx::RxDescriptor, tx::TxDescriptor, MTU};
+use super::{rx::RxDescriptor, tx::TxDescriptor};
+
+use buffer::Buffer;
 
 pub trait RingDescriptor {
     fn setup(&mut self, buffer: *const u8, len: usize, next: Option<&Self>);
 }
+mod buffer {
+    use core::cell::UnsafeCell;
 
-#[repr(C, align(8))]
-pub struct Buffer {
-    buffer: [u8; MTU],
-}
+    use crate::dma::MTU;
 
-impl Buffer {
-    pub const fn new() -> Self {
-        Self { buffer: [0; MTU] }
+    #[repr(C, align(8))]
+    pub struct Buffer {
+        buffer: UnsafeCell<[u8; MTU]>,
     }
-}
 
-impl core::ops::Deref for Buffer {
-    type Target = [u8; MTU];
+    impl Buffer {
+        pub const fn new() -> Self {
+            Self {
+                buffer: UnsafeCell::new([0u8; _]),
+            }
+        }
 
-    fn deref(&self) -> &Self::Target {
-        &self.buffer
-    }
-}
+        pub const fn len(&self) -> usize {
+            MTU
+        }
 
-impl core::ops::DerefMut for Buffer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.buffer
+        pub fn as_mut_ptr(&mut self) -> *mut u8 {
+            &raw mut self.buffer as _
+        }
+
+        /// # Safety
+        /// The caller must guarantee that the DMA does not
+        /// own this buffer for the duration of the borrow.
+        pub unsafe fn get(&self) -> &[u8; MTU] {
+            // SAFETY: the shared reference to `self` guarantees
+            // that we have shared access to the buffer for the
+            // lifetime of `self` (which is what we're returning).
+            // The caller guarantees that the DMA does
+            // not own the buffer.
+            unsafe { &*self.buffer.get() }
+        }
+
+        /// # Safety
+        /// The caller must guarantee that the DMA does not
+        /// own this buffer for the duration of the borrow.
+        pub unsafe fn get_mut(&mut self) -> &mut [u8; MTU] {
+            // SAFETY: the exclusive reference to `self` guarantees
+            // that no other borrows of the buffer currently exist
+            // and will not for the lifetime of `self`.
+            // The caller guarantees that the DMA does not
+            // own the buffer.
+            unsafe { &mut *self.buffer.get() }
+        }
     }
 }
 
@@ -33,7 +60,7 @@ impl core::ops::DerefMut for Buffer {
 #[repr(C, align(8))]
 pub struct RingEntry<T: RingDescriptor> {
     desc: T,
-    buffer: Buffer,
+    pub(crate) buffer: Buffer,
 }
 
 impl<T: RingDescriptor + Default> Default for RingEntry<T> {
@@ -73,7 +100,7 @@ impl RingEntry<RxDescriptor> {
 
 impl<T: RingDescriptor> RingEntry<T> {
     pub(crate) fn setup(&mut self, next: Option<&Self>) {
-        let buffer = self.buffer.as_ptr();
+        let buffer = self.buffer.as_mut_ptr();
         let len = self.buffer.len();
         self.desc_mut()
             .setup(buffer, len, next.map(|next| next.desc()));
@@ -87,15 +114,5 @@ impl<T: RingDescriptor> RingEntry<T> {
     #[inline]
     pub(crate) fn desc_mut(&mut self) -> &mut T {
         &mut self.desc
-    }
-
-    #[inline]
-    pub(crate) fn as_slice(&self) -> &[u8] {
-        &(*self.buffer)[..]
-    }
-
-    #[inline]
-    pub(crate) fn as_mut_slice(&mut self) -> &mut [u8] {
-        &mut (*self.buffer)[..]
     }
 }

@@ -291,11 +291,11 @@ impl<'rx, 'tx> EthernetDMA<'rx, 'tx> {
     /// Prepare a packet for sending.
     ///
     /// See [`TxRing::prepare_packet`].
-    pub async fn prepare_packet<'borrow>(
-        &'borrow mut self,
+    pub async fn prepare_packet(
+        &'_ mut self,
         length: usize,
         packet_id: Option<PacketId>,
-    ) -> TxPacket<'borrow, 'tx> {
+    ) -> TxPacket<'_> {
         self.tx_ring.prepare_packet(length, packet_id).await
     }
 

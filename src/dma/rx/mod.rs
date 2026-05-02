@@ -129,7 +129,9 @@ impl<'a> RxRing<'a> {
         self.entries[self.next_entry].is_available()
     }
 
-    /// Receive the next packet (if any is ready).
+    /// If the next ring entry is [`RxRingEntry::is_available`], advance
+    /// the next entry index, and return its `(index, length)`, or an error
+    /// if the entry has errors.
     ///
     /// This function returns a tuple of `Ok((entry_index, length))` on
     /// success. Whoever receives the `Ok` must ensure that `set_owned`
@@ -235,13 +237,19 @@ impl<'a> core::ops::Deref for RxPacket<'a> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &self.entry.as_slice()[0..self.length]
+        // SAFETY: an `RxPacket` is only created
+        // when the associated entry is not owned
+        // by the DMA.
+        unsafe { &self.entry.buffer.get()[0..self.length] }
     }
 }
 
 impl<'a> core::ops::DerefMut for RxPacket<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.entry.as_mut_slice()[0..self.length]
+        // SAFETY: an `RxPacket` is only created
+        // when the associated entry is not owned
+        // by the DMA.
+        unsafe { &mut self.entry.buffer.get_mut()[0..self.length] }
     }
 }
 
