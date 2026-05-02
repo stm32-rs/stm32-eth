@@ -83,7 +83,8 @@ impl<'ring> TxRing<'ring> {
         self.entries[self.next_entry].is_available()
     }
 
-    /// Check if we can send the next TX entry.
+    /// Check if we can send the next TX entry. Returns the first
+    /// [`TxRingEntry::is_available`] entry.
     ///
     /// If [`Ok(res)`] is returned, the caller of must ensure
     /// that [`self.entries[res].send()`](TxRingEntry::send) is called
@@ -109,19 +110,19 @@ impl<'ring> TxRing<'ring> {
     ///
     /// When all data is copied into the TX buffer, use [`TxPacket::send()`]
     /// to transmit it.
-    pub fn send_next<'borrow>(
-        &'borrow mut self,
+    pub fn send_next(
+        &'_ mut self,
         length: usize,
         packet_id: Option<PacketId>,
-    ) -> Result<TxPacket<'borrow, 'ring>, TxError> {
+    ) -> Result<TxPacket<'_>, TxError> {
         let entry = self.send_next_impl()?;
-        let tx_buffer = self.entries[entry].buffer_mut();
+        let entry = &mut self.entries[entry];
+        let tx_buffer = unsafe { entry.buffer.get() };
 
         assert!(length <= tx_buffer.len(), "Not enough space in TX buffer");
 
         Ok(TxPacket {
-            ring: self,
-            idx: entry,
+            entry,
             length,
             packet_id,
         })
@@ -136,11 +137,11 @@ impl<'ring> TxRing<'ring> {
     /// When all data is copied into the TX buffer, use [`TxPacket::send()`]
     /// to transmit it.
     #[cfg(feature = "async-await")]
-    pub async fn prepare_packet<'borrow>(
-        &'borrow mut self,
+    pub async fn prepare_packet(
+        &'_ mut self,
         length: usize,
         packet_id: Option<PacketId>,
-    ) -> TxPacket<'borrow, 'ring> {
+    ) -> TxPacket<'_> {
         let entry = core::future::poll_fn(|ctx| match self.send_next_impl() {
             Ok(packet) => Poll::Ready(packet),
             Err(_) => {
@@ -150,12 +151,14 @@ impl<'ring> TxRing<'ring> {
         })
         .await;
 
-        let tx_buffer = self.entries[entry].buffer_mut();
+        let entry = &mut self.entries[entry];
+        // SAFETY: `send_next_impl` only returns indices for available
+        // entries.
+        let tx_buffer = unsafe { entry.buffer.get() };
         assert!(length <= tx_buffer.len(), "Not enough space in TX buffer");
 
         TxPacket {
-            ring: self,
-            idx: entry,
+            entry,
             length,
             packet_id,
         }
@@ -163,7 +166,7 @@ impl<'ring> TxRing<'ring> {
 
     /// Demand that the DMA engine polls the current `TxDescriptor`
     /// (when we just transferred ownership to the hardware).
-    pub(crate) fn demand_poll(&self) {
+    pub(crate) fn demand_poll() {
         // SAFETY: we only perform an atomic write to `dmatpdr`
         let eth_dma = unsafe { &*ETHERNET_DMA::ptr() };
         eth_dma.dmatpdr.write(|w| {
@@ -308,37 +311,40 @@ impl RunningState {
 ///
 /// [`Deref`]: core::ops::Deref
 /// [`DerefMut`]: core::ops::DerefMut
-pub struct TxPacket<'borrow, 'ring> {
-    ring: &'borrow mut TxRing<'ring>,
-    idx: usize,
+pub struct TxPacket<'borrow> {
+    entry: &'borrow mut TxRingEntry,
     length: usize,
     packet_id: Option<PacketId>,
 }
 
-impl core::ops::Deref for TxPacket<'_, '_> {
+impl core::ops::Deref for TxPacket<'_> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &self.ring.entries[self.idx].buffer()[..self.length]
+        // SAFETY: TxPackets are only created from
+        // available entries.
+        unsafe { self.entry.buffer.get() }
     }
 }
 
-impl core::ops::DerefMut for TxPacket<'_, '_> {
+impl core::ops::DerefMut for TxPacket<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.ring.entries[self.idx].buffer_mut()[..self.length]
+        // SAFETY: TxPackets are only created from
+        // available entries.
+        unsafe { self.entry.buffer.get_mut() }
     }
 }
 
-impl TxPacket<'_, '_> {
+impl TxPacket<'_> {
     /// Send this packet!
     pub fn send(self) {
         drop(self);
     }
 }
 
-impl Drop for TxPacket<'_, '_> {
+impl Drop for TxPacket<'_> {
     fn drop(&mut self) {
-        self.ring.entries[self.idx].send(self.length, self.packet_id.clone());
-        self.ring.demand_poll();
+        self.entry.send(self.length, self.packet_id.clone());
+        TxRing::demand_poll();
     }
 }

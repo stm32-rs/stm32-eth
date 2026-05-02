@@ -187,16 +187,6 @@ impl TxRingEntry {
     pub(super) fn send(&mut self, length: usize, packet_id: Option<PacketId>) {
         self.desc_mut().set_owned(length, packet_id);
     }
-
-    /// Only call this if [`TxRingEntry::is_available`]
-    pub fn buffer(&self) -> &[u8] {
-        self.as_slice()
-    }
-
-    /// Only call this if [`TxRingEntry::is_available`]
-    pub fn buffer_mut(&mut self) -> &mut [u8] {
-        self.as_mut_slice()
-    }
 }
 
 #[cfg(feature = "ptp")]
