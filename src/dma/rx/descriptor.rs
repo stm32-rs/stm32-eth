@@ -240,18 +240,14 @@ pub(crate) struct AvailableRxRingEntry<'a> {
 
 impl<'a> AvailableRxRingEntry<'a> {
     pub fn buffer(&self) -> &[u8] {
-        // SAFETY: the buffer is not owned by the DMA (by construction),
-        // and the returned slice has the same lifetime as `self`, which
-        // is borrowed immutably.
-        let buffer = unsafe { &*self.entry.buffer.get() };
+        // SAFETY: the buffer is not owned by the DMA (by construction).
+        let buffer = unsafe { self.entry.buffer.get() };
         &buffer[..]
     }
 
     pub fn buffer_mut(&mut self) -> &mut [u8] {
-        // SAFETY: the buffer is not owned by the DMA (by construction),
-        // and the returned slice has the same lifetime as `self`, which
-        // is borrowed mutably.
-        let buffer = unsafe { &mut *self.entry.buffer.get() };
+        // SAFETY: the buffer is not owned by the DMA (by construction).
+        let buffer = unsafe { self.entry.buffer.get_mut() };
         &mut buffer[..]
     }
 
