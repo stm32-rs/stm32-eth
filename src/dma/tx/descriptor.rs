@@ -198,21 +198,19 @@ impl TxRingEntry {
     }
 }
 
-pub(crate) struct AvailableTxRingEntry<'a> {
+pub(super) struct AvailableTxRingEntry<'a> {
     entry: &'a mut TxRingEntry,
 }
 
 impl AvailableTxRingEntry<'_> {
     pub fn buffer(&self) -> &[u8] {
         // SAFETY: the buffer is not owned by the DMA (by construction).
-        let buffer = unsafe { self.entry.buffer.get() };
-        &buffer[..]
+        unsafe { self.entry.buffer.get() }
     }
 
     pub fn buffer_mut(&mut self) -> &mut [u8] {
         // SAFETY: the buffer is not owned by the DMA (by construction).
-        let buffer = unsafe { self.entry.buffer.get_mut() };
-        &mut buffer[..]
+        unsafe { self.entry.buffer.get_mut() }
     }
 
     /// # Safety

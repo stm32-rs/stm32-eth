@@ -221,11 +221,11 @@ impl RxRingEntry {
     /// The initial value for an Rx Ring Entry
     pub const RX_INIT: Self = Self::new();
 
-    pub(crate) fn is_available(&self) -> bool {
+    pub(super) fn is_available(&self) -> bool {
         !self.desc().is_owned()
     }
 
-    pub(crate) fn as_available(&mut self) -> Option<AvailableRxRingEntry<'_>> {
+    pub(super) fn as_available(&mut self) -> Option<AvailableRxRingEntry<'_>> {
         if self.is_available() {
             Some(AvailableRxRingEntry { entry: self })
         } else {
@@ -234,21 +234,19 @@ impl RxRingEntry {
     }
 }
 
-pub(crate) struct AvailableRxRingEntry<'a> {
+pub(super) struct AvailableRxRingEntry<'a> {
     entry: &'a mut RxRingEntry,
 }
 
 impl<'a> AvailableRxRingEntry<'a> {
     pub fn buffer(&self) -> &[u8] {
         // SAFETY: the buffer is not owned by the DMA (by construction).
-        let buffer = unsafe { self.entry.buffer.get() };
-        &buffer[..]
+        unsafe { self.entry.buffer.get() }
     }
 
     pub fn buffer_mut(&mut self) -> &mut [u8] {
         // SAFETY: the buffer is not owned by the DMA (by construction).
-        let buffer = unsafe { self.entry.buffer.get_mut() };
-        &mut buffer[..]
+        unsafe { self.entry.buffer.get_mut() }
     }
 
     pub fn desc(&self) -> &RxDescriptor {
