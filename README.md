@@ -54,6 +54,9 @@ fn main() {
         rx_d1: gpioc.pc5,
     };
 
+    // If your MCU's core has caching support (generally true for M7 cores), make sure
+    // to mark the memory for the following two arrays as non-cacheable using
+    // the `cortex_m::peripheral::MPU`.
     let mut rx_ring: [RxRingEntry; 16] = Default::default();
     let mut tx_ring: [TxRingEntry; 8] = Default::default();
 

@@ -10,7 +10,9 @@ use defmt_rtt as _;
 use panic_probe as _;
 
 use stm32_eth::{
+    dma::{RxRingEntry, TxRingEntry},
     hal::{gpio::GpioExt, rcc::Clocks},
+    stm32::MPU,
     PartsIn,
 };
 
@@ -25,12 +27,79 @@ use stm32_eth::hal::rcc::RccExt;
 #[allow(unused)]
 fn main() {}
 
+/// Mark RAM as non-cachable. Also validate that the RX ring
+/// and TX ring are within them.
+///
+/// On cores without cache (e.g. M33), this function is a no-op. For cores
+/// with a cache (e.g. M7), this is necessary to ensure that the data read
+/// by the ethernet DMA is the data that the core actually wrote.
+fn mpu_mark_noncachable(mpu: MPU, rx_ring: &[RxRingEntry], tx_ring: &[TxRingEntry]) {
+    let start = 0x20000000u32;
+    let len = 32u32 * 1024;
+    let range = start as usize..(start as usize + len as usize);
+
+    let rx_start = rx_ring.as_ptr();
+    let rx_first_addr = rx_start.addr();
+    let rx_last_addr = unsafe { rx_start.add(rx_ring.len() + 1) }.addr() - 1;
+    assert!(
+        range.contains(&rx_first_addr),
+        "RX ring starts before non-cacheable region"
+    );
+
+    assert!(
+        range.contains(&rx_last_addr),
+        "RX ring ends after non-cacheable region"
+    );
+
+    let tx_start = tx_ring.as_ptr();
+    let tx_first_addr = tx_start.addr();
+    let tx_last_addr = unsafe { rx_start.add(tx_ring.len() + 1) }.addr() - 1;
+    assert!(
+        range.contains(&tx_first_addr),
+        "TX ring starts before non-cacheable region"
+    );
+
+    assert!(
+        range.contains(&tx_last_addr),
+        "TX ring ends after non-cacheable region"
+    );
+
+    let size_field = len.trailing_zeros() - 1;
+
+    unsafe {
+        mpu.ctrl.write(0);
+        let region = 0;
+        mpu.rnr.write(region);
+        mpu.rbar.write(start | 1 << 4 | region);
+
+        mpu.rasr.write(
+            (1 << 28)       // XN
+        | (0b011 << 24)     // AP = full access
+        | (0b001 << 19)     // TEX = 001 \
+        | (0 << 17)         //   C = 0    } -> Normal, Non-cacheable
+        | (0 << 16)         //   B = 0   /
+        | (size_field << 1) // SIZE
+        | (1 << 0), // ENABLE
+        );
+    }
+
+    cortex_m::asm::dsb();
+    cortex_m::asm::isb();
+}
+
 /// Setup the clocks and return clocks and a GPIO struct that
 /// can be used to set up all of the pins.
 ///
 /// This configures HCLK to be at least 25 MHz, which is the minimum required
 /// for ethernet operation to be valid.
-pub fn setup_peripherals(p: stm32_eth::stm32::Peripherals) -> (Clocks, Gpio, PartsIn) {
+pub fn setup_peripherals_and_cache(
+    p: stm32_eth::stm32::Peripherals,
+    mpu: MPU,
+    rx_ring: &[RxRingEntry],
+    tx_ring: &[TxRingEntry],
+) -> (Clocks, Gpio, PartsIn) {
+    mpu_mark_noncachable(mpu, rx_ring, tx_ring);
+
     let ethernet = PartsIn {
         dma: p.ETHERNET_DMA,
         mac: p.ETHERNET_MAC,
