@@ -1,8 +1,10 @@
 ## Unreleased
 
 * Fix a bug where errors on receive could cause RX stalls ([#108])
+* Always disable cache for the RAM used for example code ([#107])
 
 [#108]: https://github.com/stm32-rs/stm32-eth/pull/108
+[#107]: https://github.com/stm32-rs/stm32-eth/pull/107
 
 ## [0.8.2](https://github.com/stm32-rs/stm32-eth/tree/v0.8.2)
 * Implement `smoltcp::phy::Device` for non-borrowed `EthernetDMA` ([#106])
